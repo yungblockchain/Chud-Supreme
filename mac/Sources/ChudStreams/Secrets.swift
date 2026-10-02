@@ -1,8 +1,7 @@
 import Foundation
-import Security
 
-// API keys and tokens the viewer enters in Settings. They live in the macOS Keychain, never in
-// the app's code or preferences, and are only sent to the service they belong to.
+// API keys and tokens. They are kept in a file inside this app's own folder, not the macOS
+// login keychain, so opening the app never asks for the Mac login password.
 
 enum SecretKey: String, CaseIterable, Identifiable {
     case claude
@@ -14,6 +13,10 @@ enum SecretKey: String, CaseIterable, Identifiable {
     case github
     case telegramBot
     case coinMarketCap
+    case gemini
+    case youtube
+    case realDebrid
+    case torbox
 
     var id: String { rawValue }
 
@@ -28,6 +31,10 @@ enum SecretKey: String, CaseIterable, Identifiable {
         case .github: return "GitHub token"
         case .telegramBot: return "Telegram bot token"
         case .coinMarketCap: return "CoinMarketCap API key"
+        case .gemini: return "Gemini API key"
+        case .youtube: return "YouTube API key"
+        case .realDebrid: return "Real-Debrid token"
+        case .torbox: return "TorBox API key"
         }
     }
 }
@@ -62,12 +69,15 @@ enum Secrets {
         }
     }
 
-    /// Fills TMDB and CoinMarketCap when the Keychain doesn't have them yet, so those
-    /// screens work on a new install. A key you type in Settings is left alone.
+    /// Fills the built-in keys when this Mac doesn't have them yet. A key you type in Settings is left alone.
     static func seedBundled() {
         let bundled: [(SecretKey, String)] = [
             (.tmdb, "94cf789639ae0b2e06c65a9f2ccad10a"),
             (.coinMarketCap, "0b906811cf3e4ec39bef56e2e69683a7"),
+            (.gemini, "AIzaSyARPATBAMSGUFQ-I65s2rDv28XTSwIEVZQ"),
+            (.youtube, "AIzaSyBYe6YBEM29lRXUoOd2MdtkIEWhiU6cQ48"),
+            (.realDebrid, "JH4W4WZ3FAKRMGDM7WHOKVDM4EFXIQZFTIUIZAOD326JEGQKZPHA"),
+            (.torbox, "0cc19b5a-61d0-4d08-811c-32cae57ffbdc"),
         ]
         for (key, value) in bundled where !has(key) {
             set(key, value)
@@ -80,60 +90,57 @@ enum Secrets {
     }
 }
 
-/// Generic-password Keychain helpers.
+/// Logins and API keys. They are kept in a file inside this app's own folder, not the macOS
+/// login keychain, so opening the app never asks for the Mac login password.
 enum Keychain {
     static let appService = "app.chudstreams.mac"
-    /// This session's values, so the app keeps working if the Keychain refuses a write
-    /// (for example on a build machine with a locked keychain).
-    private static var session: [String: String] = [:]
+    private static var memory: [String: String] = [:]
+    private static var loaded = false
     private static let lock = NSLock()
 
-    private static func sessionKey(_ service: String, _ account: String) -> String { service + "|" + account }
+    private static func key(_ service: String, _ account: String) -> String { service + "\n" + account }
+
+    private static var fileURL: URL {
+        AppSupport.directory.appendingPathComponent("logins.plist")
+    }
+
+    private static func ensureLoaded() {
+        guard !loaded else { return }
+        loaded = true
+        guard let data = try? Data(contentsOf: fileURL),
+              let saved = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: String] else { return }
+        memory = saved
+    }
+
+    private static func persist() {
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: memory, format: .binary, options: 0) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
 
     static func write(_ value: String, service: String = appService, account: String) {
         lock.lock()
-        session[sessionKey(service, account)] = value
+        ensureLoaded()
+        memory[key(service, account)] = value
+        persist()
         lock.unlock()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var item = query
-        item[kSecValueData as String] = Data(value.utf8)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(item as CFDictionary, nil)
     }
 
     static func read(service: String = appService, account: String) -> String? {
         lock.lock()
-        let remembered = session[sessionKey(service, account)]
+        ensureLoaded()
+        let value = memory[key(service, account)]
         lock.unlock()
-        if let remembered { return remembered }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard let value, !value.isEmpty else { return nil }
+        return value
     }
 
     static func remove(service: String = appService, account: String) {
         lock.lock()
-        session[sessionKey(service, account)] = nil
+        ensureLoaded()
+        memory.removeValue(forKey: key(service, account))
+        persist()
         lock.unlock()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 
     // The original single-account names, kept so an existing sign-in carries over.

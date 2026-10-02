@@ -54,6 +54,9 @@ struct ChudStreamsApp: App {
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case home = "Home"
     case search = "Search"
+    case infinity = "Infinity"
+    case youtube = "YouTube"
+    case gemini = "Gemini"
     case live = "Live TV"
     case guide = "Guide"
     case movies = "Films"
@@ -73,6 +76,9 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .home: return "house"
         case .search: return "magnifyingglass"
+        case .infinity: return "infinity"
+        case .youtube: return "play.rectangle"
+        case .gemini: return "wand.and.stars"
         case .live: return "tv"
         case .guide: return "calendar"
         case .movies: return "film"
@@ -91,7 +97,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     /// The filled version of the symbol, for the selected sidebar item (where one exists).
     var selectedSymbol: String {
         switch self {
-        case .search, .guide, .claude, .markets, .match, .news: return symbol
+        case .search, .guide, .claude, .markets, .match, .news, .infinity, .youtube, .gemini: return symbol
         default: return symbol + ".fill"
         }
     }
@@ -109,14 +115,14 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .markets: return "9"
         case .search: return "f"
         case .settings: return ","
-        case .games, .match, .news: return nil
+        case .games, .match, .news, .infinity, .youtube, .gemini: return nil
         }
     }
 
     /// Sections grouped in the sidebar.
     static let watch: [AppSection] = [.home, .search, .live, .guide, .movies, .series]
     static let mine: [AppSection] = [.library, .favorites]
-    static let extras: [AppSection] = [.claude, .markets, .match, .news, .games]
+    static let extras: [AppSection] = [.infinity, .youtube, .gemini, .claude, .markets, .match, .news, .games]
 }
 
 extension AppModel {
@@ -212,6 +218,9 @@ private struct SectionContent: View {
         switch section {
         case .home: HomeView()
         case .search: SearchView()
+        case .infinity: InfinityView()
+        case .youtube: YouTubeView()
+        case .gemini: GeminiView()
         case .live: LiveTVView()
         case .guide: GuideView()
         case .movies: LibraryBrowser(kind: .movie)

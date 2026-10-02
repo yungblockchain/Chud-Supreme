@@ -24,6 +24,10 @@ struct PlaybackRequest: Identifiable, Equatable {
     var upNext: [Episode] = []
     /// The history entry this playback updates.
     var historyId: String? = nil
+    /// Extra HTTP headers some addon streams require (Referer, User-Agent).
+    var headers: [String: String] = [:]
+    /// An optional subtitle file to load with the stream.
+    var subtitleURL: URL? = nil
 
     var live: Bool { kind == .live }
     var streamId: Int? { kind == .live ? item?.streamId : nil }
@@ -112,16 +116,11 @@ final class AppModel: ObservableObject {
             Keychain.write(password, account: source.keychainAccount)
             list.insert(source, at: 0)
         }
-        // A fresh install opens already signed in. The GitHub screenshot tour leaves this off
-        // so it can still walk through the first-run screen. A login you change in Settings
-        // is left as you saved it.
-        if list.isEmpty, ProcessInfo.processInfo.environment["CHUD_TOUR"] == nil {
-            let source = BundledLogin.source
-            Keychain.write(BundledLogin.password, account: source.keychainAccount)
-            list = [source]
-        } else if let source = list.first(where: { $0.server == BundledLogin.server && $0.username == BundledLogin.username }),
-                  (source.password ?? "").isEmpty {
-            Keychain.write(BundledLogin.password, account: source.keychainAccount)
+        // A fresh install opens already signed in, and a host saved without www is corrected.
+        // The GitHub screenshot tour leaves this off so it can still walk through first run.
+        // A login you change in Settings is left as you saved it.
+        if ProcessInfo.processInfo.environment["CHUD_TOUR"] == nil {
+            BundledLogin.apply(to: &list)
         }
         if let data = try? JSONEncoder().encode(list) { store.set(data, forKey: Keys.sources) }
         return list

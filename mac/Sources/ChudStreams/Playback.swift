@@ -86,7 +86,16 @@ final class PlaybackCenter: ObservableObject {
         let firstStart = current == nil
         current = request
         if firstStart { presentation = .full }
-        mpv.load(request.url, start: request.startAt)
+        var extra: [String: String] = [:]
+        if !request.headers.isEmpty {
+            let fields = request.headers.map { name, value in
+                "\(name): \(value.replacingOccurrences(of: ",", with: " "))"
+            }
+            extra["http-header-fields"] = fields.joined(separator: ",")
+            if let agent = request.headers["User-Agent"] { extra["user-agent"] = agent }
+        }
+        if let subtitle = request.subtitleURL { extra["sub-file"] = subtitle.absoluteString }
+        mpv.load(request.url, start: request.startAt, extraOptions: extra)
         startProgressTimer()
     }
 

@@ -39,6 +39,7 @@ struct SettingsView: View {
     private var pageContent: some View {
         switch page {
         case .sources: SettingsSourcesPage()
+        case .addons: InfinityAddonsSettings()
         case .playback: SettingsPlaybackPage(store: store)
         case .hdr: SettingsHDRPage(store: store)
         case .audio: SettingsAudioPage(store: store)
@@ -51,13 +52,14 @@ struct SettingsView: View {
 }
 
 private enum SettingsPage: String, CaseIterable, Identifiable {
-    case sources, playback, hdr, audio, subtitles, services, reports, general
+    case sources, addons, playback, hdr, audio, subtitles, services, reports, general
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .sources: return "Sources"
+        case .addons: return "Addons"
         case .playback: return "Playback"
         case .hdr: return "HDR & Dolby Vision"
         case .audio: return "Audio"
@@ -71,6 +73,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .sources: return "server.rack"
+        case .addons: return "puzzlepiece"
         case .playback: return "play.rectangle"
         case .hdr: return "sun.max"
         case .audio: return "speaker.wave.2"
@@ -85,6 +88,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .sources:
             return "Your Xtream logins and M3U playlists. Switch between them from the top of the sidebar."
+        case .addons:
+            return "Stremio and Nuvio addon manifests. These fill Infinity and do not replace your Xtream login."
         case .playback:
             return "How streams play. Settings apply to the next stream you start."
         case .hdr:
@@ -94,7 +99,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
         case .subtitles:
             return "When subtitles appear and how they look. Settings apply to the next stream you start."
         case .services:
-            return "Your own keys for the extras. They're kept in the macOS Keychain and only ever sent to the service they belong to."
+            return "Your own keys for the extras. They're kept in this app's folder and only ever sent to the service they belong to."
         case .reports:
             return "Crash and error reports, to help track problems down. Nothing leaves your Mac unless you send it or turn on automatic sending."
         case .general:
@@ -751,7 +756,7 @@ struct OnboardingView: View {
                 .font(NeonFont.body(16))
                 .foregroundColor(Neon.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Logins stay in this Mac's Keychain. You can add more sources, and keys for the extras, in Settings later.")
+            Text("Logins stay on this Mac. You can change the Xtream login later in Settings, and add addon manifests there too.")
                 .font(NeonFont.body(13))
                 .foregroundColor(Neon.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1044,6 +1049,17 @@ private struct SettingsServicesPage: View {
             SettingsCard(title: "Ask Claude") {
                 SettingsSecretRow(key: .claude)
             }
+            SettingsCard(title: "Gemini") {
+                SettingsSecretRow(key: .gemini)
+            }
+            SettingsCard(title: "YouTube") {
+                SettingsSecretRow(key: .youtube)
+            }
+            SettingsCard(title: "Debrid", subtitle: "Used by Infinity when a stream is a torrent instead of a file.") {
+                SettingsSecretRow(key: .realDebrid)
+                SettingsDivider()
+                SettingsSecretRow(key: .torbox)
+            }
             SettingsCard(title: "Film and TV details") {
                 SettingsSecretRow(key: .tmdb)
                 SettingsDivider()
@@ -1195,6 +1211,14 @@ private enum SettingsSecretInfo {
             return "Your own bot. In Telegram, message @BotFather, send /newbot and copy the token it gives you."
         case .coinMarketCap:
             return "Prices and market data in Markets. The free Basic plan is enough."
+        case .gemini:
+            return "Powers the Gemini page. It can see the title that is playing and the live guide entry."
+        case .youtube:
+            return "Search and trending. Your own subscriptions open in the YouTube page, because a key cannot read them."
+        case .realDebrid:
+            return "Turns torrent results in Infinity into a file. The token is from real-debrid.com/apitoken."
+        case .torbox:
+            return "Used when Real-Debrid doesn't have the torrent cached."
         }
     }
 
@@ -1219,6 +1243,10 @@ private enum SettingsSecretInfo {
         case .github: return "github.com/settings/personal-access-tokens"
         case .telegramBot: return "@BotFather in Telegram"
         case .coinMarketCap: return "coinmarketcap.com/api"
+        case .gemini: return "aistudio.google.com"
+        case .youtube: return "console.cloud.google.com"
+        case .realDebrid: return "real-debrid.com/apitoken"
+        case .torbox: return "torbox.app"
         }
     }
 
@@ -1232,6 +1260,10 @@ private enum SettingsSecretInfo {
         case .github: return "https://github.com/settings/personal-access-tokens"
         case .telegramBot: return "https://t.me/BotFather"
         case .coinMarketCap: return "https://coinmarketcap.com/api/"
+        case .gemini: return "https://aistudio.google.com/apikey"
+        case .youtube: return "https://console.cloud.google.com/apis/library/youtube.googleapis.com"
+        case .realDebrid: return "https://real-debrid.com/apitoken"
+        case .torbox: return "https://torbox.app"
         }
     }
 }
