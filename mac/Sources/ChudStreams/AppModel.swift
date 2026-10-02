@@ -111,8 +111,19 @@ final class AppModel: ObservableObject {
             let source = Source(id: Source.mainId, kind: .xtream, name: URL(string: server)?.host ?? "My provider", server: server, username: username)
             Keychain.write(password, account: source.keychainAccount)
             list.insert(source, at: 0)
-            if let data = try? JSONEncoder().encode(list) { store.set(data, forKey: Keys.sources) }
         }
+        // A fresh install opens already signed in. The GitHub screenshot tour leaves this off
+        // so it can still walk through the first-run screen. A login you change in Settings
+        // is left as you saved it.
+        if list.isEmpty, ProcessInfo.processInfo.environment["CHUD_TOUR"] == nil {
+            let source = BundledLogin.source
+            Keychain.write(BundledLogin.password, account: source.keychainAccount)
+            list = [source]
+        } else if let source = list.first(where: { $0.server == BundledLogin.server && $0.username == BundledLogin.username }),
+                  (source.password ?? "").isEmpty {
+            Keychain.write(BundledLogin.password, account: source.keychainAccount)
+        }
+        if let data = try? JSONEncoder().encode(list) { store.set(data, forKey: Keys.sources) }
         return list
     }
 
@@ -138,6 +149,35 @@ final class AppModel: ObservableObject {
         Keychain.write(password, account: source.keychainAccount)
         install(source)
         accounts[id] = info
+    }
+
+    /// Replaces the server, username or password of a source you already have. An empty password
+    /// keeps the one that is saved. Favourites stay, and the channel list is loaded again.
+    func updateXtream(id: String, server rawServer: String, username rawUser: String, password rawPassword: String) async throws {
+        guard let index = sources.firstIndex(where: { $0.id == id && $0.kind == .xtream }) else { return }
+        let existing = sources[index]
+        let fromLink = XtreamClient.credentials(fromLink: rawServer)
+        guard let server = fromLink?.server ?? XtreamClient.normalizeServer(rawServer) else { throw XtreamError.badServer }
+        let username = fromLink?.username ?? rawUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typed = (fromLink?.password ?? rawPassword).trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = typed.isEmpty ? (existing.password ?? "") : typed
+        guard !username.isEmpty, !password.isEmpty else { throw XtreamError.missingLogin }
+        let candidate = XtreamCredentials(server: server, username: username, password: password)
+        let info = try await XtreamClient(credentials: candidate).accountInfo()
+        guard info.isActive else { throw XtreamError.inactive(info.status ?? "inactive") }
+        var source = existing
+        source.server = server
+        source.username = username
+        if source.name == URL(string: existing.server ?? "")?.host {
+            source.name = URL(string: server)?.host ?? source.name
+        }
+        Keychain.write(password, account: source.keychainAccount)
+        sources[index] = source
+        catalogs[id] = nil
+        CatalogCache.remove(source: id)
+        saveSources()
+        accounts[id] = info
+        catalog(for: id)?.start()
     }
 
     /// Adds an M3U playlist (and optional XMLTV guide). The playlist is downloaded to check it.

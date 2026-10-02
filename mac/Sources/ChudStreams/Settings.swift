@@ -247,6 +247,12 @@ private struct SettingsSourceCard: View {
     let active: Bool
     let account: AccountInfo?
     @State private var checking = false
+    @State private var editingLogin = false
+    @State private var loginServer = ""
+    @State private var loginUser = ""
+    @State private var loginPassword = ""
+    @State private var loginWorking = false
+    @State private var loginError: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -259,6 +265,10 @@ private struct SettingsSourceCard: View {
             }
             SettingsDivider()
             actions
+            if editingLogin {
+                SettingsDivider()
+                loginEditor
+            }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -389,9 +399,36 @@ private struct SettingsSourceCard: View {
                 .disabled(busy)
             Button("Rename…") { rename() }
                 .buttonStyle(NeonButtonStyle())
+            if source.kind == .xtream {
+                Button(editingLogin ? "Close login" : "Change login…") { beginLoginEdit() }
+                    .buttonStyle(NeonButtonStyle())
+            }
             Button("Remove…") { remove() }
                 .buttonStyle(NeonButtonStyle())
             Spacer(minLength: 0)
+        }
+    }
+
+    private var loginEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsFormField(label: "Server", prompt: "http://example.com:8080", text: $loginServer, action: saveLogin)
+            HStack(alignment: .top, spacing: 12) {
+                SettingsFormField(label: "Username", text: $loginUser, action: saveLogin)
+                SettingsFormField(label: "Password", prompt: "Leave blank to keep the current one", text: $loginPassword, secure: true, action: saveLogin)
+            }
+            SettingsHint(text: "Saved on this Mac only. The channel list reloads after the provider accepts the new login.")
+            HStack(spacing: 12) {
+                Button(loginWorking ? "Checking…" : "Save login") { saveLogin() }
+                    .buttonStyle(NeonButtonStyle(prominent: true))
+                    .disabled(loginWorking || loginServer.trimmingCharacters(in: .whitespaces).isEmpty || loginUser.trimmingCharacters(in: .whitespaces).isEmpty)
+                if loginWorking { ProgressView().controlSize(.small) }
+            }
+            if let loginError {
+                Text(loginError)
+                    .font(NeonFont.body(13))
+                    .foregroundColor(Neon.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -475,6 +512,40 @@ private struct SettingsSourceCard: View {
             return
         }
         model.setGuide(source.id, url: link)
+    }
+
+    private func beginLoginEdit() {
+        if editingLogin {
+            editingLogin = false
+            return
+        }
+        loginServer = source.server ?? ""
+        loginUser = source.username ?? ""
+        loginPassword = ""
+        loginError = nil
+        editingLogin = true
+    }
+
+    private func saveLogin() {
+        guard !loginWorking else { return }
+        loginWorking = true
+        loginError = nil
+        let model = self.model
+        let id = source.id
+        let server = loginServer
+        let user = loginUser
+        let password = loginPassword
+        Task {
+            do {
+                try await model.updateXtream(id: id, server: server, username: user, password: password)
+                loginPassword = ""
+                editingLogin = false
+                model.notice = "Login updated. The lists are loading again."
+            } catch {
+                loginError = SettingsText.message(for: error)
+            }
+            loginWorking = false
+        }
     }
 
     private func remove() {
