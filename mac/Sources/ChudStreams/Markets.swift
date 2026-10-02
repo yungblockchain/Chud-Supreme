@@ -1900,7 +1900,7 @@ private struct MarketTelegramPanel: View {
             if let sendNote {
                 note(sendNote, ok: sendOk)
             }
-            Text("Read-only: CHUD STREAMS never holds a wallet or signs trades. Any trade happens in your bot.")
+            Text("Read-only: Chud Supreme never holds a wallet or signs trades. Any trade happens in your bot.")
                 .font(NeonFont.body(11))
                 .foregroundColor(Neon.textMuted)
                 .fixedSize(horizontal: false, vertical: true)

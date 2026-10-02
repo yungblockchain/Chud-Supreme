@@ -59,8 +59,7 @@ enum CatalogPhase: Equatable {
 /// On-disk cache of a source's lists, compressed.
 enum CatalogCache {
     static var directory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("CHUD STREAMS", isDirectory: true)
+        return AppSupport.directory
     }
 
     private static func file(_ sourceId: String, _ name: String) -> URL {

@@ -9,11 +9,12 @@ struct ChudStreamsApp: App {
         SelfTest.runIfRequested()
         NeonFont.registerBundledFonts()
         Reports.start()
+        Secrets.seedBundled()
         _model = StateObject(wrappedValue: AppModel())
     }
 
     var body: some Scene {
-        WindowGroup("CHUD STREAMS") {
+        WindowGroup("Chud Supreme") {
             RootView()
                 .environmentObject(model)
                 .environmentObject(model.userData)
@@ -61,6 +62,8 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case favorites = "Favourites"
     case claude = "Ask Claude"
     case markets = "Markets"
+    case match = "Match centre"
+    case news = "News"
     case games = "Arcade"
     case settings = "Settings"
 
@@ -78,6 +81,8 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .favorites: return "star"
         case .claude: return "sparkles"
         case .markets: return "chart.line.uptrend.xyaxis"
+        case .match: return "sportscourt"
+        case .news: return "newspaper"
         case .games: return "gamecontroller"
         case .settings: return "gearshape"
         }
@@ -86,7 +91,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     /// The filled version of the symbol, for the selected sidebar item (where one exists).
     var selectedSymbol: String {
         switch self {
-        case .search, .guide, .claude, .markets: return symbol
+        case .search, .guide, .claude, .markets, .match, .news: return symbol
         default: return symbol + ".fill"
         }
     }
@@ -104,14 +109,14 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .markets: return "9"
         case .search: return "f"
         case .settings: return ","
-        case .games: return nil
+        case .games, .match, .news: return nil
         }
     }
 
     /// Sections grouped in the sidebar.
     static let watch: [AppSection] = [.home, .search, .live, .guide, .movies, .series]
     static let mine: [AppSection] = [.library, .favorites]
-    static let extras: [AppSection] = [.claude, .markets, .games]
+    static let extras: [AppSection] = [.claude, .markets, .match, .news, .games]
 }
 
 extension AppModel {
@@ -215,6 +220,8 @@ private struct SectionContent: View {
         case .favorites: FavoritesView()
         case .claude: ClaudeView()
         case .markets: MarketsView()
+        case .match: MatchCentreView()
+        case .news: NewsView()
         case .games: GamesView()
         case .settings: SettingsView()
         }
@@ -236,7 +243,7 @@ private struct Sidebar: View {
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text("CHUD").font(NeonFont.display(18)).foregroundColor(Neon.cyan)
-                    Text("STREAMS").font(NeonFont.display(12)).foregroundColor(Neon.magenta)
+                    Text("SUPREME").font(NeonFont.display(12)).foregroundColor(Neon.magenta)
                 }
             }
             .padding(.horizontal, 16)
@@ -263,13 +270,13 @@ private struct Sidebar: View {
                     .foregroundColor(Neon.textMuted)
                     .padding(.horizontal, 16)
             }
-            Text("チャッド・ストリームズ")
+            Text("チャッド・シュプリーム")
                 .font(.system(size: 11))
                 .foregroundColor(Neon.magenta.opacity(0.8))
                 .padding(.horizontal, 16)
                 .padding(.bottom, 14)
         }
-        .frame(width: 218)
+        .frame(width: 236)
         .background(Neon.backgroundSoft.opacity(0.94))
         .overlay(Rectangle().fill(Neon.cyan.opacity(0.12)).frame(width: 1), alignment: .trailing)
     }
@@ -392,44 +399,90 @@ private struct NoticeBanner: View {
     }
 }
 
-/// The logo spins twice, then the app fades in (like the Fire TV app). Can be turned off in Settings.
+/// Six-second opening: green binary rain and a spinning logo. Click or press to skip.
+/// The screenshot tour skips it so the rest of the app can be checked.
 @MainActor
 private struct LaunchSplash: View {
     let onFinish: () -> Void
     @State private var angle = 0.0
-    @State private var scale = 0.7
-    @State private var glow = 0.0
+    @State private var columns = SplashRain.make(46)
 
     var body: some View {
         ZStack {
-            Neon.background.ignoresSafeArea()
-            VStack(spacing: 18) {
+            Color.black.ignoresSafeArea()
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+                Canvas { context, size in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    for column in columns {
+                        column.draw(in: context, size: size, time: time)
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+            VStack(spacing: 16) {
                 if let badge = BrandImage.badge {
                     Image(nsImage: badge)
                         .resizable()
-                        .frame(width: 180, height: 180)
-                        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0))
-                        .scaleEffect(scale)
-                        .shadow(color: Neon.cyan.opacity(glow), radius: 30)
+                        .frame(width: 200, height: 200)
+                        .rotationEffect(.degrees(angle))
+                        .shadow(color: Color.green.opacity(0.85), radius: 22)
                 }
-                NeonTitle(text: "CHUD STREAMS", size: 34)
-                Text("チャッド・ストリームズ").font(.system(size: 14)).foregroundColor(Neon.magenta)
+                NeonTitle(text: "CHUD SUPREME", size: 34)
+                Text("チャッド・シュプリーム").font(.system(size: 14)).foregroundColor(.green)
+                Text("Click to skip").font(NeonFont.body(12)).foregroundColor(Neon.textMuted)
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture { onFinish() }
         .onAppear {
             if TourRunner.isRunning {
                 onFinish()
                 return
             }
-            withAnimation(.easeInOut(duration: 1.4)) {
-                angle = 720
-                scale = 1
-                glow = 0.8
-            }
+            withAnimation(.linear(duration: 6)) { angle = 1080 }
             Task {
-                try? await Task.sleep(nanoseconds: 1_700_000_000)
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
                 onFinish()
             }
+        }
+    }
+}
+
+private struct SplashColumn {
+    var slot: CGFloat
+    var speed: CGFloat
+    var phase: CGFloat
+    var glyphs: [String]
+
+    func draw(in context: GraphicsContext, size: CGSize, time: TimeInterval) {
+        let width = size.width / 46
+        let travel = (CGFloat(time) * speed * 160 + phase).truncatingRemainder(dividingBy: size.height + 480) - 480
+        for (index, glyph) in glyphs.enumerated() {
+            let y = travel + CGFloat(index) * 16
+            if y < -20 || y > size.height + 10 { continue }
+            let head = index == glyphs.count - 1
+            let opacity = head ? 1.0 : Double(index) / Double(glyphs.count) * 0.75
+            var layer = context
+            layer.opacity = opacity
+            let color = head ? Color.white : Color.green
+            layer.draw(
+                Text(glyph).font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundColor(color),
+                at: CGPoint(x: slot * width, y: y),
+                anchor: .topLeading
+            )
+        }
+    }
+}
+
+private enum SplashRain {
+    static func make(_ count: Int) -> [SplashColumn] {
+        (0..<count).map { index in
+            SplashColumn(
+                slot: CGFloat(index),
+                speed: CGFloat.random(in: 0.35...1.15),
+                phase: CGFloat.random(in: 0...800),
+                glyphs: (0..<26).map { _ in Bool.random() ? "1" : "0" }
+            )
         }
     }
 }

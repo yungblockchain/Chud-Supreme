@@ -62,6 +62,18 @@ enum Secrets {
         }
     }
 
+    /// Fills TMDB and CoinMarketCap when the Keychain doesn't have them yet, so those
+    /// screens work on a new install. A key you type in Settings is left alone.
+    static func seedBundled() {
+        let bundled: [(SecretKey, String)] = [
+            (.tmdb, "94cf789639ae0b2e06c65a9f2ccad10a"),
+            (.coinMarketCap, "0b906811cf3e4ec39bef56e2e69683a7"),
+        ]
+        for (key, value) in bundled where !has(key) {
+            set(key, value)
+        }
+    }
+
     /// Every stored secret, for scrubbing them out of crash and error reports.
     static func allValues() -> [String] {
         SecretKey.allCases.compactMap { get($0) }.filter { $0.count >= 6 }

@@ -672,7 +672,7 @@ struct OnboardingView: View {
                     .frame(width: 140, height: 140)
                     .shadow(color: Neon.cyan.opacity(0.45), radius: 18)
             }
-            NeonTitle(text: "CHUD STREAMS", size: 38)
+            NeonTitle(text: "Chud Supreme", size: 38)
             Text("チャッド・ストリームズ")
                 .font(.system(size: 13))
                 .foregroundColor(Neon.magenta.opacity(0.85))
@@ -764,7 +764,7 @@ private struct SettingsPlaybackPage: View {
                            selection: store.binding(\.userAgent), options: UserAgentPreset.allCases,
                            label: { $0.label }, width: 200)
             if store.value.userAgent == .custom {
-                SettingsTextField(title: "Custom user agent", hint: "Sent exactly as typed. Leave empty to use the CHUD STREAMS one.",
+                SettingsTextField(title: "Custom user agent", hint: "Sent exactly as typed. Leave empty to use the Chud Supreme one.",
                                   placeholder: "MyPlayer/1.0", text: store.binding(\.customUserAgent), width: 260)
             }
         }
@@ -881,7 +881,7 @@ private struct SettingsAudioPage: View {
     private var outputCard: some View {
         SettingsCard(title: "Output") {
             SettingsToggle(title: "Passthrough to a receiver",
-                           hint: "Sends Dolby Digital (AC3), Dolby Digital Plus (E-AC3), DTS and TrueHD untouched over HDMI or optical, for your AV receiver or soundbar to decode. Leave off for the Mac's speakers and headphones.",
+                           hint: "Sends Dolby Digital, Dolby Digital Plus, Dolby Atmos (in Plus or TrueHD), DTS and TrueHD untouched over HDMI or optical, for a receiver or soundbar. Leave this off for the MacBook speakers and headphones so the app decodes them itself.",
                            isOn: store.binding(\.passthrough))
             SettingsDivider()
             SettingsToggle(title: "Exclusive mode",
@@ -1530,7 +1530,7 @@ private struct SettingsGeneralPage: View {
                         .frame(width: 56, height: 56)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("CHUD STREAMS for Mac")
+                    Text("Chud Supreme for Mac")
                         .font(NeonFont.display(16))
                         .foregroundColor(Neon.text)
                     Text(SettingsText.version())

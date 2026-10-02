@@ -83,7 +83,7 @@ enum UserAgentPreset: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .app: return "CHUD STREAMS"
+        case .app: return "Chud Supreme"
         case .vlc: return "VLC"
         case .tivimate: return "TiviMate"
         case .smarters: return "IPTV Smarters"
@@ -92,7 +92,7 @@ enum UserAgentPreset: String, Codable, CaseIterable, Identifiable {
     }
     var value: String {
         switch self {
-        case .app: return "CHUDSTREAMS/2.0 (Macintosh)"
+        case .app: return "ChudSupreme/1.0 (Macintosh; Intel Mac OS X 13)"
         case .vlc: return "VLC/3.0.21 LibVLC/3.0.21"
         case .tivimate: return "TiviMate/5.1.6 (Android 11)"
         case .smarters: return "IPTVSmartersPro"
@@ -168,8 +168,8 @@ struct PlaybackSettings: Codable, Equatable {
     func mpvOptions(forTile: Bool = false) -> [(String, String)] {
         var options: [(String, String)] = [
             ("vo", renderer.usesMetal && !forTile ? "gpu-next" : "libmpv"),
-            ("hwdec", hardwareDecoding ? "auto-safe" : "no"),
-            // If the hardware decoder gives up on a stream, switch to software straight away.
+            ("hwdec", hardwareDecoding ? "videotoolbox" : "no"),
+            // If VideoToolbox cannot take a codec, decode it in software instead of showing nothing.
             ("vd-lavc-software-fallback", "yes"),
             ("keep-open", "yes"),
             ("idle", "yes"),
@@ -182,10 +182,12 @@ struct PlaybackSettings: Codable, Equatable {
             ("network-timeout", String(networkTimeout)),
             ("cache", "yes"),
             ("cache-secs", String(bufferSeconds)),
-            ("demuxer-readahead-secs", String(min(bufferSeconds, 60))),
-            ("demuxer-max-bytes", forTile ? "48MiB" : "\(max(64, bufferSeconds * 4))MiB"),
-            ("demuxer-max-back-bytes", forTile ? "16MiB" : "64MiB"),
-            ("hls-bitrate", "max"),
+            ("demuxer-readahead-secs", String(min(bufferSeconds, 20))),
+            // Capped so four live tiles plus a 4K film cannot eat the 8 GB machine.
+            ("demuxer-max-bytes", forTile ? "24MiB" : "96MiB"),
+            ("demuxer-max-back-bytes", forTile ? "8MiB" : "32MiB"),
+            // The film or channel you opened keeps the highest rung. Tiles stay lighter.
+            ("hls-bitrate", forTile ? "2500000" : "max"),
             ("volume", String(Int(defaultVolume))),
             ("volume-max", "130"),
             ("alang", audioLanguages),
@@ -199,6 +201,12 @@ struct PlaybackSettings: Codable, Equatable {
             ("screenshot-directory", "~/Pictures"),
             ("tone-mapping", toneMapping == .auto ? "auto" : toneMapping.rawValue),
             ("hdr-compute-peak", hdrPeakDetection ? "auto" : "no"),
+            ("target-peak", "auto"),
+            // 4K down to a Retina laptop: smooth scalers, not the heaviest ones.
+            ("scale", forTile ? "bilinear" : "spline36"),
+            ("dscale", forTile ? "bilinear" : "mitchell"),
+            ("cscale", forTile ? "bilinear" : "spline36"),
+            ("sigmoid-upscaling", "no"),
             ("deband", deband ? "yes" : "no"),
             ("speed", String(format: "%.2f", defaultSpeed)),
         ]
@@ -235,19 +243,21 @@ struct PlaybackSettings: Codable, Equatable {
             options.append(("vf", "format=dolbyvision=no"))
         }
         if passthrough {
+            // AC3, E-AC3 (including Atmos), DTS, DTS-HD and TrueHD Atmos. Speakers still decode
+            // when this is off, which is the default on a MacBook.
             options.append(("audio-spdif", "ac3,eac3,dts,dts-hd,truehd"))
         }
         if exclusiveAudio { options.append(("audio-exclusive", "yes")) }
         if stereoDownmix { options.append(("audio-channels", "stereo")) } else { options.append(("audio-channels", "auto-safe")) }
         if normaliseVolume { options.append(("af", "dynaudnorm=f=250:g=15")) }
         if forTile {
-            options.append(("vd-lavc-threads", "2"))
-            options.append(("hwdec", hardwareDecoding ? "auto-safe" : "no"))
+            options.append(("vd-lavc-threads", "1"))
         }
         if renderer.usesMetal && !forTile {
             options.append(("gpu-api", "vulkan"))
             options.append(("gpu-context", "moltenvk"))
             options.append(("target-colorspace-hint", "yes"))
+            options.append(("tone-mapping-mode", "auto"))
             if hardwareDecoding { options.append(("hwdec", "videotoolbox")) }
         }
         return options

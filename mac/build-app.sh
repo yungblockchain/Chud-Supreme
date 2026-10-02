@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds "CHUD STREAMS.app" for this Mac.
+# Builds "Chud Supreme.app" for this Mac.
 # Needs Apple's free command line tools (run: xcode-select --install) or Xcode 15.2 on macOS Ventura.
 #
 #   ./build-app.sh            build into ./build/
@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NAME="CHUD STREAMS"
+NAME="Chud Supreme"
 EXECUTABLE="ChudStreams"
 APP="build/$NAME.app"
 
@@ -56,13 +56,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleExecutable</key><string>$EXECUTABLE</string>
-    <key>CFBundleIdentifier</key><string>app.chudstreams.mac</string>
+    <key>CFBundleIdentifier</key><string>app.dial.supreme.mac</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>$NAME</string>
     <key>CFBundleDisplayName</key><string>$NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>2.0.0</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
+    <key>CFBundleVersion</key><string>1</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.entertainment</string>
@@ -72,6 +72,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <dict>
         <key>NSAllowsArbitraryLoads</key><true/>
         <key>NSAllowsArbitraryLoadsForMedia</key><true/>
+        <key>NSAllowsArbitraryLoadsInWebContent</key><true/>
+        <key>NSAllowsLocalNetworking</key><true/>
     </dict>
 </dict>
 </plist>

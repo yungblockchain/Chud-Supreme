@@ -1096,7 +1096,7 @@ final class ClaudeChatModel: ObservableObject {
         formatter.timeStyle = .short
         let now = formatter.string(from: Date())
         var lines: [String] = []
-        lines.append("You are the assistant inside CHUD STREAMS, an IPTV app on the viewer's Mac. It is \(now) (\(TimeZone.current.identifier)).")
+        lines.append("You are the assistant inside Chud Supreme, an IPTV app on the viewer's Mac. It is \(now) (\(TimeZone.current.identifier)).")
         lines.append("Help them find something to watch in their own library: live TV channels, films and series from their IPTV provider. \(librarySummary(app))")
         lines.append("Use the tools to check what's actually in the library and on air before you suggest anything, and use titles exactly as the tools return them.")
         lines.append("Categories come from the provider, and titles may carry a year or tags; use your own knowledge of films and shows to pick good ones from what's there.")

@@ -1229,21 +1229,26 @@ private enum ArcadeRenderer {
 struct GamesView: View {
     @StateObject private var arcade = ArcadeController()
     @StateObject private var keys = ArcadeKeyMonitor()
+    @State private var casino: CasinoGame? = nil
 
     init() {}
 
     var body: some View {
         ZStack {
-            if let game = arcade.active {
+            if let casino {
+                CasinoScreen(game: casino, onClose: { self.casino = nil })
+                    .transition(.opacity)
+            } else if let game = arcade.active {
                 ArcadePlayScreen(arcade: arcade, game: game)
                     .transition(.opacity)
             } else {
-                ArcadeMenu(arcade: arcade)
+                ArcadeMenu(arcade: arcade, onCasino: { casino = $0 })
                     .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.18), value: arcade.active)
+        .animation(.easeInOut(duration: 0.18), value: casino)
         .onAppear {
             let controller = arcade
             keys.start { event in controller.handle(event) }
@@ -1258,29 +1263,33 @@ struct GamesView: View {
 @MainActor
 private struct ArcadeMenu: View {
     @ObservedObject var arcade: ArcadeController
+    let onCasino: (CasinoGame) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            NeonTitle(text: "Arcade", size: 34)
-            Text("Three quick games for the keyboard. Arrow keys choose, Return plays, Esc comes back here.")
-                .font(NeonFont.body(15))
-                .foregroundColor(Neon.textSecondary)
-            HStack(alignment: .top, spacing: 20) {
-                ForEach(ArcadeGame.allCases) { game in
-                    ArcadeGameCard(
-                        game: game,
-                        best: arcade.bestScore(game),
-                        selected: arcade.selected == game,
-                        onHover: { arcade.selected = game },
-                        onPlay: { arcade.open(game) }
-                    )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                NeonTitle(text: "Arcade", size: 34)
+                Text("Arrow keys choose, Return plays, Esc comes back here. The table games sit under the arcade.")
+                    .font(NeonFont.body(15))
+                    .foregroundColor(Neon.textSecondary)
+                HStack(alignment: .top, spacing: 20) {
+                    ForEach(ArcadeGame.allCases) { game in
+                        ArcadeGameCard(
+                            game: game,
+                            best: arcade.bestScore(game),
+                            selected: arcade.selected == game,
+                            onHover: { arcade.selected = game },
+                            onPlay: { arcade.open(game) }
+                        )
+                    }
                 }
+                .padding(.top, 8)
+                CasinoMenuRow(onPlay: onCasino)
+                    .padding(.top, 8)
             }
-            .padding(.top, 8)
-            Spacer(minLength: 0)
+            .padding(32)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

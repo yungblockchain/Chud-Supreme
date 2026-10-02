@@ -440,8 +440,7 @@ enum OpenSubtitles {
             throw ServiceError(message: message)
         }
         let (data, _) = try await URLSession.shared.data(from: url)
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("CHUD STREAMS/Subtitles", isDirectory: true)
+        let folder = AppSupport.caches("Subtitles")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let name = (str(root, "file_name") ?? "\(result.fileId).srt").replacingOccurrences(of: "/", with: "_")
         let file = folder.appendingPathComponent(name)

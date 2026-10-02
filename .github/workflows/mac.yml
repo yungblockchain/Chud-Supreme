@@ -1,12 +1,12 @@
-# Builds the CHUD STREAMS Mac app (Intel, macOS 13 Ventura or later) from the mac/ folder.
+# Builds the Chud Supreme Mac app (Intel, macOS 13 Ventura or later) from the mac/ folder.
 #
-# Runs when anything under mac/ changes, or from the Actions tab ("Build CHUD STREAMS for Mac" >
+# Runs when anything under mac/ changes, or from the Actions tab ("Build Chud Supreme for Mac" >
 # Run workflow). Each successful build on main replaces the download at a fixed address:
-#   https://github.com/<owner>/<repo>/releases/download/mac-latest/chud-streams-mac.zip
+#   https://github.com/<owner>/<repo>/releases/download/mac-latest/chud-supreme-mac.zip
 # The release is marked as a pre-release so it never takes over the Firestick APK's
 # "releases/latest" link.
 
-name: Build CHUD STREAMS for Mac
+name: Build Chud Supreme for Mac
 
 on:
   workflow_dispatch:
@@ -102,7 +102,7 @@ jobs:
         shell: bash
         run: |
           /usr/bin/pgrep -q oahd || softwareupdate --install-rosetta --agree-to-license || true
-          APP="build/CHUD STREAMS.app/Contents/MacOS/ChudStreams"
+          APP="build/Chud Supreme.app/Contents/MacOS/ChudStreams"
           # Software decoding must pass. GitHub's Macs are virtual machines without a hardware
           # video decoder, so the hardware-decoding run is reported but can't fail the build.
           failed=0
@@ -140,7 +140,7 @@ jobs:
           export CHUD_TEST_KEY_TMDB=test CHUD_TEST_KEY_TRAKT=test CHUD_TEST_KEY_OPENSUBTITLES=test CHUD_TEST_KEY_CLAUDE=test
           set +e
           # exec { program } list: runs the path as one argument even though it contains a space.
-          perl -e 'alarm shift; exec { $ARGV[0] } @ARGV or die "cannot run: $!"' 1500 "$PWD/build/CHUD STREAMS.app/Contents/MacOS/ChudStreams" > tour.log 2>&1
+          perl -e 'alarm shift; exec { $ARGV[0] } @ARGV or die "cannot run: $!"' 1500 "$PWD/build/Chud Supreme.app/Contents/MacOS/ChudStreams" > tour.log 2>&1
           code=$?
           set -e
           grep -E "^\[tour\]" tour.log | tail -80 || true
@@ -162,7 +162,7 @@ jobs:
           [ -d tour ] || exit 0
           gh release view mac-screenshots --repo "$REPO" >/dev/null 2>&1 || \
             gh release create mac-screenshots --repo "$REPO" --target "${{ github.sha }}" \
-              --title "CHUD STREAMS for Mac: screenshots" \
+              --title "Chud Supreme for Mac: screenshots" \
               --notes "Screenshots from the automated tour of the Mac app on GitHub's test Mac." \
               --prerelease --latest=false || true
           for f in $(gh release view mac-screenshots --repo "$REPO" --json assets -q '.assets[].name'); do
@@ -174,16 +174,17 @@ jobs:
       - name: Package the app
         working-directory: mac
         run: |
-          file "build/CHUD STREAMS.app/Contents/MacOS/ChudStreams"
+          file "build/Chud Supreme.app/Contents/MacOS/ChudStreams"
           # ditto keeps the app bundle intact (unlike zip), so it opens straight after unzipping.
-          ditto -c -k --keepParent "build/CHUD STREAMS.app" chud-streams-mac.zip
-          ls -la chud-streams-mac.zip
+          ditto -c -k --keepParent "build/Chud Supreme.app" chud-supreme-mac.zip
+          cp chud-supreme-mac.zip chud-streams-mac.zip
+          ls -la chud-supreme-mac.zip
 
       - name: Upload the app
         uses: actions/upload-artifact@v4
         with:
-          name: chud-streams-mac
-          path: mac/chud-streams-mac.zip
+          name: chud-supreme-mac
+          path: mac/chud-supreme-mac.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -195,9 +196,13 @@ jobs:
         run: |
           if ! gh release view mac-latest --repo "$REPO" >/dev/null 2>&1; then
             gh release create mac-latest --repo "$REPO" --target "${{ github.sha }}" \
-              --title "CHUD STREAMS for Mac" \
-              --notes "Mac app for Intel Macs on macOS 13 Ventura or later. Download chud-streams-mac.zip, unzip it, drag CHUD STREAMS into Applications, then right-click it and choose Open the first time." \
+              --title "Chud Supreme for Mac" \
+              --notes "Intel Mac app for macOS 13 Ventura or later. Download chud-supreme-mac.zip, unzip it, drag Chud Supreme into Applications, then right-click it and choose Open the first time." \
               --prerelease --latest=false
+          else
+            gh release edit mac-latest --repo "$REPO" \
+              --title "Chud Supreme for Mac" \
+              --notes "Intel Mac app for macOS 13 Ventura or later. Download chud-supreme-mac.zip, unzip it, drag Chud Supreme into Applications, then right-click it and choose Open the first time. If macOS says the app is damaged: xattr -dr com.apple.quarantine \"/Applications/Chud Supreme.app\""
           fi
-          gh release upload mac-latest mac/chud-streams-mac.zip --repo "$REPO" --clobber
-          echo "::notice::Mac download: https://github.com/$REPO/releases/download/mac-latest/chud-streams-mac.zip"
+          gh release upload mac-latest mac/chud-supreme-mac.zip mac/chud-streams-mac.zip --repo "$REPO" --clobber
+          echo "::notice::Mac download: https://github.com/$REPO/releases/download/mac-latest/chud-supreme-mac.zip"

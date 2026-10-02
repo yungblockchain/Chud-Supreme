@@ -1,8 +1,8 @@
-# CHUD STREAMS for Mac
+# Chud Supreme for Mac
 
-A native Mac version of CHUD STREAMS, written in Swift and SwiftUI for macOS Ventura (13) and
-later. It's built for a 2017 MacBook Pro (Intel, 8 GB of RAM): Ventura is the newest macOS those
-machines run. GitHub builds it for Intel Macs; Apple Silicon Macs run it through Rosetta.
+A native Mac version of Chud Supreme, written in Swift and SwiftUI for macOS Ventura (13) and
+later. It's built for an Intel MacBook Pro on Ventura 13.7. GitHub builds it for Intel Macs;
+Apple Silicon Macs run it through Rosetta.
 
 This is a separate app from the Fire TV one: Android apps can't run on a Mac, so it's new code
 with the same look, not a port.
@@ -105,10 +105,10 @@ Command-Shift-V for multiview, and Command-. to stop.
 GitHub builds the app automatically from this folder, so there's nothing to compile.
 
 1. On your Mac, open this link to download the app:
-   `https://github.com/yungblockchain/Chud-Streams/releases/download/mac-latest/chud-streams-mac.zip`
-2. Open the downloaded `chud-streams-mac.zip` (in Downloads) to unzip it, then drag
-   **CHUD STREAMS** into your **Applications** folder, replacing the old one if you have it.
-3. The first time only: in Applications, **right-click** (or Control-click) CHUD STREAMS, choose
+   `https://github.com/yungblockchain/Chud-Supreme/releases/download/mac-latest/chud-supreme-mac.zip`
+2. Open the downloaded `chud-supreme-mac.zip` (in Downloads) to unzip it, then drag
+   **Chud Supreme** into your **Applications** folder, replacing the old one if you have it.
+3. The first time only: in Applications, **right-click** (or Control-click) Chud Supreme, choose
    **Open**, then click **Open** in the warning. macOS asks because the app isn't from the App
    Store or an Apple-registered developer. After that it opens normally.
 
@@ -116,7 +116,7 @@ If macOS says the app "is damaged and can't be opened", run this once in Termina
 it again:
 
 ```
-xattr -dr com.apple.quarantine "/Applications/CHUD STREAMS.app"
+xattr -dr com.apple.quarantine "/Applications/Chud Supreme.app"
 ```
 
 The same link always gives the newest version. Your sign-in, favourites and positions from

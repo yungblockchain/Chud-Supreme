@@ -10,8 +10,8 @@ final class ImageMemory: @unchecked Sendable {
     let cache = NSCache<NSURL, NSImage>()
 
     init() {
-        cache.countLimit = 900
-        cache.totalCostLimit = 320 << 20
+        cache.countLimit = 400
+        cache.totalCostLimit = 80 << 20
     }
 }
 
@@ -26,10 +26,9 @@ actor ImagePipeline {
     init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 20
-        configuration.httpMaximumConnectionsPerHost = 6
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("CHUD STREAMS/Images", isDirectory: true)
-        configuration.urlCache = URLCache(memoryCapacity: 16 << 20, diskCapacity: 400 << 20, directory: folder)
+        configuration.httpMaximumConnectionsPerHost = 4
+        let folder = AppSupport.caches("Images")
+        configuration.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 400 << 20, directory: folder)
         configuration.requestCachePolicy = .returnCacheDataElseLoad
         session = URLSession(configuration: configuration)
     }
