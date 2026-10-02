@@ -1,0 +1,5 @@
+selftest.log
+*.log
+.build/
+build/
+chud-streams-mac.zip

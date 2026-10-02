@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ui_title_foryou">M3U</string>
+    <string name="ui_title_favourite">Favorit</string>
+    <string name="ui_title_setting">pengaturan</string>
+    <string name="ui_destination_foryou">Untuk Anda</string>
+    <string name="ui_destination_favourite">Favorit</string>
+    <string name="ui_destination_setting">pengaturan</string>
+    <string name="ui_destination_playlist">Playlist</string>
+    <string name="ui_error_unknown">kesalahan yang tidak diketahui</string>
+    <string name="ui_cd_top_bar_on_back_pressed">kembali</string>
+    <string name="ui_theme_card_left">Apa kamu tahu?</string>
+    <string name="ui_theme_card_right">Kami akan menyimpan progres menonton Anda dan melanjutkannya saat Anda memutar kembali nanti.</string>
+    <string name="ui_sort">Urutkan</string>
+    <string name="ui_sort_asc">A-Z</string>
+    <string name="ui_sort_desc">Z-A</string>
+    <string name="ui_sort_recently">Baru-baru ini</string>
+    <string name="ui_sort_mixed">Campuran</string>
+    <string name="ui_sort_never_played">tidak pernah diputar</string>
+    <string name="ui_sort_unspecified">Tidak disebutkan</string>
+    <string name="ui_state_loading">Memuat</string>
+    <string name="tv_extensions_subtitle">Ekstensi APK lokal yang terpasang dan status kepercayaannya.</string>
+    <string name="tv_extensions_enable_developer_mode">Aktifkan ekstensi pengembang</string>
+    <string name="tv_extensions_disable_developer_mode">Nonaktifkan ekstensi pengembang</string>
+    <string name="ui_connect">Hubungkan</string>
+    <string name="ui_remote_control_pair_title">Masukkan kode yang ditampilkan di TV</string>
+    <string name="ui_remote_control_pair_subtitle">Pastikan kedua perangkat terhubung ke jaringan Wi-Fi yang sama</string>
+    <string name="ui_remote_control_pair_timeout">TV tidak ditemukan. Pastikan kedua perangkat terhubung ke jaringan yang sama.</string>
+    <string name="ui_remote_control_connect">Hubungkan</string>
+    <string name="ui_remote_control_connecting">Menghubungkan…</string>
+    <string name="ui_remote_control_disconnect">Putuskan sambungan</string>
+    <string name="ui_remote_control_keypad_backspace">Hapus karakter terakhir</string>
+    <string name="ui_remote_control_keypad_clear">Hapus</string>
+    <string name="ui_remote_control_direction_pad">Tombol arah TV</string>
+    <string name="ui_remote_control_direction_up">Gerak ke atas</string>
+    <string name="ui_remote_control_direction_down">Gerak ke bawah</string>
+    <string name="ui_remote_control_direction_left">Gerak ke kiri</string>
+    <string name="ui_remote_control_direction_right">Gerak ke kanan</string>
+    <string name="ui_remote_control_direction_confirm">Pilih</string>
+    <string name="ui_remote_control_pairing_code">Kode penyambungan: %1$s</string>
+    <string name="ui_remote_control_pairing_code_empty">Kode penyambungan kosong</string>
+    <string name="ui_action_refresh">Perbarui</string>
+    <string name="ui_action_retry">Coba lagi</string>
+    <string name="ui_action_delete_epg">Hapus EPG</string>
+</resources>

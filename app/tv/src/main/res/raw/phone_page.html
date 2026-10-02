@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHUD STREAMS phone page</title>
+<style>
+  :root { --bg:#0b0a1f; --panel:#1b1642; --raised:#271f5a; --text:#eaf6ff; --muted:#a9b6e6; --cyan:#19f0ff; --pink:#ff2bd6; --ok:#3dff9a; --bad:#ff3b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:22px; margin:8px 0 4px; letter-spacing:.04em; }
+  h1 span { color:var(--cyan); }
+  p.lead { color:var(--muted); margin:0 0 16px; }
+  details { background:var(--panel); border:1px solid rgba(25,240,255,.2); border-radius:12px; margin:12px 0; }
+  summary { cursor:pointer; padding:14px 16px; font-weight:600; list-style:none; }
+  summary::after { content:"+"; float:right; color:var(--cyan); }
+  details[open] summary::after { content:"–"; }
+  form { padding:0 16px 16px; display:grid; gap:10px; }
+  label { font-size:13px; color:var(--muted); display:grid; gap:4px; }
+  input, select, textarea { width:100%; padding:12px; border-radius:8px; border:1px solid rgba(25,240,255,.3); background:var(--raised); color:var(--text); font:inherit; }
+  textarea { min-height:84px; resize:vertical; }
+  button { padding:12px; border:0; border-radius:8px; background:var(--cyan); color:#03141a; font-weight:700; font-size:16px; }
+  .pin { background:var(--panel); border:1px solid var(--pink); border-radius:12px; padding:14px 16px; display:grid; gap:6px; }
+  .status { min-height:20px; font-size:14px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  small { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>CHUD <span>STREAMS</span></h1>
+  <p class="lead">Type here instead of on the remote. Everything goes to your Fire TV only.</p>
+
+  <div class="pin">
+    <label>PIN shown on the TV
+      <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+    </label>
+    <small>Settings, Services, Phone page on the TV shows the PIN.</small>
+  </div>
+
+  <details open>
+    <summary>Search</summary>
+    <form data-action="search">
+      <label>Channel, film or series<input name="text" required></label>
+      <button>Search on TV</button><div class="status"></div>
+    </form>
+  </details>
+
+  <details>
+    <summary>Ask Claude</summary>
+    <form data-action="claude">
+      <label>Your question<textarea name="text" required placeholder="Something like Dune on tonight?"></textarea></label>
+      <button>Ask on TV</button><div class="status"></div>
+    </form>
+  </details>
+
+  <details>
+    <summary>Xtream login</summary>
+    <form data-action="xtream">
+      <label>Server<input name="server" required placeholder="http://example.com:8080" autocapitalize="off" autocorrect="off"></label>
+      <label>Username<input name="username" required autocapitalize="off" autocorrect="off"></label>
+      <label>Password<input name="password" type="password" required></label>
+      <button>Fill in on TV</button><div class="status"></div>
+      <small>The TV fills in its sign-in form; press Sign in on the TV to finish.</small>
+    </form>
+  </details>
+
+  <details>
+    <summary>M3U playlist</summary>
+    <form data-action="m3u">
+      <label>Playlist link<input name="url" required autocapitalize="off" autocorrect="off"></label>
+      <label>Guide (XMLTV) link, optional<input name="epg" autocapitalize="off" autocorrect="off"></label>
+      <button>Fill in on TV</button><div class="status"></div>
+    </form>
+  </details>
+
+  <details>
+    <summary>API keys and tokens</summary>
+    <form data-action="key">
+      <label>Which one
+        <select name="name">
+          <option value="tmdb_api_key">TMDB API key or read token</option>
+          <option value="trakt_client_id">Trakt client ID</option>
+          <option value="opensubtitles_api_key">OpenSubtitles API key</option>
+          <option value="coinmarketcap_api_key">CoinMarketCap API key</option>
+          <option value="telegram_bot_token">Telegram bot token</option>
+          <option value="telegram_chat_id">Telegram chat ID</option>
+          <option value="telegram_trading_bot">Trading bot username</option>
+          <option value="github_repo">GitHub repository (owner/name)</option>
+          <option value="github_token">GitHub token</option>
+        </select>
+      </label>
+      <label>Value<input name="value" required autocapitalize="off" autocorrect="off" autocomplete="off"></label>
+      <button>Save on TV</button><div class="status"></div>
+      <small>Stored encrypted on the Fire TV. It is never shown again, here or on the TV.</small>
+    </form>
+  </details>
+</main>
+<script>
+  const pin = document.getElementById('pin');
+  try { pin.value = sessionStorage.getItem('pin') || ''; } catch (e) {}
+  pin.addEventListener('input', () => { try { sessionStorage.setItem('pin', pin.value); } catch (e) {} });
+  const messages = { pin: 'Wrong PIN. Check the TV.', locked: 'Too many wrong PINs. Wait a minute.', missing: 'Fill in every field.', too_large: 'That is too long.' };
+  document.querySelectorAll('form[data-action]').forEach(form => {
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const status = form.querySelector('.status');
+      const data = new URLSearchParams(new FormData(form));
+      data.set('pin', pin.value.trim());
+      status.className = 'status'; status.textContent = 'Sending…';
+      try {
+        const response = await fetch('/api/' + form.dataset.action, { method: 'POST', body: data });
+        const result = await response.json();
+        if (result.ok) {
+          status.className = 'status ok'; status.textContent = 'Done. Check the TV.';
+          if (form.dataset.action === 'key' || form.dataset.action === 'xtream') form.reset();
+        } else {
+          status.className = 'status bad'; status.textContent = messages[result.error] || 'That did not work.';
+        }
+      } catch (e) {
+        status.className = 'status bad'; status.textContent = 'Could not reach the TV. Is the phone page still on?';
+      }
+    });
+  });
+</script>
+</body>
+</html>

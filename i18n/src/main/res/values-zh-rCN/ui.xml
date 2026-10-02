@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ui_title_foryou">M3U</string>
+    <string name="ui_title_favourite">喜欢</string>
+    <string name="ui_title_setting">设置</string>
+    <string name="ui_destination_foryou">主页</string>
+    <string name="ui_destination_favourite">喜欢</string>
+    <string name="ui_destination_setting">设置</string>
+    <string name="tv_extensions_subtitle">已安装的本地 APK 扩展及其信任状态。</string>
+    <string name="tv_extensions_enable_developer_mode">启用开发者扩展</string>
+    <string name="tv_extensions_disable_developer_mode">停用开发者扩展</string>
+    <string name="ui_error_unknown">未知错误</string>
+    <string name="ui_cd_top_bar_on_back_pressed">返回</string>
+    <string name="ui_search_placeholder">搜索频道和提供方</string>
+    <string name="ui_theme_card_left">你知道吗？</string>
+    <string name="ui_theme_card_right">我们会保存您的观看进度，并在下次播放时恢复进度</string>
+    <string name="ui_sort">排序</string>
+    <string name="ui_sort_asc">A-Z</string>
+    <string name="ui_sort_desc">Z-A</string>
+    <string name="ui_sort_recently">最近</string>
+    <string name="ui_sort_mixed">混合</string>
+    <string name="ui_sort_never_played">从未播放过</string>
+    <string name="ui_sort_unspecified">默认</string>
+    <string name="ui_remote_control_pair_title">输入电视上的代码</string>
+    <string name="ui_remote_control_pair_subtitle">请确认手机和电视连接到同一个 Wi-Fi</string>
+    <string name="ui_remote_control_pair_timeout">未找到电视，请确认两台设备连接到同一个网络</string>
+    <string name="ui_remote_control_connect">连接</string>
+    <string name="ui_remote_control_connecting">连接中</string>
+    <string name="ui_remote_control_disconnect">断开连接</string>
+    <string name="ui_remote_control_keypad_backspace">退格</string>
+    <string name="ui_remote_control_keypad_clear">清空</string>
+    <string name="ui_remote_control_direction_pad">电视方向键</string>
+    <string name="ui_remote_control_direction_up">向上</string>
+    <string name="ui_remote_control_direction_down">向下</string>
+    <string name="ui_remote_control_direction_left">向左</string>
+    <string name="ui_remote_control_direction_right">向右</string>
+    <string name="ui_remote_control_direction_confirm">确认</string>
+    <string name="ui_remote_control_pairing_code">配对码：%1$s</string>
+    <string name="ui_remote_control_pairing_code_empty">尚未输入配对码</string>
+    <string name="ui_action_add">添加</string>
+    <string name="ui_action_refresh">刷新</string>
+    <string name="ui_action_save_changes">保存更改</string>
+    <string name="ui_action_delete_epg">删除 EPG</string>
+    <string name="ui_action_pin">置顶</string>
+    <string name="ui_action_unpin">取消置顶</string>
+    <string name="ui_action_hide">隐藏</string>
+    <string name="ui_action_expand_categories">展开分类</string>
+    <string name="ui_action_collapse_categories">收起分类</string>
+    <string name="ui_action_category_options">分类选项</string>
+    <string name="ui_action_play">播放</string>
+    <string name="ui_action_pause">暂停</string>
+    <string name="ui_action_retry">重试</string>
+    <string name="ui_action_expand">展开</string>
+    <string name="ui_action_collapse">收起</string>
+    <string name="ui_action_next_channel">下一个频道</string>
+    <string name="ui_action_previous_channel">上一个频道</string>
+    <string name="ui_action_open_player_panel">打开播放详情</string>
+    <string name="ui_action_close_player_panel">关闭播放详情</string>
+    <string name="ui_action_scroll_to_current_timeline">滚动到当前节目</string>
+    <string name="ui_state_loading">加载中</string>
+    <string name="ui_state_expanded">已展开</string>
+    <string name="ui_state_collapsed">已收起</string>
+    <string name="ui_state_pinned">已置顶</string>
+    <string name="ui_theme_add">添加配色主题</string>
+    <string name="ui_unsupported_mode">不支持的界面模式：%1$s</string>
+    <plurals name="tv_channel_count">
+        <item quantity="other">%1$d 个频道</item>
+    </plurals>
+    <plurals name="tv_playlist_label">
+        <item quantity="other">%1$s · %2$d 个频道</item>
+    </plurals>
+    <plurals name="ui_duration_seconds">
+        <item quantity="other">%1$d 秒</item>
+    </plurals>
+    <plurals name="ui_duration_days">
+        <item quantity="other">%1$d 天</item>
+    </plurals>
+    <string name="ui_never">从不</string>
+</resources>

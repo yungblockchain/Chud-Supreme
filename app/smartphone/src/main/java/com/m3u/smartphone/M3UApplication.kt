@@ -1,0 +1,73 @@
+package com.m3u.smartphone
+
+import android.app.Application
+import android.content.Context
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import androidx.work.WorkManager
+import com.m3u.data.worker.ExtensionPluginBootstrapWorker
+import com.m3u.data.worker.PersistedUriPermissionCleanupWorker
+import com.m3u.data.worker.ProviderCredentialRecoveryWorker
+import com.m3u.data.worker.ProviderSessionCleanupWorker
+import com.m3u.data.worker.initializePersistedUriPermissionLeases
+import com.m3u.i18n.R.string
+import com.m3u.smartphone.startup.ApplicationStartupTask
+import dagger.hilt.android.HiltAndroidApp
+import org.acra.config.mailSender
+import org.acra.config.notification
+import org.acra.data.StringFormat
+import org.acra.ktx.initAcra
+import timber.log.Timber
+import timber.log.Timber.DebugTree
+import javax.inject.Inject
+
+@HiltAndroidApp
+class M3UApplication : Application(), Configuration.Provider {
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var startupTasks: Set<@JvmSuppressWildcards ApplicationStartupTask>
+
+    override fun onCreate() {
+        super.onCreate()
+        if (BuildConfig.DEBUG) {
+            Timber.plant(DebugTree())
+        }
+        initializePersistedUriPermissionLeases(this)
+        val workManager = WorkManager.getInstance(this)
+        PersistedUriPermissionCleanupWorker.enqueueRecovery(
+            workManager
+        )
+        ProviderCredentialRecoveryWorker.enqueue(workManager)
+        ProviderSessionCleanupWorker.enqueue(
+            workManager = workManager,
+        )
+        ExtensionPluginBootstrapWorker.enqueue(workManager)
+        startupTasks.forEach { task -> task.enqueue(workManager) }
+    }
+
+    override fun attachBaseContext(base: Context?) {
+        super.attachBaseContext(base)
+        initAcra {
+            buildConfigClass = BuildConfig::class.java
+            reportFormat = StringFormat.JSON
+            notification {
+                title = getString(string.crash_notification_title)
+                text = getString(string.crash_notification_text)
+                channelName = getString(string.crash_notification_channel_name)
+            }
+            mailSender {
+                mailTo = "oxyroid@outlook.com"
+                reportAsFile = true
+                reportFileName = "Crash.txt"
+            }
+        }
+    }
+
+    override val workManagerConfiguration: Configuration by lazy {
+        Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
+    }
+}

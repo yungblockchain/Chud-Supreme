@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ui_title_foryou">M3U</string>
+    <string name="ui_title_favourite">Favoritos</string>
+    <string name="ui_title_setting">Ajustes</string>
+    <string name="ui_destination_foryou">Para Ti</string>
+    <string name="ui_destination_favourite">Favoritos</string>
+    <string name="ui_destination_setting">Ajustes</string>
+    <string name="ui_destination_playlist">List. reproducción</string>
+    <string name="ui_error_unknown">error desconocido</string>
+    <string name="ui_cd_top_bar_on_back_pressed">atrás</string>
+    <string name="ui_theme_card_left">¿Lo sabías?</string>
+    <string name="ui_theme_card_right">Guardaremos tu progreso de reproducción y continuaremos la próxima vez que reproduzcas.</string>
+    <string name="ui_sort">Ordenar</string>
+    <string name="ui_sort_asc">A-Z</string>
+    <string name="ui_sort_desc">Z-A</string>
+    <string name="ui_sort_recently">Recientemente</string>
+    <string name="ui_sort_never_played">no reproducido</string>
+    <string name="ui_sort_unspecified">Sin especificar</string>
+    <string name="ui_state_loading">Cargando</string>
+    <string name="tv_extensions_subtitle">Extensiones APK locales instaladas y su estado de confianza.</string>
+    <string name="tv_extensions_enable_developer_mode">Activar extensiones para desarrolladores</string>
+    <string name="tv_extensions_disable_developer_mode">Desactivar extensiones para desarrolladores</string>
+    <string name="ui_connect">Conectar</string>
+    <string name="ui_remote_control_pair_title">Introduce el código de la TV</string>
+    <string name="ui_remote_control_pair_subtitle">Asegúrate de que ambos dispositivos estén conectados a la misma red Wi-Fi</string>
+    <string name="ui_remote_control_pair_timeout">No se encontró la TV. Asegúrate de que ambos dispositivos estén conectados a la misma red.</string>
+    <string name="ui_remote_control_connect">Conectar</string>
+    <string name="ui_remote_control_connecting">Conectando…</string>
+    <string name="ui_remote_control_disconnect">Desconectar</string>
+    <string name="ui_remote_control_keypad_backspace">Retroceso</string>
+    <string name="ui_remote_control_keypad_clear">Borrar</string>
+    <string name="ui_remote_control_direction_pad">Mando direccional de la TV</string>
+    <string name="ui_remote_control_direction_up">Mover arriba</string>
+    <string name="ui_remote_control_direction_down">Mover abajo</string>
+    <string name="ui_remote_control_direction_left">Mover a la izquierda</string>
+    <string name="ui_remote_control_direction_right">Mover a la derecha</string>
+    <string name="ui_remote_control_direction_confirm">Seleccionar</string>
+    <string name="ui_remote_control_pairing_code">Código de emparejamiento: %1$s</string>
+    <string name="ui_remote_control_pairing_code_empty">El código de emparejamiento está vacío</string>
+    <string name="ui_action_refresh">Actualizar</string>
+    <string name="ui_action_retry">Volver a intentarlo</string>
+    <string name="ui_action_delete_epg">Eliminar EPG</string>
+</resources>

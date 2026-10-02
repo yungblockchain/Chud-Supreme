@@ -1,0 +1,155 @@
+package com.m3u.data.database.dao
+
+import androidx.paging.PagingSource
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.m3u.data.database.model.Programme
+import com.m3u.data.database.model.ProgrammeRange
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface ProgrammeDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(programme: Programme)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplaceAll(vararg programmes: Programme)
+
+    @Query("SELECT * FROM programmes WHERE id = :id")
+    suspend fun getById(id: Int): Programme?
+
+    @Query("""SELECT MAX("end") from programmes WHERE epg_url = :epgUrl""")
+    suspend fun getMaxEndByEpgUrl(epgUrl: String): Long?
+
+    @Query(
+        """
+        SELECT * FROM programmes 
+        WHERE epg_url = :epgUrl
+        AND 
+        relation_id = :relationId
+        ORDER BY start
+        """
+    )
+    fun pagingProgrammes(
+        epgUrl: String?,
+        relationId: String
+    ): PagingSource<Int, Programme>
+
+    @Query("DELETE FROM programmes WHERE epg_url = :epgUrl")
+    suspend fun cleanByEpgUrl(epgUrl: String)
+
+    /** One channel's programmes overlapping [from, to), for a guide timeline. */
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE epg_url IN (:epgUrls) AND relation_id = :relationId
+        AND "end" > :from AND start < :to
+        ORDER BY start, id
+        LIMIT :limit
+        """
+    )
+    suspend fun getInRange(
+        epgUrls: List<String>,
+        relationId: String,
+        from: Long,
+        to: Long,
+        limit: Int,
+    ): List<Programme>
+
+    @Query("SELECT * FROM programmes ORDER BY start")
+    fun observeAll(): Flow<List<Programme>>
+
+    @Query("SELECT id IS NOT NULL FROM programmes WHERE epg_url = :epgUrl LIMIT 1")
+    fun observeContainsEpgUrl(epgUrl: String): Flow<Boolean>
+
+    @Query("""
+        SELECT id IS NOT NULL 
+        FROM programmes 
+        WHERE epg_url = :epgUrl 
+        AND relation_id = :relationId
+        AND start >= :start
+        AND `end` <= :end
+        LIMIT 1
+    """)
+    suspend fun checkEpgUrlIsValid(
+        epgUrl: String,
+        relationId: String,
+        start: Long,
+        end: Long,
+    ): Boolean
+
+    @Query("DELETE FROM programmes WHERE epg_url = :epgUrl")
+    suspend fun deleteAllByEpgUrl(epgUrl: String)
+
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE epg_url in (:epgUrls)
+        AND relation_id = :relationId
+        AND start <= :time
+        AND `end` >= :time
+        ORDER BY start DESC, `end` ASC, epg_url ASC, id ASC
+        LIMIT 1
+        """
+    )
+    suspend fun getCurrentByEpgUrlsAndRelationId(
+        epgUrls: List<String>,
+        relationId: String,
+        time: Long
+    ): Programme?
+
+    @Query(
+        """
+        SELECT p.* FROM programmes AS p
+        WHERE p.epg_url in (:epgUrls)
+        AND p.relation_id in (
+            SELECT relation_id FROM streams
+            WHERE playlist_url = :playlistUrl
+            AND relation_id IS NOT NULL
+        )
+        AND p.start <= :time
+        AND p.`end` >= :time
+        AND p.id = (
+            SELECT candidate.id FROM programmes AS candidate
+            WHERE candidate.epg_url in (:epgUrls)
+            AND candidate.relation_id = p.relation_id
+            AND candidate.start <= :time
+            AND candidate.`end` >= :time
+            ORDER BY candidate.start DESC, candidate.`end` ASC, candidate.epg_url ASC, candidate.id ASC
+            LIMIT 1
+        )
+        ORDER BY p.relation_id ASC
+        """
+    )
+    suspend fun getCurrentByPlaylistUrlAndEpgUrls(
+        playlistUrl: String,
+        epgUrls: List<String>,
+        time: Long
+    ): List<Programme>
+
+    @Query(
+        """
+        SELECT MIN(start) AS start_edge, MAX(`end`) AS end_edge
+        FROM programmes
+        WHERE epg_url = :epgUrl
+        AND relation_id = :relationId
+        """
+    )
+    fun observeProgrammeRange(
+        epgUrl: String,
+        relationId: String
+    ): Flow<ProgrammeRange>
+
+    @Query(
+        """
+        SELECT MIN(start) AS start_edge, MAX(`end`) AS end_edge
+        FROM programmes
+        WHERE epg_url in (:epgUrls)
+        """
+    )
+    fun observeProgrammeRange(
+        epgUrls: List<String>
+    ): Flow<ProgrammeRange>
+}

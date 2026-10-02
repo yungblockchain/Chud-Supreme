@@ -1,0 +1,203 @@
+# Builds the CHUD STREAMS Mac app (Intel, macOS 13 Ventura or later) from the mac/ folder.
+#
+# Runs when anything under mac/ changes, or from the Actions tab ("Build CHUD STREAMS for Mac" >
+# Run workflow). Each successful build on main replaces the download at a fixed address:
+#   https://github.com/<owner>/<repo>/releases/download/mac-latest/chud-streams-mac.zip
+# The release is marked as a pre-release so it never takes over the Firestick APK's
+# "releases/latest" link.
+
+name: Build CHUD STREAMS for Mac
+
+on:
+  workflow_dispatch:
+  push:
+    # mac-dev is for work in progress: it builds and tests, but only main publishes.
+    branches: [ "main", "master", "mac-dev" ]
+    paths:
+      - "mac/**"
+      - ".github/workflows/mac.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chud-streams-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 75
+    permissions:
+      # Needed to publish the app as a download.
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      # The mpv libraries (MPVKit) are large downloads; keep them between builds.
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            mac/.build/artifacts
+            mac/.build/checkouts
+            mac/.build/repositories
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('mac/Package.swift', 'mac/Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-
+
+      # The runner has an Apple silicon chip; ARCH=x86_64 builds for Intel Macs such as a
+      # 2017 MacBook Pro. Package.swift sets macOS 13 as the minimum.
+      - name: Build the app for Intel Macs
+        working-directory: mac
+        shell: bash
+        run: |
+          set -o pipefail
+          ARCH=x86_64 ./build-app.sh 2>&1 | tee build.log
+
+      # The full log isn't reachable from everywhere, so on failure the compiler errors are
+      # also written as annotations, readable on the run page and through GitHub's API.
+      - name: Summarise build errors
+        if: failure()
+        working-directory: mac
+        shell: bash
+        run: |
+          [ -f build.log ] || exit 0
+          python3 - <<'PY'
+          lines = open("build.log", encoding="utf-8", errors="replace").read().splitlines()
+          picked = []
+          for i, line in enumerate(lines):
+              if "error:" in line or line.startswith("error"):
+                  for extra in lines[i:i + 3]:
+                      extra = extra.rstrip()
+                      if extra and extra not in picked:
+                          picked.append(extra)
+          if not picked:
+              picked = [l.rstrip() for l in lines[-80:]]
+          picked = picked[:400]
+
+          def escape(text):
+              return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          for n, start in enumerate(range(0, len(picked), 45)):
+              if n >= 9:
+                  break
+              body = "\n".join(line[:400] for line in picked[start:start + 45])
+              print(f"::error title=Mac build error details part {n + 1}::{escape(body)}")
+          PY
+
+      # The runner is an Apple silicon Mac, so the Intel build runs under Rosetta here, the
+      # same way it would on an Intel Mac's own chip. The self-test plays a test video through
+      # the built-in player's OpenGL renderer and checks a real picture comes out.
+      - name: Test the built-in player
+        working-directory: mac
+        shell: bash
+        run: |
+          /usr/bin/pgrep -q oahd || softwareupdate --install-rosetta --agree-to-license || true
+          APP="build/CHUD STREAMS.app/Contents/MacOS/ChudStreams"
+          # Software decoding must pass. GitHub's Macs are virtual machines without a hardware
+          # video decoder, so the hardware-decoding run is reported but can't fail the build.
+          failed=0
+          for mode in no auto-safe; do
+            for f in Tests/fixtures/sample.mkv Tests/fixtures/sample.ts; do
+              echo "::group::Self-test $f (hwdec=$mode)"
+              if "$APP" --selftest-mpv "$f" --hwdec "$mode" > selftest.log 2>&1; then
+                echo "::notice title=Player self-test passed: $f hwdec=$mode::$(grep '\[selftest\]' selftest.log | tr '\n' '|' | cut -c1-2500)"
+              elif [ "$mode" = no ]; then
+                failed=1
+                echo "::error title=Player self-test failed: $f::$(tail -45 selftest.log | tr '\n' '|' | cut -c1-5000)"
+              else
+                echo "::warning title=Hardware decoding unavailable on this runner: $f::$(grep -E 'selftest|hwdec' selftest.log | tail -8 | tr '\n' '|' | cut -c1-1500)"
+              fi
+              cat selftest.log
+              echo "::endgroup::"
+            done
+          done
+          exit $failed
+
+      # Walk through every screen against a local test server (tests/mock_server.py): sign in,
+      # browse, play a film with subtitles, live TV, multiview, an M3U playlist with a guide, and
+      # a provider the size of the viewer's. Screenshots and a summary are published below.
+      - name: Tour the app on a test server
+        working-directory: mac
+        shell: bash
+        run: |
+          python3 Tests/mock_server.py --port 8080 > mock.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8080/health >/dev/null && break; sleep 1; done
+          mkdir -p tour
+          S=http://127.0.0.1:8080
+          export CHUD_TOUR="$PWD/tour" CHUD_TOUR_SERVER=$S CHUD_TOUR_BIG=1
+          export CHUD_TMDB_API=$S/tmdb/3 CHUD_TMDB_IMAGES=$S/tmdbimg CHUD_TRAKT_API=$S/trakt
+          export CHUD_OPENSUBS_API=$S/opensubs/api/v1 CHUD_CLAUDE_API=$S/claude CHUD_GITHUB_API=$S/github CHUD_TELEGRAM_API=$S/telegram
+          export CHUD_TEST_KEY_TMDB=test CHUD_TEST_KEY_TRAKT=test CHUD_TEST_KEY_OPENSUBTITLES=test CHUD_TEST_KEY_CLAUDE=test
+          set +e
+          # exec { program } list: runs the path as one argument even though it contains a space.
+          perl -e 'alarm shift; exec { $ARGV[0] } @ARGV or die "cannot run: $!"' 1500 "$PWD/build/CHUD STREAMS.app/Contents/MacOS/ChudStreams" > tour.log 2>&1
+          code=$?
+          set -e
+          grep -E "^\[tour\]" tour.log | tail -80 || true
+          if [ -f tour/summary.txt ]; then
+            echo "::notice title=Tour summary::$(tr '\n' '|' < tour/summary.txt | cut -c1-3500)"
+          fi
+          if [ $code -ne 0 ]; then
+            echo "::warning title=Tour problems (exit $code)::$(grep -E 'FAIL|TOUR|Fatal|fatal|error' tour.log | tail -30 | tr '\n' '|' | cut -c1-4000)"
+          fi
+          cp tour.log mock.log tour/ 2>/dev/null || true
+
+      - name: Publish the tour screenshots
+        if: always()
+        working-directory: mac
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ -d tour ] || exit 0
+          gh release view mac-screenshots --repo "$REPO" >/dev/null 2>&1 || \
+            gh release create mac-screenshots --repo "$REPO" --target "${{ github.sha }}" \
+              --title "CHUD STREAMS for Mac: screenshots" \
+              --notes "Screenshots from the automated tour of the Mac app on GitHub's test Mac." \
+              --prerelease --latest=false || true
+          for f in $(gh release view mac-screenshots --repo "$REPO" --json assets -q '.assets[].name'); do
+            gh release delete-asset mac-screenshots "$f" --repo "$REPO" -y >/dev/null 2>&1 || true
+          done
+          find tour -type f -size 0 -delete
+          gh release upload mac-screenshots tour/* --repo "$REPO" --clobber
+
+      - name: Package the app
+        working-directory: mac
+        run: |
+          file "build/CHUD STREAMS.app/Contents/MacOS/ChudStreams"
+          # ditto keeps the app bundle intact (unlike zip), so it opens straight after unzipping.
+          ditto -c -k --keepParent "build/CHUD STREAMS.app" chud-streams-mac.zip
+          ls -la chud-streams-mac.zip
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: chud-streams-mac
+          path: mac/chud-streams-mac.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the app for download
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view mac-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release create mac-latest --repo "$REPO" --target "${{ github.sha }}" \
+              --title "CHUD STREAMS for Mac" \
+              --notes "Mac app for Intel Macs on macOS 13 Ventura or later. Download chud-streams-mac.zip, unzip it, drag CHUD STREAMS into Applications, then right-click it and choose Open the first time." \
+              --prerelease --latest=false
+          fi
+          gh release upload mac-latest mac/chud-streams-mac.zip --repo "$REPO" --clobber
+          echo "::notice::Mac download: https://github.com/$REPO/releases/download/mac-latest/chud-streams-mac.zip"

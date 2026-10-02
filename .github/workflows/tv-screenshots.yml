@@ -1,0 +1,146 @@
+# Runs the latest CHUD STREAMS Fire TV APK on Android TV emulators, clicks through the main
+# screens, and publishes screenshots plus crash logs on the "screenshots" pre-release:
+#   https://github.com/<owner>/<repo>/releases/tag/screenshots
+# API 28 matches Fire OS 7 (Fire TV Stick 4K Max, 1st gen); API 30 matches Fire OS 8 (2nd gen).
+
+name: Fire TV screenshots and crash check
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_run_id:
+        description: "Test the APK from this Fire TV build run (e.g. a branch build) instead of the latest release"
+        required: false
+        default: ""
+  # Check every new APK automatically once the Fire TV build has published it.
+  workflow_run:
+    workflows: [ "Build Chud MAXXX for Fire TV" ]
+    types: [ completed ]
+    # Only builds that published a release (main); branch builds are tested by hand with apk_run_id.
+    branches: [ "main", "master" ]
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - ".github/workflows/tv-screenshots.yml"
+      - ".github/scripts/tv-screenshots.sh"
+      - "testing/mock-server/**"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: tv-screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emulator:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    permissions:
+      contents: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [ 28, 30 ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.inputs.apk_run_id }}
+        run: |
+          if [ -n "$RUN_ID" ]; then
+            gh run download "$RUN_ID" --repo "${{ github.repository }}" -n chud-maxxx-apk -D apk-download
+            cp "$(ls apk-download/*.apk | head -n 1)" chud-maxxx.apk
+            echo "::notice::Testing the APK from build run $RUN_ID."
+          else
+            curl -sSfL -o chud-maxxx.apk "https://github.com/${{ github.repository }}/releases/latest/download/chud-maxxx.apk"
+          fi
+          ls -la chud-maxxx.apk
+
+      # A local test Xtream server (testing/mock-server) with a few channels, films, series and
+      # guide listings, so the screenshots can show a signed-in app. The emulator reaches it at
+      # http://10.0.2.2:8080. If it doesn't start, the walkthrough just skips the signed-in part.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: 17
+          distribution: zulu
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Start the test Xtream server
+        continue-on-error: true
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew :testing:mock-server:installDist --console=plain 2>&1 | tee mock-build.log; then
+            grep -E "^e: |What went wrong" -A 3 mock-build.log | head -40 | \
+              python3 -c "import sys; print('::warning title=Test server build failed::' + sys.stdin.read().replace('%','%25').replace('\n','%0A'))"
+            exit 1
+          fi
+          # A short real clip for films and episodes, so playing one is tested too.
+          # Video only: the emulator runs without sound, so an audio track could fail on its own.
+          command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null 2>&1 || true
+          if command -v ffmpeg >/dev/null && ffmpeg -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=25 \
+              -t 30 -an -c:v libx264 -pix_fmt yuv420p -profile:v main -movflags +faststart "$PWD/sample-film.mp4"; then
+            export MOCK_SAMPLE_VIDEO="$PWD/sample-film.mp4"
+          else
+            echo "::warning title=No test film::ffmpeg is missing, so films serve a placeholder and film playback isn't tested."
+          fi
+          nohup testing/mock-server/build/install/mock-server/bin/mock-server --host 0.0.0.0 --port 8080 \
+            > mock-server.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/health && break
+            sleep 1
+          done
+          curl -sf "http://127.0.0.1:8080/player_api.php?username=m3u&password=m3u&action=get_short_epg&stream_id=1001&limit=2"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on an Android TV emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          ram-size: 2048M
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          script: bash .github/scripts/tv-screenshots.sh out ${{ matrix.api-level }}
+
+      - name: Publish screenshots and logs
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          ls -la out || exit 0
+          gh release view screenshots --repo "$REPO" >/dev/null 2>&1 || \
+            gh release create screenshots --repo "$REPO" --target "${{ github.sha }}" \
+              --title "CHUD STREAMS screenshots" \
+              --notes "Screenshots and logs from the Fire TV app running on Android TV emulators (API 28 = Fire OS 7, API 30 = Fire OS 8)." \
+              --prerelease --latest=false || true
+          sleep 5
+          # Replace this API level's files from the last run, so old screenshots and crash
+          # logs from an earlier APK don't linger next to the new ones.
+          api="${{ matrix.api-level }}"
+          gh release view screenshots --repo "$REPO" --json assets -q '.assets[].name' | \
+            grep -E "^api${api}-|-api${api}\.txt$" | \
+            while read -r name; do gh release delete-asset screenshots "$name" --repo "$REPO" -y || true; done
+          find out -type f -size 0 -delete
+          gh release upload screenshots out/* --repo "$REPO" --clobber

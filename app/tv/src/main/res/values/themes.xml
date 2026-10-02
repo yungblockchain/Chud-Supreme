@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.M3U" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowActivityTransitions">false</item>
+        <item name="android:windowBackground">@color/dial_background</item>
+    </style>
+</resources>
