@@ -12,7 +12,7 @@
 #   DIAL_KEY_PASSWORD
 # DIAL.md shows the two commands that create them.
 
-name: Build Chud MAXXX for Fire TV
+name: Build Chud Supreme for Fire TV
 
 on:
   workflow_dispatch:
@@ -140,13 +140,13 @@ jobs:
           if [ -z "$apk" ]; then
             apk=$(ls app/tv/build/outputs/apk/release/*.apk | head -n 1)
           fi
-          cp "$apk" "dist/chud-maxxx-${{ github.run_number }}.apk"
+          cp "$apk" "dist/chud-supreme-${{ github.run_number }}.apk"
           ls -la dist
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: chud-maxxx-apk
+          name: chud-supreme-apk
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -159,11 +159,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp dist/*.apk chud-maxxx.apk
-          gh release create "build-${{ github.run_number }}" chud-maxxx.apk \
+          cp dist/*.apk chud-supreme.apk
+          gh release create "build-${{ github.run_number }}" chud-supreme.apk \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
-            --title "Chud MAXXX build ${{ github.run_number }}" \
-            --notes "Fire TV APK for Chud MAXXX (app.dial.maxxx). It installs next to earlier CHUD STREAMS. In Downloader, enter: https://github.com/${{ github.repository }}/releases/latest/download/chud-maxxx.apk" \
+            --title "Chud Supreme build ${{ github.run_number }}" \
+            --notes "Fire TV APK for Chud Supreme (app.dial.supreme). It installs next to Chud MAXXX. In Downloader, enter: https://github.com/${{ github.repository }}/releases/latest/download/chud-supreme.apk" \
             --latest
-          echo "::notice::Download link for Downloader: https://github.com/${{ github.repository }}/releases/latest/download/chud-maxxx.apk"
+          echo "::notice::Download link for Downloader: https://github.com/${{ github.repository }}/releases/latest/download/chud-supreme.apk"

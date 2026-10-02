@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -159,16 +161,16 @@ internal fun BlackjackGame(best: Int, onGameOver: (Int) -> Unit) {
             fontSize = 22.sp,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TvActionButton(text = "Hit", icon = androidx.compose.material.icons.Icons.Rounded.SportsEsports, onClick = {
+            TvActionButton(text = "Hit", icon = Icons.Rounded.SportsEsports, onClick = {
                 if (done || bank <= 0) return@TvActionButton
                 val next = player + deal()
                 player = next
                 if (handTotal(next) > 21) finish(next, dealer)
             })
-            TvActionButton(text = "Stand", icon = androidx.compose.material.icons.Icons.Rounded.SportsEsports, onClick = {
+            TvActionButton(text = "Stand", icon = Icons.Rounded.SportsEsports, onClick = {
                 if (!done && bank > 0) finish(player, dealer)
             })
-            TvActionButton(text = "New", icon = androidx.compose.material.icons.Icons.Rounded.SportsEsports, onClick = {
+            TvActionButton(text = "New", icon = Icons.Rounded.SportsEsports, onClick = {
                 if (bank <= 0) bank = 100
                 val a = deal(); val b = deal(); val c = deal(); val d = deal()
                 player = listOf(a, c)
@@ -254,7 +256,7 @@ internal fun RouletteGame(best: Int, onGameOver: (Int) -> Unit) {
             listOf("red", "black", "even", "odd").forEach { pick ->
                 TvActionButton(
                     text = pick.replaceFirstChar { it.uppercase() },
-                    icon = androidx.compose.material.icons.Icons.Rounded.SportsEsports,
+                    icon = Icons.Rounded.SportsEsports,
                     onClick = { spin(pick) },
                 )
             }
