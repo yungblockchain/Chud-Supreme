@@ -414,7 +414,8 @@ struct XtreamClient {
     }
 
     private var requestHeaders: [String: String] {
-        ["Accept": "application/json", "User-Agent": PlaybackSettings.current.userAgentString]
+        // Panels often refuse an unknown player name. IPTV Smarters is accepted by this provider.
+        ["Accept": "application/json", "User-Agent": "IPTVSmartersPro"]
     }
 
     private func apiURL(action: String?, params: [String: String]) throws -> URL {

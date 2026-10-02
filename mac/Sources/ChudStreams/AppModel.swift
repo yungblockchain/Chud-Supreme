@@ -76,6 +76,34 @@ final class AppModel: ObservableObject {
         }
         playback.model = self
         for source in sources { catalog(for: source.id)?.start() }
+        Task { await confirmBundledLogin() }
+    }
+
+    /// Tries the www host, then the host without www, and keeps whichever one answers.
+    /// The screenshot tour does not call the real provider.
+    func confirmBundledLogin() async {
+        guard ProcessInfo.processInfo.environment["CHUD_TOUR"] == nil else { return }
+        let hosts = [BundledLogin.server, "http://cool13535.wd.ness-8k-all.online"]
+        for host in hosts {
+            let credentials = XtreamCredentials(server: host, username: BundledLogin.username, password: BundledLogin.password)
+            guard let info = try? await XtreamClient(credentials: credentials).accountInfo(), info.isActive else { continue }
+            guard let index = sources.firstIndex(where: { $0.username == BundledLogin.username && ($0.server ?? "").contains("cool13535") }) else { return }
+            let changed = sources[index].server != host
+            sources[index].server = host
+            sources[index].username = BundledLogin.username
+            Keychain.write(BundledLogin.password, account: sources[index].keychainAccount)
+            saveSources()
+            accounts[sources[index].id] = info
+            if activeSource?.client == nil { activeSourceId = sources[index].id }
+            if changed {
+                let id = sources[index].id
+                catalogs[id] = nil
+                CatalogCache.remove(source: id)
+                catalog(for: id)?.start()
+            }
+            return
+        }
+        notice = "Xtream didn't accept the saved login for cool13535. Check the connection, then try Settings → Sources → Change login."
     }
 
     // MARK: Sources

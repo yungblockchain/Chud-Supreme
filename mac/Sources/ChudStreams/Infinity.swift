@@ -80,6 +80,19 @@ final class InfinityStore: ObservableObject {
         }
         if addons.isEmpty, ProcessInfo.processInfo.environment["CHUD_TOUR"] == nil {
             addons = [Self.cinemeta]
+        }
+        var merged = addons
+        for bundled in Self.bundledAddons() {
+            if let index = merged.firstIndex(where: { $0.id == bundled.id }) {
+                let enabled = merged[index].enabled
+                merged[index] = bundled
+                merged[index].enabled = enabled
+            } else {
+                merged.append(bundled)
+            }
+        }
+        if merged != addons {
+            addons = merged
             persist()
         }
         if let data = UserDefaults.standard.data(forKey: continueKey),
@@ -101,10 +114,11 @@ final class InfinityStore: ObservableObject {
             next.append(upcoming)
         }
         for addon in addons where addon.enabled {
-            for catalog in addon.catalogs.prefix(4) where catalog.type == "movie" || catalog.type == "series" {
+            let chosen = Self.homeCatalogs(addon)
+            for catalog in chosen {
                 let titles = await Self.catalog(addon, catalog, search: nil)
                 if !titles.isEmpty {
-                    next.append(InfinityShelf(id: "\(addon.id)/\(catalog.id)", title: "\(addon.name) · \(catalog.name)", titles: titles))
+                    next.append(InfinityShelf(id: "\(addon.id)/\(catalog.type)/\(catalog.id)", title: "\(addon.name) · \(catalog.name)", titles: titles))
                 }
             }
         }
@@ -118,7 +132,7 @@ final class InfinityStore: ObservableObject {
         guard trimmed.count >= 2 else { return [] }
         var found: [InfinityTitle] = []
         for addon in addons where addon.enabled {
-            for catalog in addon.catalogs.prefix(3) where catalog.type == "movie" || catalog.type == "series" {
+            for catalog in Self.homeCatalogs(addon) {
                 let titles = await Self.catalog(addon, catalog, search: trimmed)
                 found.append(contentsOf: titles)
             }
@@ -209,6 +223,69 @@ final class InfinityStore: ObservableObject {
         if let data = try? JSONEncoder().encode(addons) {
             try? data.write(to: fileURL, options: .atomic)
         }
+    }
+
+    private static func homeCatalogs(_ addon: StremioAddon) -> [StremioCatalog] {
+        var chosen: [StremioCatalog] = []
+        if let movie = addon.catalogs.first(where: { $0.type == "movie" }) { chosen.append(movie) }
+        if let series = addon.catalogs.first(where: { $0.type == "series" }) { chosen.append(series) }
+        return chosen
+    }
+
+    private static func bundledAddons() -> [StremioAddon] {
+        let rd = Secrets.get(.realDebrid) ?? ""
+        let tb = Secrets.get(.torbox) ?? ""
+        let streams = "https://aiostreams-nightly.fortheweak.cloud/stremio/96de86c0-37c0-454c-865d-29d08c9a4440/eyJpIjoiRjdwMlQ2MDVBa0dFUEVVSUZzYVVYZz09IiwiZSI6IjdycU9SSDNVRnNzNEpiN1hLL0ZnRFlBT1NyaVpCbFdvY2JaVDYvRUpPbFk9IiwidCI6ImEifQ"
+        let metadata = "https://aiometadata.elfhosted.com/stremio/e349cc4a-0dc4-4025-abc9-25faf0e9e15e"
+        return [
+            StremioAddon(
+                id: "torrentio-realdebrid",
+                name: "Torrentio · Real-Debrid",
+                version: "1",
+                description: "Torrent streams resolved with the Real-Debrid key saved in this app.",
+                transport: "https://torrentio.strem.fun/realdebrid=\(rd)",
+                resources: ["stream"],
+                types: ["movie", "series"],
+                catalogs: [],
+                enabled: true
+            ),
+            StremioAddon(
+                id: "torrentio-torbox",
+                name: "Torrentio · TorBox",
+                version: "1",
+                description: "Torrent streams resolved with the TorBox key saved in this app.",
+                transport: "https://torrentio.strem.fun/torbox=\(tb)",
+                resources: ["stream"],
+                types: ["movie", "series"],
+                catalogs: [],
+                enabled: true
+            ),
+            StremioAddon(
+                id: "aiostreams-chud",
+                name: "AIOStreams",
+                version: "1",
+                description: "AIOStreams using the same Real-Debrid and TorBox keys, through Torrentio.",
+                transport: streams,
+                resources: ["stream", "meta", "catalog"],
+                types: ["movie", "series"],
+                catalogs: [],
+                enabled: true
+            ),
+            StremioAddon(
+                id: "aiometadata-chud",
+                name: "AIOMetadata",
+                version: "1",
+                description: "Films and series catalogues from AIOMetadata.",
+                transport: metadata,
+                resources: ["catalog", "meta"],
+                types: ["movie", "series"],
+                catalogs: [
+                    StremioCatalog(type: "movie", id: "tmdb.top", name: "Popular films"),
+                    StremioCatalog(type: "series", id: "tmdb.top", name: "Popular series"),
+                ],
+                enabled: true
+            ),
+        ]
     }
 
     private static let cinemeta = StremioAddon(

@@ -28,7 +28,10 @@ struct Source: Codable, Identifiable, Hashable {
     var keychainAccount: String { "source.\(id)" }
 
     var password: String? {
-        Keychain.read(account: keychainAccount)
+        if let saved = Keychain.read(account: keychainAccount), !saved.isEmpty { return saved }
+        // The built-in provider login still works if the saved copy of the password was lost.
+        if username == BundledLogin.username { return BundledLogin.password }
+        return nil
     }
 
     var credentials: XtreamCredentials? {
@@ -183,7 +186,10 @@ final class CatalogStore: ObservableObject {
             await refreshPlaylist()
             return
         }
-        guard let client = source.client else { return }
+        guard let client = source.client else {
+            phases[kind] = .failed("The Xtream password isn't saved. Open Settings → Sources and save the login again.")
+            return
+        }
         loading.insert(kind)
         defer { loading.remove(kind) }
         let previous = phases[kind]
