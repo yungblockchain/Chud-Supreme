@@ -82,6 +82,7 @@ jobs:
           DIAL_KEYSTORE_PASSWORD: ${{ secrets.DIAL_KEYSTORE_PASSWORD }}
           DIAL_KEY_ALIAS: ${{ secrets.DIAL_KEY_ALIAS }}
           DIAL_KEY_PASSWORD: ${{ secrets.DIAL_KEY_PASSWORD }}
+          CHUD_GITHUB_TOKEN: ${{ secrets.CHUD_GITHUB_TOKEN }}
         run: |
           set -o pipefail
           chmod +x gradlew

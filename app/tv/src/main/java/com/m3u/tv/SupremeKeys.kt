@@ -1,14 +1,19 @@
 package com.m3u.tv
 
 /**
- * Keys the owner asked to ship in this build. They are written into the encrypted
- * store on first launch, and a key typed later in Settings replaces them.
- * The Real-Debrid value is the token only. The sports key had been pasted on the end of it.
+ * Keys the owner asked to ship in this build. They are written into the encrypted store on first
+ * launch, and a key typed later in Settings replaces them.
+ *
+ * The GitHub token is not in the source: GitHub cancels any token it finds in a public repository
+ * within seconds. It comes from the `CHUD_GITHUB_TOKEN` repository secret at build time
+ * (empty in a build without it, in which case crash reports stay on the device until a token is
+ * entered in Settings > Services).
  */
 internal object SupremeKeys {
     const val TMDB = "94cf789639ae0b2e06c65a9f2ccad10a"
     const val COINMARKETCAP = "0b906811cf3e4ec39bef56e2e69683a7"
-    const val API_SPORTS = "6adb1a1f9ea8091f6f5fb16e4abc0fc5"
-    const val REAL_DEBRID = "JH4W4WZ3FAKRMGDM7WHOKVDM4EFXIQZFTIUIZAOD326JEGQKZPHA"
-    const val TORBOX = "0cc19b5a-61d0-4d08-811c-32cae57ffbdc"
+    const val API_SPORTS = "5b5223cffa017ab9e7da79cd28fc1a8b"
+    const val YOUTUBE = "AIzaSyBYe6YBEM29lRXUoOd2MdtkIEWhiU6cQ48"
+    const val GITHUB_REPO = "yungblockchain/Chud-Supreme"
+    val GITHUB_TOKEN: String get() = BuildConfig.CHUD_GITHUB_TOKEN
 }

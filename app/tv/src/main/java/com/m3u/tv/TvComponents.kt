@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
@@ -60,6 +59,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
@@ -108,39 +108,44 @@ import kotlin.math.abs
 fun TvBackdrop(channel: Channel?) {
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // Its own layer: focus moving over the screens doesn't redraw the picture, grid and scanlines.
+    val artwork = TvShapes.backdropArtwork
+    val effects = TvShapes.backdropEffects
     Box(
         Modifier
             .fillMaxSize()
             .graphicsLayer()
+            .background(TvColors.Background)
     ) {
-        AsyncImage(
-            model = channel?.cover,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.78f))
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        *tvLeadingGradientColorStops(
-                            isRtl = isRtl,
-                            leading = TvColors.Background,
-                            middle = TvColors.Background.copy(alpha = 0.92f),
-                            trailing = TvColors.Background.copy(alpha = 0.72f),
-                            middlePosition = 0.58f,
-                        ).toTypedArray()
+        if (artwork) {
+            AsyncImage(
+                model = channel?.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(TvColors.Background.copy(alpha = 0.82f))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            *tvLeadingGradientColorStops(
+                                isRtl = isRtl,
+                                leading = TvColors.Background,
+                                middle = TvColors.Background.copy(alpha = 0.92f),
+                                trailing = TvColors.Background.copy(alpha = 0.72f),
+                                middlePosition = 0.58f,
+                            ).toTypedArray()
+                        )
                     )
-                )
-        )
-        // 90s anime night city: CRT scanlines, a faint retro grid floor and a magenta horizon glow.
-        Box(
+            )
+        }
+        // The Neon City skin: CRT scanlines, a faint retro grid floor and a magenta horizon glow.
+        if (effects) Box(
             Modifier
                 .fillMaxSize()
                 .drawWithCache {
@@ -197,11 +202,17 @@ fun TvNavigationRail(
     selected: TvDestination,
     onSelect: (TvDestination) -> Unit,
     modifier: Modifier = Modifier,
+    /** Asking this for focus opens the menu on the open tab (the Menu key). */
+    focusRequester: FocusRequester? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val hidden = TvShapes.menu == SkinMenu.Hidden
     val width by animateDpAsState(
-        targetValue = if (expanded) RAIL_EXPANDED_WIDTH else RAIL_COLLAPSED_WIDTH,
-        animationSpec = tween(durationMillis = RAIL_SLIDE_MS, easing = FastOutSlowInEasing),
+        targetValue = if (expanded) RAIL_EXPANDED_WIDTH else railCollapsedWidth(),
+        animationSpec = tween(
+            durationMillis = if (TvShapes.animations) RAIL_SLIDE_MS else 0,
+            easing = FastOutSlowInEasing,
+        ),
         label = "tv-rail-width",
     )
     val requesters = remember { TvDestination.entries.associateWith { FocusRequester() } }
@@ -215,22 +226,33 @@ fun TvNavigationRail(
             .width(width)
             .clipToBounds()
             // Opaque, so the screen behind doesn't show through and jitter while the menu scrolls.
-            .background(TvColors.Background)
+            .background(
+                if (TvShapes.translucent && expanded) TvColors.Background.copy(alpha = 0.9f)
+                else TvColors.Background
+            )
             .onFocusChanged { expanded = it.hasFocus }
     ) {
-        // Neon edge between the menu and the screen, cyan fading into magenta.
+        // A hairline between the menu and the screen (the Neon City skin: cyan into magenta).
         Box(
             Modifier
                 .align(Alignment.CenterEnd)
                 .fillMaxHeight()
                 .width(1.dp)
                 .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.3f to TvColors.Focus.copy(alpha = 0.55f),
-                        0.7f to TvColors.Accent.copy(alpha = 0.55f),
-                        1f to Color.Transparent,
-                    )
+                    if (TvShapes.backdropEffects) {
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.3f to TvColors.Focus.copy(alpha = 0.55f),
+                            0.7f to TvColors.Accent.copy(alpha = 0.55f),
+                            1f to Color.Transparent,
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to TvColors.TextPrimary.copy(alpha = if (hidden && !expanded) 0.18f else 0.08f),
+                            1f to Color.Transparent,
+                        )
+                    }
                 )
         )
         // Laid out at the open width and clipped to the folded width, so opening the menu
@@ -265,6 +287,7 @@ fun TvNavigationRail(
                                 else -> false
                             }
                         }
+                        .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                         .focusRestorer(requesters.getValue(selected))
                         .focusGroup()
                 ) {
@@ -274,7 +297,9 @@ fun TvNavigationRail(
                             selected = destination == selected,
                             focusRequester = requesters.getValue(destination),
                             onFocus = { focusedEntry[0] = destination },
-                            onClick = { onSelect(destination) }
+                            onClick = { onSelect(destination) },
+                            // Folded and hidden: only a small mark for the open tab is left.
+                            markOnly = hidden && !expanded,
                         )
                     }
                 }
@@ -289,7 +314,8 @@ private fun RailItem(
     selected: Boolean,
     focusRequester: FocusRequester,
     onFocus: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    markOnly: Boolean = false,
 ) {
     val label = destination.label()
     FocusFrame(
@@ -304,12 +330,28 @@ private fun RailItem(
         semanticRole = Role.Tab,
         drawGlow = false,
         raiseOnFocus = false,
+        transparent = markOnly,
         modifier = Modifier
             .padding(horizontal = RAIL_ITEM_INSET)
             .fillMaxWidth()
             .height(RAIL_ITEM_HEIGHT)
     ) { focused ->
         val active = selected || focused
+        if (markOnly) {
+            // The hidden menu's strip: a short bar marks the open tab.
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 2.dp)
+                    .width(4.dp)
+                    .height(if (selected) 22.dp else 6.dp)
+                    .background(
+                        if (selected) TvColors.Focus else TvColors.TextMuted.copy(alpha = 0.5f),
+                        TvShapes.chip,
+                    )
+            )
+            return@FocusFrame
+        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -358,7 +400,9 @@ private fun TvDestination.label(): String = when (this) {
 }
 
 /** The menu's width folded; screens start after it. */
-val RAIL_COLLAPSED_WIDTH = 80.dp
+fun railCollapsedWidth(): Dp = if (TvShapes.menu == SkinMenu.Hidden) RAIL_HIDDEN_WIDTH else RAIL_COLLAPSED_WIDTH
+private val RAIL_COLLAPSED_WIDTH = 80.dp
+private val RAIL_HIDDEN_WIDTH = 20.dp
 private val RAIL_EXPANDED_WIDTH = 248.dp
 private val RAIL_ITEM_INSET = 12.dp
 private val RAIL_ITEM_HEIGHT = 42.dp
@@ -428,8 +472,8 @@ val LocalChannelMenu = compositionLocalOf<((Channel, FocusRequester) -> Unit)?> 
 /** Opens the hold-OK menu for a category chip of the selected playlist. */
 val LocalCategoryMenu = compositionLocalOf<((String, FocusRequester) -> Unit)?> { null }
 
-/** Two opposite corners cut at 45 degrees, like a heads-up display panel. */
-val HudShape = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp)
+/** The skin's panel shape (rounded by default; the Neon City skin cuts two corners). */
+val HudShape: Shape get() = TvShapes.panel
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -474,13 +518,35 @@ fun FocusFrame(
     // A short, even grow: quick enough to keep up with a held-down arrow key.
     val scale = animateFloatAsState(
         targetValue = if (focused && enabled) grownScale.coerceAtLeast(1f) else 1f,
-        animationSpec = tween(durationMillis = FOCUS_SCALE_MS, easing = FastOutSlowInEasing),
+        animationSpec = tween(
+            durationMillis = if (TvShapes.animations) FOCUS_SCALE_MS else 0,
+            easing = FastOutSlowInEasing,
+        ),
         label = "tv-focus-scale"
     )
-    val glow = drawGlow && focused && enabled && !transparent
-    // Cyberpunk HUD look: every focusable surface gets two chamfered corners instead of the
-    // rounded [shape] callers pass, a faint neon outline, and a cyan glow when focused.
+    val glow = TvShapes.glow && drawGlow && focused && enabled && !transparent
+    // The skin decides the shape of every focusable surface, how focus is shown (a fill, a ring
+    // or a lift) and whether it glows; the [shape] callers pass is only a fallback.
     val hud = HudShape
+    val focusStyle = TvShapes.focus
+    val focusedBackground = when (focusStyle) {
+        SkinFocus.Fill -> focusedFill
+        SkinFocus.Ring -> TvColors.SurfaceRaised
+        SkinFocus.Lift -> TvColors.SurfaceRaised
+    }
+    val selectedBackground = when (focusStyle) {
+        SkinFocus.Fill -> TvColors.Focus.copy(alpha = 0.72f)
+        else -> TvColors.Focus.copy(alpha = 0.16f)
+    }
+    val ringWidth = when (focusStyle) {
+        SkinFocus.Fill -> focusedBorderWidth
+        SkinFocus.Ring -> 3.dp
+        SkinFocus.Lift -> 2.dp
+    }
+    val ringColor = when (focusStyle) {
+        SkinFocus.Fill -> focusedBorderColor
+        else -> TvColors.Focus
+    }
     Box(
         modifier = modifier
             .onSizeChanged { widthPx[0] = it.width.toFloat() }
@@ -501,18 +567,18 @@ fun FocusFrame(
             .background(
                 when {
                     transparent -> Color.Transparent
-                    focused && enabled -> focusedFill
-                    selected && enabled -> TvColors.Focus.copy(alpha = 0.72f)
-                    else -> TvColors.Surface.copy(alpha = 0.86f)
+                    focused && enabled -> focusedBackground
+                    selected && enabled -> selectedBackground
+                    else -> TvColors.Surface.copy(alpha = if (TvShapes.translucent) 0.62f else 0.86f)
                 }
             )
             .border(
                 BorderStroke(
-                    width = if (focused) focusedBorderWidth else 1.dp,
+                    width = if (focused) ringWidth else 1.dp,
                     color = when {
-                        focused -> focusedBorderColor
-                        selected -> TvColors.Focus
-                        else -> TvColors.Focus.copy(alpha = 0.18f)
+                        focused -> ringColor
+                        selected -> TvColors.Focus.copy(alpha = if (focusStyle == SkinFocus.Fill) 1f else 0.6f)
+                        else -> TvColors.TextPrimary.copy(alpha = 0.08f)
                     }
                 ),
                 shape = hud
@@ -614,10 +680,13 @@ fun TvIconActionButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    /** Sees every key while focused (holding OK to fast-forward, say). True means handled. */
+    onKey: (KeyEvent) -> Boolean = { false },
 ) {
     FocusFrame(
         onClick = onClick,
+        onKey = onKey,
         shape = RoundedCornerShape(28.dp),
         focusRequester = focusRequester,
         semanticsLabel = contentDescription,

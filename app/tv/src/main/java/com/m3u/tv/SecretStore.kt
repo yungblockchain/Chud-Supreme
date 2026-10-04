@@ -34,6 +34,7 @@ enum class SecretName(val key: String) {
     CoinMarketCap("coinmarketcap_api_key"),
     SportsGameOdds("sportsgameodds_api_key"),
     ApiSports("api_sports_key"),
+    YouTube("youtube_api_key"),
 }
 
 /**
@@ -96,8 +97,9 @@ class SecretStore @Inject constructor(
         fill(SecretName.Tmdb, SupremeKeys.TMDB)
         fill(SecretName.CoinMarketCap, SupremeKeys.COINMARKETCAP)
         fill(SecretName.ApiSports, SupremeKeys.API_SPORTS)
-        fill(SecretName.RealDebrid, SupremeKeys.REAL_DEBRID)
-        fill(SecretName.TorBox, SupremeKeys.TORBOX)
+        fill(SecretName.YouTube, SupremeKeys.YOUTUBE)
+        fill(SecretName.GitHubRepo, SupremeKeys.GITHUB_REPO)
+        if (SupremeKeys.GITHUB_TOKEN.isNotBlank()) fill(SecretName.GitHubToken, SupremeKeys.GITHUB_TOKEN)
     }
 
     private fun savedNames(): Set<SecretName> =

@@ -44,12 +44,14 @@ sealed interface PhoneMessage {
     data class XtreamLogin(val server: String, val username: String, val password: String) : PhoneMessage
     data class M3uPlaylist(val url: String, val epgUrl: String) : PhoneMessage
     data class KeySaved(val name: SecretName) : PhoneMessage
+    data class SkinApplied(val name: String) : PhoneMessage
 }
 
 @Singleton
 class PhoneCompanion @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secrets: SecretStore,
+    private val skins: SkinStore,
 ) {
     private val _info = MutableStateFlow<CompanionInfo?>(null)
     val info: StateFlow<CompanionInfo?> = _info.asStateFlow()
@@ -115,6 +117,9 @@ class PhoneCompanion @Inject constructor(
             }
             when {
                 method == "GET" && (path == "/" || path == "/index.html") -> respond(output, 200, "text/html; charset=utf-8", page())
+                // The current skin as a file, to share or edit.
+                method == "GET" && path == "/skin.json" ->
+                    respond(output, 200, JSON, skins.current.value.toJson().toString())
                 method == "POST" && path.startsWith("/api/") -> {
                     if (length !in 0..MAX_BODY) return respond(output, 413, JSON, """{"ok":false,"error":"too_large"}""")
                     val body = readBytes(input, length).toString(Charsets.UTF_8)
@@ -156,6 +161,11 @@ class PhoneCompanion @Inject constructor(
                 val value = field("value").ifEmpty { return 400 to BAD }
                 secrets.put(name, value)
                 PhoneMessage.KeySaved(name)
+            }
+            "skin" -> {
+                val raw = form["skin"].orEmpty().trim().take(MAX_SKIN).ifEmpty { return 400 to BAD }
+                val skin = skins.import(raw) ?: return 400 to """{"ok":false,"error":"not_a_skin"}"""
+                PhoneMessage.SkinApplied(skin.name)
             }
             else -> return 404 to """{"ok":false,"error":"unknown"}"""
         }
@@ -232,6 +242,7 @@ class PhoneCompanion @Inject constructor(
         const val MAX_BODY = 16 * 1024
         const val MAX_LINE = 8 * 1024
         const val MAX_FIELD = 2_048
+        const val MAX_SKIN = 8_192
         const val MAX_FAILURES = 5
         const val LOCK_MS = 60_000L
         const val JSON = "application/json"

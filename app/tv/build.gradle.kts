@@ -36,8 +36,13 @@ android {
         applicationId = "app.dial.supreme"
         minSdk = 26
         targetSdk = 33
-        versionCode = 1
-        versionName = "Supreme"
+        versionCode = 2
+        versionName = "Supreme 2"
+
+        // Crash reports go to GitHub with this token (the CHUD_GITHUB_TOKEN repository secret on
+        // GitHub Actions). Never in the source: GitHub cancels tokens it finds in public repos.
+        val githubToken = System.getenv("CHUD_GITHUB_TOKEN").orEmpty().trim()
+        buildConfigField("String", "CHUD_GITHUB_TOKEN", "\"${githubToken.replace("\"", "")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["m3uMockServerUrl"] = m3uMockServerUrl.get()

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.rounded.Tune
@@ -64,6 +65,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -108,6 +110,60 @@ import kotlinx.coroutines.yield
 
 private const val ZAP_BANNER_MS = 3_500L
 private val SLEEP_STEPS_MINUTES = listOf(30, 60, 90, 120)
+
+/** How long the "+30 s" bubble stays after the last scrub step. */
+private const val SCRUB_BUBBLE_MS = 900L
+
+/** "+30 s", "−1:30", "+12:00". */
+private fun scrubLabel(deltaMs: Long): String {
+    val sign = if (deltaMs < 0) "\u2212" else "+"
+    val seconds = kotlin.math.abs(deltaMs) / 1000
+    return if (seconds < 60) "$sign$seconds s" else "$sign${seconds / 60}:${"%02d".format(seconds % 60)}"
+}
+
+/**
+ * The fast-forward / rewind ramp. A press is one step of 10 s. A hold keeps stepping about five
+ * times a second: 10 s steps for the first two seconds, then 30 s, then 60 s after five
+ * seconds, then 120 s after ten. Holding for ten seconds therefore covers about five minutes,
+ * and twenty seconds about a quarter of an hour.
+ */
+class HoldScrub {
+    private var holdStartedAt = 0L
+    private var lastStepAt = 0L
+    private var held = false
+
+    /** The step to take for this key-down, or null to wait (steps are rate-limited). */
+    fun step(repeatCount: Int, now: Long): Long? {
+        if (repeatCount == 0) {
+            holdStartedAt = now
+            lastStepAt = now
+            held = false
+            return TAP_STEP_MS
+        }
+        held = true
+        if (now - lastStepAt < STEP_EVERY_MS) return null
+        lastStepAt = now
+        val heldFor = now - holdStartedAt
+        return when {
+            heldFor < 2_000L -> TAP_STEP_MS
+            heldFor < 5_000L -> 30_000L
+            heldFor < 10_000L -> 60_000L
+            else -> 120_000L
+        }
+    }
+
+    /** On release: true if this was a hold, so the release must not count as a press. */
+    fun release(): Boolean {
+        val wasHeld = held
+        held = false
+        return wasHeld
+    }
+
+    private companion object {
+        const val TAP_STEP_MS = 10_000L
+        const val STEP_EVERY_MS = 200L
+    }
+}
 
 private val CHANNEL_UP_KEYS = setOf(Key.DirectionUp, Key.ChannelUp, Key.PageUp, Key.MediaNext)
 private val CHANNEL_DOWN_KEYS =
@@ -185,6 +241,41 @@ fun TvPlayerScreen(
         val length = target.duration
         val next = (target.currentPosition + deltaMs).coerceAtLeast(0L)
         target.seekTo(if (length > 0) next.coerceAtMost(length) else next)
+        position = target.currentPosition.coerceAtLeast(0L)
+    }
+
+    // Fast forward and rewind: a press skips once; holding keeps skipping, in bigger and bigger
+    // steps the longer the hold (10 s, then 30, 60 and 120). One scrub for the buttons and the
+    // remote's media keys, so they feel the same.
+    val scrub = remember { HoldScrub() }
+    var scrubTotalMs by remember { mutableLongStateOf(0L) }
+    var scrubShownAt by remember { mutableLongStateOf(0L) }
+    fun scrubStep(forward: Boolean, repeatCount: Int) {
+        val step = scrub.step(repeatCount, SystemClock.uptimeMillis()) ?: return
+        val delta = if (forward) step else -step
+        seekBy(delta)
+        scrubTotalMs = if (repeatCount == 0) delta else scrubTotalMs + delta
+        scrubShownAt = SystemClock.uptimeMillis()
+        showControls()
+    }
+    /** Key handling for a fast-forward or rewind button: OK held keeps going. */
+    fun scrubKeys(forward: Boolean): (KeyEvent) -> Boolean = handler@{ event ->
+        val confirm = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+        if (!confirm) return@handler false
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                scrubStep(forward, event.nativeKeyEvent.repeatCount)
+                true
+            }
+            // The release after a hold is not another press.
+            KeyEventType.KeyUp -> scrub.release()
+            else -> false
+        }
+    }
+    LaunchedEffect(scrubShownAt) {
+        if (scrubShownAt == 0L) return@LaunchedEffect
+        delay(SCRUB_BUBBLE_MS)
+        scrubTotalMs = 0L
     }
 
     fun cycleSleepTimer() {
@@ -342,17 +433,11 @@ fun TvPlayerScreen(
                         }
                         true
                     }
-                    !live && key == Key.MediaFastForward -> {
+                    !live && (key == Key.MediaFastForward || key == Key.MediaRewind) -> {
                         if (isDown) {
-                            seekBy(skipAheadMs)
-                            showControls()
-                        }
-                        true
-                    }
-                    !live && key == Key.MediaRewind -> {
-                        if (isDown) {
-                            seekBy(-skipBackMs)
-                            showControls()
+                            scrubStep(forward = key == Key.MediaFastForward, repeatCount = event.nativeKeyEvent.repeatCount)
+                        } else {
+                            scrub.release()
                         }
                         true
                     }
@@ -412,6 +497,10 @@ fun TvPlayerScreen(
         }
         if (stateNotice != null && !controlsVisible) {
             TuningPill(text = stateNotice, modifier = Modifier.align(Alignment.Center))
+        }
+        // "+30 s" / "−1:30" while fast-forwarding or rewinding.
+        if (scrubTotalMs != 0L) {
+            TuningPill(text = scrubLabel(scrubTotalMs), modifier = Modifier.align(Alignment.Center))
         }
 
         AnimatedVisibility(
@@ -512,9 +601,11 @@ fun TvPlayerScreen(
                             icon = Icons.Rounded.FastRewind,
                             contentDescription = stringResource(R.string.dial_player_rewind, preferences.skipBackSeconds),
                             onClick = {
+                                // OK is handled by scrubKeys; this is for a tap on a touch screen.
                                 seekBy(-skipBackMs)
                                 showControls()
                             },
+                            onKey = scrubKeys(forward = false),
                         )
                         TvIconActionButton(
                             icon = Icons.Rounded.FastForward,
@@ -523,6 +614,7 @@ fun TvPlayerScreen(
                                 seekBy(skipAheadMs)
                                 showControls()
                             },
+                            onKey = scrubKeys(forward = true),
                         )
                         TvIconActionButton(
                             icon = Icons.Rounded.Replay,

@@ -9,6 +9,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -36,8 +39,15 @@ class MainActivity : ComponentActivity() {
                     onSurfaceVariant = TvColors.TextSecondary
                 )
             ) {
-                Box(Modifier.background(MaterialTheme.colorScheme.background)) {
-                    App(initialDestination = initialDestination)
+                // The skin's text-and-spacing size scales everything through the density.
+                val density = LocalDensity.current
+                val scale = TvShapes.scale
+                CompositionLocalProvider(
+                    LocalDensity provides Density(density.density * scale, density.fontScale)
+                ) {
+                    Box(Modifier.background(MaterialTheme.colorScheme.background)) {
+                        App(initialDestination = initialDestination)
+                    }
                 }
             }
         }

@@ -18,53 +18,76 @@ import androidx.compose.material.icons.rounded.Newspaper
 import androidx.compose.material.icons.rounded.SportsSoccer
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 
 /**
- * CHUD STREAMS palette: 90s cyberpunk anime. A midnight-indigo city at night, neon cyan for
- * anything the remote can land on (with a matching glow), and hot magenta for brand moments and
- * highlights, like the signage in an Akira or Bubblegum Crisis street scene.
+ * The live palette. Every screen reads these; [TvTheme.apply] sets them from the chosen skin,
+ * and because they are Compose state, screens redraw in the new colours at once. The starting
+ * values are the default skin ([Skins.SupremeBlack]).
  */
 object TvColors {
-    val Background = Color(0xFF0B0A1F)
-    val BackgroundSoft = Color(0xFF120F2E)
-    val Surface = Color(0xFF1B1642)
-    val SurfaceRaised = Color(0xFF271F5A)
-    val Focus = Color(0xFF19F0FF)
-    val FocusRing = Color(0xFFAAFAFF)
-    val Accent = Color(0xFFFF2BD6)
-    val Danger = Color(0xFFFF3B6B)
-    val Positive = Color(0xFF3DFF9A)
-    val OnFocus = Color(0xFF03141A)
-    val TextPrimary = Color(0xFFEAF6FF)
-    val TextSecondary = Color(0xFFA9B6E6)
-    val TextMuted = Color(0xFF6B72A6)
+    var Background by mutableStateOf(Color(0xFF000000))
+    var BackgroundSoft by mutableStateOf(Color(0xFF090909))
+    var Surface by mutableStateOf(Color(0xFF121212))
+    var SurfaceRaised by mutableStateOf(Color(0xFF1E1E1E))
+    var Focus by mutableStateOf(Color(0xFFFFFFFF))
+    var FocusRing by mutableStateOf(Color(0xFFFFFFFF))
+    var Accent by mutableStateOf(Color(0xFF6FA8FF))
+    var Danger by mutableStateOf(Color(0xFFFF4D5E))
+    var Positive by mutableStateOf(Color(0xFF3DDC84))
+    var OnFocus by mutableStateOf(Color(0xFF000000))
+    var TextPrimary by mutableStateOf(Color(0xFFF2F2F2))
+    var TextSecondary by mutableStateOf(Color(0xFFA8A8A8))
+    var TextMuted by mutableStateOf(Color(0xFF6A6A6A))
 }
 
 object TvFonts {
-    /**
-     * Atkinson Hyperlegible was drawn by the Braille Institute for low-vision
-     * readers; its open letterforms stay distinct from across a room.
-     * It ships in two weights, so Medium/SemiBold map onto the nearest file.
-     */
-    val Body = FontFamily(
-        Font(R.font.atkinson_hyperlegible_regular, FontWeight.Normal),
-        Font(R.font.atkinson_hyperlegible_regular, FontWeight.Medium),
-        Font(R.font.atkinson_hyperlegible_bold, FontWeight.SemiBold),
-        Font(R.font.atkinson_hyperlegible_bold, FontWeight.Bold)
-    )
+    /** The reading face: body text, labels, titles. */
+    var Body by mutableStateOf(SkinFont.Inter.family())
 
-    /** Audiowide: a wide techno display face, used only for the wordmark and numbers. */
-    val Accent = FontFamily(
-        Font(R.font.audiowide_regular, FontWeight.Normal),
-        Font(R.font.audiowide_regular, FontWeight.Medium),
-        Font(R.font.audiowide_regular, FontWeight.SemiBold),
-        Font(R.font.audiowide_regular, FontWeight.Bold)
-    )
+    /** The display face: the wordmark and big numbers. */
+    var Accent by mutableStateOf(SkinFont.Inter.family())
+}
+
+/** Shape, motion and decoration choices from the skin. */
+object TvShapes {
+    var corners by mutableStateOf(SkinCorners.Rounded)
+    var focus by mutableStateOf(SkinFocus.Ring)
+    var glow by mutableStateOf(false)
+    var backdropArtwork by mutableStateOf(true)
+    var backdropEffects by mutableStateOf(false)
+    var translucent by mutableStateOf(false)
+    var menu by mutableStateOf(SkinMenu.Hidden)
+    var scale by mutableStateOf(1f)
+    var animations by mutableStateOf(true)
+    /** A light background (Paper): some overlays switch from black to white tints. */
+    var light by mutableStateOf(false)
+
+    /** The shape of panels, cards and buttons. */
+    val panel: Shape
+        get() = when (corners) {
+            SkinCorners.Rounded -> RoundedCornerShape(12.dp)
+            SkinCorners.Soft -> RoundedCornerShape(20.dp)
+            SkinCorners.Square -> RoundedCornerShape(2.dp)
+            SkinCorners.Chamfer -> CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp)
+        }
+
+    /** The shape of small things: chips, pills, thumbnails. */
+    val chip: Shape
+        get() = when (corners) {
+            SkinCorners.Rounded -> RoundedCornerShape(8.dp)
+            SkinCorners.Soft -> RoundedCornerShape(14.dp)
+            SkinCorners.Square -> RoundedCornerShape(2.dp)
+            SkinCorners.Chamfer -> CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)
+        }
 }
 
 /** The side menu's entries, top to bottom. */

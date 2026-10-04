@@ -167,6 +167,7 @@ fun App(
     val currentDiagnosticsShareTitle by rememberUpdatedState(diagnosticsShareTitle)
     var destination by remember { mutableStateOf(initialDestination ?: TvDestination.Home) }
     var settingsTab by remember { mutableIntStateOf(0) }
+    val menuFocus = remember { FocusRequester() }
     var surface by remember { mutableStateOf(TvSurface.Browse) }
     val closePlayer = {
         viewModel.releasePlayer()
@@ -326,6 +327,7 @@ fun App(
 
     // The phone page: what's typed on the phone lands here.
     val keySaved = stringResource(R.string.dial_phone_key_saved)
+    val skinSaved = stringResource(R.string.dial_phone_skin_saved)
     LaunchedEffect(services) {
         services.phoneMessages.collect { message ->
             when (message) {
@@ -351,6 +353,8 @@ fun App(
                     accounts.updateEpgUrl(message.epgUrl)
                 }
                 is PhoneMessage.KeySaved -> Toast.makeText(context, keySaved, Toast.LENGTH_SHORT).show()
+                is PhoneMessage.SkinApplied ->
+                    Toast.makeText(context, skinSaved.format(message.name), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -539,6 +543,14 @@ fun App(
                 // Note the remote being used (decorative motion waits for it to rest).
                 lastKeyAt[0] = SystemClock.uptimeMillis()
                 if (!remoteBusy.value) remoteBusy.value = true
+                // The Menu key opens the side menu while browsing (it may be hidden to a strip).
+                if (event.type == KeyEventType.KeyDown && event.key == Key.Menu &&
+                    surface == TvSurface.Browse && details == null && !showSplash &&
+                    menuChannel == null && menuCategory == null
+                ) {
+                    runCatching { menuFocus.requestFocus() }
+                    return@onPreviewKeyEvent true
+                }
                 // Mini player: Menu brings it back full screen; play/pause works from anywhere.
                 if (surface != TvSurface.Mini || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
@@ -581,7 +593,7 @@ fun App(
             ) {
                 TvBrowsePane(
                     modifier = Modifier
-                        .padding(start = RAIL_COLLAPSED_WIDTH)
+                        .padding(start = railCollapsedWidth())
                         .clipToBounds()
                         .focusRequester(contentFocus)
                         .focusGroup(),
@@ -718,6 +730,7 @@ fun App(
                 TvNavigationRail(
                     selected = destination,
                     onSelect = { destination = it },
+                    focusRequester = menuFocus,
                 )
             }
         }

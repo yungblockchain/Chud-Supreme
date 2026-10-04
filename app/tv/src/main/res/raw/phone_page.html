@@ -89,6 +89,9 @@
           <option value="telegram_trading_bot">Trading bot username</option>
           <option value="github_repo">GitHub repository (owner/name)</option>
           <option value="github_token">GitHub token</option>
+          <option value="youtube_api_key">YouTube API key</option>
+          <option value="api_sports_key">API-Sports key</option>
+          <option value="sportsgameodds_api_key">SportsGameOdds key</option>
         </select>
       </label>
       <label>Value<input name="value" required autocapitalize="off" autocorrect="off" autocomplete="off"></label>
@@ -96,12 +99,21 @@
       <small>Stored encrypted on the Fire TV. It is never shown again, here or on the TV.</small>
     </form>
   </details>
+
+  <details>
+    <summary>Skins (how the app looks)</summary>
+    <form data-action="skin">
+      <label>Paste a skin file<textarea name="skin" rows="6" required spellcheck="false" placeholder='{"format":"chud-skin/1","name":"My skin","accent":"#FF8A3D", …}'></textarea></label>
+      <button>Apply on TV</button><div class="status"></div>
+      <small>The current skin is at <a href="/skin.json" download="chud-skin.json">skin.json</a>: download it, change the colours or the font, and paste it back here, or send it to a friend.</small>
+    </form>
+  </details>
 </main>
 <script>
   const pin = document.getElementById('pin');
   try { pin.value = sessionStorage.getItem('pin') || ''; } catch (e) {}
   pin.addEventListener('input', () => { try { sessionStorage.setItem('pin', pin.value); } catch (e) {} });
-  const messages = { pin: 'Wrong PIN. Check the TV.', locked: 'Too many wrong PINs. Wait a minute.', missing: 'Fill in every field.', too_large: 'That is too long.' };
+  const messages = { pin: 'Wrong PIN. Check the TV.', locked: 'Too many wrong PINs. Wait a minute.', missing: 'Fill in every field.', too_large: 'That is too long.', not_a_skin: 'That is not a skin file.' };
   document.querySelectorAll('form[data-action]').forEach(form => {
     form.addEventListener('submit', async event => {
       event.preventDefault();

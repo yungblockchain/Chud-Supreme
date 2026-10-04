@@ -140,8 +140,17 @@ if check "launch"; then
 
     open_tab settings 8;  shot 12-settings
     press $RIGHT; for _ in 1 2 3 4 5 6 7 8; do press $DOWN; done; sleep 1; shot 13-settings-more
-    # The settings tabs: Playback and Services.
-    open_tab settings 8; press $RIGHT $RIGHT $OK; sleep 2; shot 15-settings-playback
+    # The settings tabs: Appearance (skins), Playback and Services.
+    open_tab settings 8; press $RIGHT $RIGHT $OK; sleep 2; shot 15-settings-appearance
+    # Down to the skin row and along it: each skin applies as it's chosen.
+    press $DOWN; sleep 1; press $RIGHT $OK; sleep 2; shot 15a-skin-charcoal
+    press $RIGHT $OK; sleep 2; shot 15b-skin-glass
+    press $RIGHT $RIGHT $RIGHT $RIGHT $OK; sleep 2; shot 15c-skin-neon-city
+    open_tab home 8; shot 15d-home-neon-city
+    open_tab settings 8; press $RIGHT $RIGHT $OK; sleep 1; press $DOWN; sleep 1; press $OK; sleep 2; shot 15e-skin-black-again
+    # Font and focus rows further down.
+    for _ in 1 2 3 4 5 6 7; do press $DOWN; done; sleep 1; shot 15f-appearance-type
+    open_tab settings 8; press $RIGHT $RIGHT $RIGHT $OK; sleep 2; shot 15g-settings-playback
     press $RIGHT $OK; sleep 2; shot 16-settings-services
     check "settings"
 
@@ -155,8 +164,8 @@ if check "launch"; then
         press $DOWN; sleep 1
         adb shell input keyevent --longpress $OK; sleep 2; shot 25-hold-menu
         press $BACK; sleep 1
-        # Left from the hero opens the side menu with its labels.
-        press $UP $LEFT; sleep 1; shot 26-menu-open
+        # The Menu key opens the hidden side menu with its labels; Left from the hero does too.
+        press $UP; adb shell input keyevent 82; sleep 1; shot 26-menu-open
         press $DOWN $DOWN; sleep 1; shot 27-menu-moved
         open_tab live 10;     shot 20-live
         press $RIGHT; sleep 2; shot 20a-live-grid

@@ -35,11 +35,16 @@ class M3UApplication : Application(), Configuration.Provider, ImageLoaderFactory
     @Inject
     lateinit var secrets: SecretStore
 
+    @Inject
+    lateinit var skins: SkinStore
+
     override fun onCreate() {
         super.onCreate()
         // Crash reports stay on the device until the person sends them (Settings > Services).
         CrashReports.install(this)
         runCatching { secrets.seed() }
+        // The chosen skin, before the first screen draws.
+        runCatching { TvTheme.apply(skins.current.value) }
         enableHdrTunnelingOnce()
         initializePersistedUriPermissionLeases(this)
         PersistedUriPermissionCleanupWorker.enqueueRecovery(

@@ -44,6 +44,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
@@ -305,6 +306,11 @@ fun TvBrowsePane(
                                 label = stringResource(R.string.dial_settings_tab_dial),
                                 icon = Icons.Rounded.Tune,
                                 content = dialSettingsContent,
+                            ),
+                            SettingsTab(
+                                label = stringResource(R.string.dial_settings_tab_appearance),
+                                icon = Icons.Rounded.Palette,
+                                content = { AppearanceScreen() },
                             ),
                             SettingsTab(
                                 label = stringResource(R.string.dial_settings_tab_playback),
