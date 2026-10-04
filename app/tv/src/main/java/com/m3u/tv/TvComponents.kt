@@ -584,8 +584,8 @@ fun FocusFrame(
                     width = if (focused) ringWidth else 1.dp,
                     color = when {
                         focused -> ringColor
-                        selected -> TvColors.Focus.copy(alpha = if (focusStyle == SkinFocus.Fill) 1f else 0.6f)
                         !outlined -> Color.Transparent
+                        selected -> TvColors.Focus.copy(alpha = if (focusStyle == SkinFocus.Fill) 1f else 0.6f)
                         else -> TvColors.TextPrimary.copy(alpha = 0.08f)
                     }
                 ),
