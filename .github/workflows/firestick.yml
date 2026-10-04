@@ -1,7 +1,7 @@
 # Builds the Chud MAXXX APK for Fire TV (Fire TV Stick 4K Max and other Fire OS 7/8 devices).
 # Separate from earlier CHUD STREAMS: application id app.dial.maxxx.
 # Run it from the Actions tab ("Build Chud MAXXX for Fire TV" > Run workflow) or push to main/master.
-# The APK appears under the run's "Artifacts" as chud-maxxx-apk.
+# The APK appears under the run's "Artifacts" as chud-supreme-apk.
 #
 # Optional but recommended: stable signing, so each new APK installs over the last one
 # without losing your accounts and favourites. Add these repository secrets
@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: chud-maxxx-${{ github.ref }}
+  group: chud-supreme-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -154,7 +154,7 @@ jobs:
 
       # Every successful build on main is also published as a release, so the newest APK is
       # always at the same address, which can be typed straight into Downloader on the Fire TV:
-      #   https://github.com/<owner>/<repo>/releases/latest/download/chud-maxxx.apk
+      #   https://github.com/<owner>/<repo>/releases/latest/download/chud-supreme.apk
       - name: Publish the APK for Downloader
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs inside the Android TV emulator job (.github/workflows/tv-screenshots.yml).
-# Installs chud-streams.apk, opens each main screen with remote-control key presses, and saves
+# Installs chud-supreme.apk, opens each main screen with remote-control key presses, and saves
 # screenshots plus the crash log into the output folder.
 #   usage: tv-screenshots.sh <output-dir> <api-level>
 #
@@ -9,7 +9,7 @@
 set -u
 OUT="$1"
 API="$2"
-PKG=app.dial.tv
+PKG=app.dial.supreme
 ACTIVITY=com.m3u.tv.MainActivity
 mkdir -p "$OUT"
 
@@ -103,7 +103,7 @@ sign_in() {
     fi
 }
 
-adb install -r chud-streams.apk || { echo "::error::Install failed on API $API"; exit 0; }
+adb install -r chud-supreme.apk || { echo "::error::Install failed on API $API"; exit 0; }
 adb logcat -c
 # Room for a long session's worth of log (the big import is chatty).
 adb logcat -G 16M || true

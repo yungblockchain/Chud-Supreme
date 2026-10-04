@@ -57,12 +57,12 @@ jobs:
         run: |
           if [ -n "$RUN_ID" ]; then
             gh run download "$RUN_ID" --repo "${{ github.repository }}" -n chud-supreme-apk -D apk-download
-            cp "$(ls apk-download/*.apk | head -n 1)" chud-maxxx.apk
+            cp "$(ls apk-download/*.apk | head -n 1)" chud-supreme.apk
             echo "::notice::Testing the APK from build run $RUN_ID."
           else
-            curl -sSfL -o chud-maxxx.apk "https://github.com/${{ github.repository }}/releases/latest/download/chud-maxxx.apk"
+            curl -sSfL -o chud-supreme.apk "https://github.com/${{ github.repository }}/releases/latest/download/chud-supreme.apk"
           fi
-          ls -la chud-maxxx.apk
+          ls -la chud-supreme.apk
 
       # A local test Xtream server (testing/mock-server) with a few channels, films, series and
       # guide listings, so the screenshots can show a signed-in app. The emulator reaches it at
