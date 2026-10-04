@@ -269,7 +269,7 @@ object Skins {
 
 /**
  * The chosen skin, the person's own skins, and the skin files in the skins folder
- * (`files/skins/*.json`, where the phone page and a link import put them).
+ * (the `skins` folder in the app's files, where the phone page and a link import put them).
  */
 @Singleton
 class SkinStore @Inject constructor(
