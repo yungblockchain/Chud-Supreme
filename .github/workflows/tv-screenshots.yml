@@ -56,7 +56,7 @@ jobs:
           RUN_ID: ${{ github.event.inputs.apk_run_id }}
         run: |
           if [ -n "$RUN_ID" ]; then
-            gh run download "$RUN_ID" --repo "${{ github.repository }}" -n chud-maxxx-apk -D apk-download
+            gh run download "$RUN_ID" --repo "${{ github.repository }}" -n chud-supreme-apk -D apk-download
             cp "$(ls apk-download/*.apk | head -n 1)" chud-maxxx.apk
             echo "::notice::Testing the APK from build run $RUN_ID."
           else
