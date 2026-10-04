@@ -6,6 +6,7 @@ import android.os.Looper
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
@@ -415,6 +416,7 @@ fun SkinFont.family(): FontFamily = when (this) {
     SkinFont.Mono -> FontFamily.Monospace
 }
 
+@OptIn(ExperimentalTextApi::class)
 private fun variable(resource: Int): FontFamily = FontFamily(
     listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map { weight ->
         Font(
