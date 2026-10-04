@@ -164,7 +164,7 @@ class PhoneCompanion @Inject constructor(
             }
             "skin" -> {
                 val raw = form["skin"].orEmpty().trim().take(MAX_SKIN).ifEmpty { return 400 to BAD }
-                val skin = skins.import(raw) ?: return 400 to """{"ok":false,"error":"not_a_skin"}"""
+                val skin = skins.importSkin(raw) ?: return 400 to """{"ok":false,"error":"not_a_skin"}"""
                 PhoneMessage.SkinApplied(skin.name)
             }
             else -> return 404 to """{"ok":false,"error":"unknown"}"""

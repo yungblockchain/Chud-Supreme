@@ -107,7 +107,7 @@ class AppearanceViewModel @Inject constructor(
                     connection.inputStream.bufferedReader().use { it.readText() }
                 }.getOrNull()
             }
-            val skin = text?.let(skins::import)
+            val skin = text?.let(skins::importSkin)
             _notice.value = if (skin != null) AppearanceNotice.Imported(skin.name) else AppearanceNotice.ImportFailed
         }
     }

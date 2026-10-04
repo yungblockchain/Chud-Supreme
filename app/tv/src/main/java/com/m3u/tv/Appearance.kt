@@ -317,7 +317,7 @@ class SkinStore @Inject constructor(
     }
 
     /** Imports a skin file's text (from the phone page or a link). Null if it isn't a skin. */
-    fun import(raw: String): Skin? {
+    fun importSkin(raw: String): Skin? {
         val skin = Skin.fromJson(raw) ?: return null
         // Never overwrite a built-in id; keep the file's own id otherwise, so re-imports update.
         val safe = if (Skins.byId(skin.id) != null) skin.copy(id = "${skin.id}-custom") else skin
