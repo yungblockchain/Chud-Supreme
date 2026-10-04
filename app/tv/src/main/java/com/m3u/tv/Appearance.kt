@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -11,6 +12,8 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -136,7 +139,8 @@ data class Skin(
             fun flag(key: String, fallback: Boolean) = item[key]?.jsonPrimitive?.booleanOrNull ?: fallback
             val name = text("name")?.trim()?.take(MAX_NAME)?.ifBlank { null } ?: base.name
             Skin(
-                id = text("id")?.trim()?.take(48)?.ifBlank { null } ?: slug(name),
+                // Slugged: it names a file in the skins folder.
+                id = slug(text("id")?.takeIf { it.isNotBlank() } ?: name).take(48),
                 name = name,
                 builtIn = false,
                 background = colour("background", base.background),
@@ -273,6 +277,7 @@ class SkinStore @Inject constructor(
 ) {
     private val prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
     private val folder: File get() = File(context.filesDir, "skins").apply { mkdirs() }
+    private val io: ExecutorService = Executors.newSingleThreadExecutor()
 
     private val _custom = MutableStateFlow(readCustom())
     /** Skins the person made or imported, by id. */
@@ -294,19 +299,21 @@ class SkinStore @Inject constructor(
         }
     }
 
-    /** Saves a custom skin (new or changed) and applies it. */
+    /** Saves a custom skin (new or changed) and applies it. The file is written off the main thread. */
     fun save(skin: Skin) {
         val stored = skin.copy(builtIn = false)
-        File(folder, "${stored.id}.json").writeText(stored.toJson().toString())
-        _custom.value = readCustom()
+        _custom.value = _custom.value.filterNot { it.id == stored.id } + stored
         select(stored)
+        io.execute {
+            runCatching { File(folder, "${stored.id}.json").writeText(stored.toJson().toString()) }
+        }
     }
 
     fun delete(skin: Skin) {
         if (skin.builtIn) return
-        File(folder, "${skin.id}.json").delete()
-        _custom.value = readCustom()
+        _custom.value = _custom.value.filterNot { it.id == skin.id }
         if (_current.value.id == skin.id) select(Skins.SupremeBlack)
+        io.execute { runCatching { File(folder, "${skin.id}.json").delete() } }
     }
 
     /** Imports a skin file's text (from the phone page or a link). Null if it isn't a skin. */
@@ -347,7 +354,7 @@ class SkinStore @Inject constructor(
 
 /** Applies a skin to the live theme objects every screen reads. */
 object TvTheme {
-    fun apply(skin: Skin) {
+    fun apply(skin: Skin) = Snapshot.withMutableSnapshot {
         TvColors.Background = skin.background
         TvColors.BackgroundSoft = blend(skin.background, skin.surface, 0.5f)
         TvColors.Surface = skin.surface

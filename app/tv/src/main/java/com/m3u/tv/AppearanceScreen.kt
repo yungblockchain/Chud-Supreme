@@ -89,10 +89,8 @@ class AppearanceViewModel @Inject constructor(
         skins.save(transform(target))
     }
 
-    /** Exports the current skin to the skins folder (the phone page offers it as a file). */
+    /** The phone page serves the current skin as a file; this just says so. */
     fun export() {
-        val now = skins.current.value
-        skins.save(if (now.builtIn) skins.copyOf(now, "My ${now.name}") else now)
         _notice.value = AppearanceNotice.Exported
     }
 
@@ -447,14 +445,18 @@ private fun SkinCard(
 /** A text box for a colour as hex: typing a valid "#RRGGBB" applies it. */
 @Composable
 private fun HexRow(label: String, colour: Color, onColour: (Color) -> Unit) {
-    var text by remember(colour) { mutableStateOf(colour.toHex()) }
+    var text by remember { mutableStateOf(colour.toHex()) }
+    // A change from elsewhere (the Accent row, another skin) shows here; typing is left alone.
+    val typed = Skin.parseColor(text)
+    if (typed != colour && (typed != null || text.isBlank())) text = colour.toHex()
     Box(Modifier.widthIn(max = 820.dp)) {
         DialTextField(
             label = label,
             value = text,
-            onValueChange = { typed ->
-                text = typed
-                Skin.parseColor(typed)?.takeIf { typed.trim().removePrefix("#").length == 6 }?.let(onColour)
+            onValueChange = { value ->
+                text = value
+                val hex = value.trim().removePrefix("#").removePrefix("0x")
+                if (hex.length == 6) Skin.parseColor(hex)?.let(onColour)
             },
             keyboardType = KeyboardType.Ascii,
             imeAction = ImeAction.Done,
@@ -509,7 +511,12 @@ private fun Color.shade(amount: Float) = Color(
 
 private fun <T> nextIn(options: List<T>, current: T, step: Int): T {
     val index = options.indexOf(current)
-    return if (index < 0) options.first() else options[Math.floorMod(index + step, options.size)]
+    return when {
+        index >= 0 -> options[Math.floorMod(index + step, options.size)]
+        // Off the list (a typed hex, say): step onto an end of it.
+        step < 0 -> options.last()
+        else -> options.first()
+    }
 }
 
 private inline fun <reified E : Enum<E>> next(current: E, step: Int): E {

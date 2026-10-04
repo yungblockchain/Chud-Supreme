@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
@@ -260,6 +261,9 @@ fun TvNavigationRail(
         Column(
             modifier = Modifier
                 .fillMaxHeight()
+                // Laid out at the open width even while the box is narrower (unbounded), so the
+                // folded strip still draws its marks and the labels never re-measure.
+                .wrapContentWidth(align = Alignment.Start, unbounded = true)
                 .width(RAIL_EXPANDED_WIDTH)
         ) {
             val remoteBusy by LocalTvRemoteBusy.current

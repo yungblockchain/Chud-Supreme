@@ -132,20 +132,28 @@ class HoldScrub {
     private var lastStepAt = 0L
     private var held = false
 
-    /** The step to take for this key-down, or null to wait (steps are rate-limited). */
-    fun step(repeatCount: Int, now: Long): Long? {
+    /** A key went down (repeat count 0): the hold, if it becomes one, starts now. */
+    fun prime(now: Long) {
+        holdStartedAt = now
+        lastStepAt = now
+        held = false
+    }
+
+    /**
+     * The step to take for this key-down, or null to wait (steps are rate-limited). The first
+     * press is [tapMs] (the skip length from Settings); a hold ramps from there.
+     */
+    fun step(repeatCount: Int, now: Long, tapMs: Long): Long? {
         if (repeatCount == 0) {
-            holdStartedAt = now
-            lastStepAt = now
-            held = false
-            return TAP_STEP_MS
+            prime(now)
+            return tapMs
         }
         held = true
         if (now - lastStepAt < STEP_EVERY_MS) return null
         lastStepAt = now
         val heldFor = now - holdStartedAt
         return when {
-            heldFor < 2_000L -> TAP_STEP_MS
+            heldFor < 2_000L -> maxOf(tapMs, 10_000L)
             heldFor < 5_000L -> 30_000L
             heldFor < 10_000L -> 60_000L
             else -> 120_000L
@@ -160,7 +168,6 @@ class HoldScrub {
     }
 
     private companion object {
-        const val TAP_STEP_MS = 10_000L
         const val STEP_EVERY_MS = 200L
     }
 }
@@ -251,26 +258,38 @@ fun TvPlayerScreen(
     var scrubTotalMs by remember { mutableLongStateOf(0L) }
     var scrubShownAt by remember { mutableLongStateOf(0L) }
     fun scrubStep(forward: Boolean, repeatCount: Int) {
-        val step = scrub.step(repeatCount, SystemClock.uptimeMillis()) ?: return
+        val tap = if (forward) skipAheadMs else skipBackMs
+        val step = scrub.step(repeatCount, SystemClock.uptimeMillis(), tap) ?: return
         val delta = if (forward) step else -step
         seekBy(delta)
         scrubTotalMs = if (repeatCount == 0) delta else scrubTotalMs + delta
         scrubShownAt = SystemClock.uptimeMillis()
         showControls()
     }
-    /** Key handling for a fast-forward or rewind button: OK held keeps going. */
+    /**
+     * Key handling for a fast-forward or rewind button. The first press is left to the button's
+     * own click (on release); repeats while OK is held step through the ramp, and the release
+     * after a hold is swallowed so it doesn't count as a click.
+     */
     fun scrubKeys(forward: Boolean): (KeyEvent) -> Boolean = handler@{ event ->
         val confirm = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
-        if (!confirm) return@handler false
-        when (event.type) {
-            KeyEventType.KeyDown -> {
-                scrubStep(forward, event.nativeKeyEvent.repeatCount)
-                true
-            }
-            // The release after a hold is not another press.
-            KeyEventType.KeyUp -> scrub.release()
-            else -> false
+        if (!confirm || event.type != KeyEventType.KeyDown) return@handler false
+        val repeat = event.nativeKeyEvent.repeatCount
+        if (repeat == 0) {
+            scrub.prime(SystemClock.uptimeMillis())
+            false
+        } else {
+            scrubStep(forward, repeat)
+            true
         }
+    }
+    /** The click of a fast-forward or rewind button: a tap skips, a release after a hold doesn't. */
+    fun scrubClick(forward: Boolean) {
+        if (scrub.release()) return
+        seekBy(if (forward) skipAheadMs else -skipBackMs)
+        scrubTotalMs = if (forward) skipAheadMs else -skipBackMs
+        scrubShownAt = SystemClock.uptimeMillis()
+        showControls()
     }
     LaunchedEffect(scrubShownAt) {
         if (scrubShownAt == 0L) return@LaunchedEffect
@@ -600,20 +619,13 @@ fun TvPlayerScreen(
                         TvIconActionButton(
                             icon = Icons.Rounded.FastRewind,
                             contentDescription = stringResource(R.string.dial_player_rewind, preferences.skipBackSeconds),
-                            onClick = {
-                                // OK is handled by scrubKeys; this is for a tap on a touch screen.
-                                seekBy(-skipBackMs)
-                                showControls()
-                            },
+                            onClick = { scrubClick(forward = false) },
                             onKey = scrubKeys(forward = false),
                         )
                         TvIconActionButton(
                             icon = Icons.Rounded.FastForward,
                             contentDescription = stringResource(R.string.dial_player_forward, preferences.skipAheadSeconds),
-                            onClick = {
-                                seekBy(skipAheadMs)
-                                showControls()
-                            },
+                            onClick = { scrubClick(forward = true) },
                             onKey = scrubKeys(forward = true),
                         )
                         TvIconActionButton(
