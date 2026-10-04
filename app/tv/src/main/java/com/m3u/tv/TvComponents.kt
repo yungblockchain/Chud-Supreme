@@ -335,6 +335,7 @@ private fun RailItem(
         drawGlow = false,
         raiseOnFocus = false,
         transparent = markOnly,
+        outlined = !markOnly,
         modifier = Modifier
             .padding(horizontal = RAIL_ITEM_INSET)
             .fillMaxWidth()
@@ -508,6 +509,8 @@ fun FocusFrame(
     /** Side-menu rows stay flat. A glow or raised layer paints over the screen while scrolling. */
     drawGlow: Boolean = true,
     raiseOnFocus: Boolean = true,
+    /** The hairline around an unfocused frame (off for the hidden menu's marks). */
+    outlined: Boolean = true,
     content: @Composable BoxScope.(focused: Boolean) -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -582,6 +585,7 @@ fun FocusFrame(
                     color = when {
                         focused -> ringColor
                         selected -> TvColors.Focus.copy(alpha = if (focusStyle == SkinFocus.Fill) 1f else 0.6f)
+                        !outlined -> Color.Transparent
                         else -> TvColors.TextPrimary.copy(alpha = 0.08f)
                     }
                 ),

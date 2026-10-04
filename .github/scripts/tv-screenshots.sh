@@ -58,6 +58,9 @@ type_text() {
     press $OK
     sleep 1
     hide_keyboard
+    # Clear whatever the field already holds (a fresh install pre-fills the login).
+    adb shell input keyevent 123 $(printf '67 %.0s' $(seq 1 90))
+    sleep 1
     for (( i = 0; i < ${#text}; i += 4 )); do
         adb shell input text "${text:i:4}"
         sleep 0.4
@@ -141,16 +144,17 @@ if check "launch"; then
     open_tab settings 8;  shot 12-settings
     press $RIGHT; for _ in 1 2 3 4 5 6 7 8; do press $DOWN; done; sleep 1; shot 13-settings-more
     # The settings tabs: Appearance (skins), Playback and Services.
-    open_tab settings 8; press $RIGHT $RIGHT $OK; sleep 2; shot 15-settings-appearance
+    # Focus starts on the first tab; Appearance is the second.
+    open_tab settings 8; press $RIGHT $OK; sleep 2; shot 15-settings-appearance
     # Down to the skin row and along it: each skin applies as it's chosen.
     press $DOWN; sleep 1; press $RIGHT $OK; sleep 2; shot 15a-skin-charcoal
     press $RIGHT $OK; sleep 2; shot 15b-skin-glass
     press $RIGHT $RIGHT $RIGHT $RIGHT $OK; sleep 2; shot 15c-skin-neon-city
     open_tab home 8; shot 15d-home-neon-city
-    open_tab settings 8; press $RIGHT $RIGHT $OK; sleep 1; press $DOWN; sleep 1; press $OK; sleep 2; shot 15e-skin-black-again
+    open_tab settings 8; press $RIGHT $OK; sleep 1; press $DOWN; sleep 1; press $OK; sleep 2; shot 15e-skin-black-again
     # Font and focus rows further down.
     for _ in 1 2 3 4 5 6 7; do press $DOWN; done; sleep 1; shot 15f-appearance-type
-    open_tab settings 8; press $RIGHT $RIGHT $RIGHT $OK; sleep 2; shot 15g-settings-playback
+    open_tab settings 8; press $RIGHT $RIGHT $OK; sleep 2; shot 15g-settings-playback
     press $RIGHT $OK; sleep 2; shot 16-settings-services
     check "settings"
 
