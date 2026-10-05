@@ -711,12 +711,12 @@ class YouTubeViewModel @Inject constructor(
                 val items = runCatching {
                     when (section) {
                         YtSection.Live -> YouTubeClient.kiosk("live", if (force) 0L else LIVE_TTL_MS)
-                        YtSection.Trending -> YouTubeClient.kiosk("Trending", if (force) 0L else KIOSK_TTL_MS)
-                        YtSection.Music -> YouTubeClient.kiosk("trending_music", if (force) 0L else KIOSK_TTL_MS)
-                        YtSection.Gaming -> YouTubeClient.kiosk("trending_gaming", if (force) 0L else KIOSK_TTL_MS)
-                        YtSection.Trailers -> YouTubeClient.kiosk("trending_movies_and_shows", if (force) 0L else KIOSK_TTL_MS)
-                        YtSection.Podcasts -> YouTubeClient.kiosk("trending_podcasts_episodes", if (force) 0L else KIOSK_TTL_MS)
-                        is YtSection.Followed -> YouTubeClient.channelVideos(section.channel, if (force) 0L else CHANNEL_TTL_MS)
+                        YtSection.Trending -> YouTubeClient.kiosk("Trending", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
+                        YtSection.Music -> YouTubeClient.kiosk("trending_music", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
+                        YtSection.Gaming -> YouTubeClient.kiosk("trending_gaming", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
+                        YtSection.Trailers -> YouTubeClient.kiosk("trending_movies_and_shows", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
+                        YtSection.Podcasts -> YouTubeClient.kiosk("trending_podcasts_episodes", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
+                        is YtSection.Followed -> YouTubeClient.channelVideos(section.channel, if (force) 0L else YouTubeClient.CHANNEL_TTL_MS)
                         else -> emptyList()
                     }
                 }.onFailure { if (it is CancellationException) throw it }
