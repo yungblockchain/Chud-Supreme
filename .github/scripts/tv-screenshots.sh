@@ -181,6 +181,10 @@ if check "launch"; then
         press $RIGHT; sleep 3; shot 22-guide-focus
         press $DOWN; sleep 3;  shot 23-guide-next
         open_tab account 8;   shot 24-account
+        # Infinity: the hero and rows, then the Rows and look page.
+        open_tab infinite 10; shot 40-infinity
+        press $RIGHT $RIGHT $RIGHT $RIGHT $RIGHT; sleep 1; press $OK; sleep 2; shot 41-infinity-rows
+        press $BACK; sleep 1
     fi
     check "walkthrough"
 

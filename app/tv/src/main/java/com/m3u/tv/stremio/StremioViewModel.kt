@@ -27,7 +27,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class StremioPage { Browse, Details, Streams, Addons }
+enum class StremioPage { Browse, Details, Streams, Addons, Rows }
+
+private const val MAX_ROW_NAME = 40
 
 @Immutable
 data class StremioUiState(
@@ -57,6 +59,7 @@ data class StremioUiState(
     val subtitles: List<StreamSource> = emptyList(),
     val traktUser: String? = null,
     val traktCode: String? = null,
+    val layout: InfinityLayout = InfinityLayout(),
     val traktUrl: String? = null,
 )
 
@@ -70,6 +73,7 @@ class StremioViewModel @Inject constructor(
     private val playlistDao: PlaylistDao,
     private val playerManager: PlayerManager,
     private val trakt: TraktService,
+    private val layoutStore: InfinityLayoutStore,
 ) : ViewModel() {
     private val _state = MutableStateFlow(StremioUiState())
     val state: StateFlow<StremioUiState> = _state.asStateFlow()
@@ -98,6 +102,9 @@ class StremioViewModel @Inject constructor(
             } catch (_: Exception) {
                 // A bad saved addon must not take the settings page down with it.
             }
+        }
+        viewModelScope.launch {
+            layoutStore.layout.collect { layout -> _state.update { it.copy(layout = layout) } }
         }
         // One Trakt sign-in for the whole app (Settings > Services owns it); this page mirrors it.
         viewModelScope.launch {
@@ -201,6 +208,26 @@ class StremioViewModel @Inject constructor(
     fun setSearchKind(kind: String) = _state.update { it.copy(searchKind = kind) }
 
     fun setShelf(shelf: String) = _state.update { it.copy(shelf = shelf, page = StremioPage.Browse, message = null) }
+
+    /* ------------------------------------------------------------------------ row layout */
+
+    fun openRows() = _state.update { it.copy(page = StremioPage.Rows, message = null) }
+
+    fun toggleRowHidden(key: String) = layoutStore.updateRow(key) { it.copy(hidden = !it.hidden) }
+
+    fun renameRow(key: String, name: String) = layoutStore.updateRow(key) { it.copy(name = name.trim().take(MAX_ROW_NAME).ifBlank { null }) }
+
+    fun moveRow(key: String, delta: Int) = layoutStore.move(_state.value.layout.arrange(_state.value.rows), key, delta)
+
+    fun setCardStyle(style: CardStyle) = layoutStore.update { it.copy(cardStyle = style) }
+
+    fun setContinueStyle(style: CardStyle) = layoutStore.update { it.copy(continueStyle = style) }
+
+    fun setHero(enabled: Boolean) = layoutStore.update { it.copy(hero = enabled) }
+
+    fun setRatingsOnCards(enabled: Boolean) = layoutStore.update { it.copy(ratingsOnCards = enabled) }
+
+    fun resetLayout() = layoutStore.reset()
 
     fun openAddons() = _state.update {
         it.copy(
@@ -412,6 +439,7 @@ class StremioViewModel @Inject constructor(
             StremioPage.Streams -> StremioPage.Details
             StremioPage.Details -> StremioPage.Browse
             StremioPage.Addons -> StremioPage.Browse
+            StremioPage.Rows -> StremioPage.Browse
             StremioPage.Browse -> return false
         }
         _state.update { it.copy(page = next, resolving = null, message = null) }

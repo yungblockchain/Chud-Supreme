@@ -810,4 +810,33 @@
     <string name="dial_services_omdb_hint">IMDb, Rotten Tomatoes and Metacritic scores (used when there is no MDBList key). Free at omdbapi.com.</string>
     <string name="dial_services_fanart">fanart.tv API key</string>
     <string name="dial_services_fanart_hint">Extra logos and clear art. Free at fanart.tv › API.</string>
+    <!-- Infinity layout (stage 3) -->
+    <string name="dial_infinity_shelf_home">Home</string>
+    <string name="dial_infinity_shelf_library">Library</string>
+    <string name="dial_infinity_shelf_upnext">Up next</string>
+    <string name="dial_infinity_shelf_calendar">Calendar</string>
+    <string name="dial_infinity_rows">Rows and look</string>
+    <string name="dial_infinity_kind_all">All</string>
+    <string name="dial_infinity_kind_films">Films</string>
+    <string name="dial_infinity_kind_series">Series</string>
+    <string name="dial_infinity_empty_library">Nothing saved yet. Open a title and choose Library.</string>
+    <string name="dial_infinity_empty_upnext">Up next fills in after you save a series, or when Trakt has something paused.</string>
+    <string name="dial_infinity_empty_calendar">Nothing on the calendar. Save a series, or sign in to Trakt.</string>
+    <string name="dial_infinity_row_continue">Continue watching</string>
+    <string name="dial_infinity_imdb">IMDb %1$s</string>
+    <string name="dial_infinity_trakt_user">Trakt · %1$s</string>
+    <string name="dial_infinity_look">Look</string>
+    <string name="dial_infinity_card_style">Cards</string>
+    <string name="dial_infinity_poster">Posters</string>
+    <string name="dial_infinity_landscape">Landscape</string>
+    <string name="dial_infinity_continue_style">Continue-watching cards</string>
+    <string name="dial_infinity_hero">Big picture behind the page</string>
+    <string name="dial_infinity_ratings_on_cards">Ratings on cards</string>
+    <string name="dial_infinity_rows_hint">OK hides or shows a row. Left and Right move it. Rename gives it your own name.</string>
+    <string name="dial_infinity_rename">Rename</string>
+    <string name="dial_infinity_original_name">Use the addon’s name</string>
+    <string name="dial_infinity_row_name">Row name</string>
+    <string name="dial_infinity_reset_layout">Put every row back as it was</string>
+    <string name="dial_infinity_in_library">In your library</string>
+    <string name="dial_infinity_add_library">Add to library</string>
 </resources>
