@@ -75,7 +75,12 @@ class ProfilesViewModel @Inject constructor(
     fun add(name: String, face: String, pin: String?, kids: Boolean, minutes: Int) = store.add(name, face, pin, kids, minutes)
     fun rename(id: String, name: String) = store.update(id) { it.copy(name = name.trim().take(24).ifBlank { it.name }) }
     fun setFace(id: String, face: String) = store.update(id) { it.copy(face = face) }
-    fun setKids(id: String, kids: Boolean) = store.update(id) { it.copy(kids = kids) }
+    /** False when this would leave no grown-up profile. */
+    fun setKids(id: String, kids: Boolean): Boolean {
+        if (kids && !store.canBeKids(id)) return false
+        store.update(id) { it.copy(kids = kids) }
+        return true
+    }
     fun setMinutes(id: String, minutes: Int) = store.update(id) { it.copy(kidsMinutes = minutes.coerceIn(0, ProfileStore.MAX_KIDS_MINUTES)) }
     fun setPin(id: String, pin: String?) = store.setPin(id, pin)
     fun remove(id: String) = store.remove(id)
@@ -316,6 +321,11 @@ fun ProfilesSettingsScreen(
     var pinDraft by rememberSaveable { mutableStateOf("") }
     val on = stringResource(R.string.dial_value_on)
     val off = stringResource(R.string.dial_value_off)
+    val addFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { addFocus.requestFocus() }
+    }
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -337,6 +347,7 @@ fun ProfilesSettingsScreen(
                     text = stringResource(R.string.dial_profiles_add),
                     icon = Icons.Rounded.PersonAdd,
                     selected = adding,
+                    focusRequester = addFocus,
                     onClick = { adding = !adding },
                 )
                 if (profiles.size > 1 || profiles.any { it.hasPin }) {
@@ -415,7 +426,11 @@ fun ProfilesSettingsScreen(
                 )
                 SettingRow(
                     label = stringResource(R.string.dial_profiles_kids),
-                    value = if (profile.kids) on else off,
+                    value = when {
+                        profile.kids -> on
+                        !profile.kids && profiles.none { it.id != profile.id && !it.kids } -> stringResource(R.string.dial_profiles_kids_needs_adult)
+                        else -> off
+                    },
                     onClick = { viewModel.setKids(profile.id, !profile.kids) },
                 )
                 if (profile.kids) {

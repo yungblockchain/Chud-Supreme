@@ -151,8 +151,16 @@ class ProfileStore @Inject constructor(
             }
         )
         prefs.edit().putString(KEY_PROFILES, json.toString()).apply()
-        _active.value?.let { current -> _active.value = profiles.firstOrNull { it.id == current.id } ?: current }
+        // Name, face and PIN changes show at once; the kids switch only applies when the profile is
+        // next picked, so a slip on one row can't lock the person out of the settings they're in.
+        _active.value?.let { current ->
+            val updated = profiles.firstOrNull { it.id == current.id } ?: current
+            _active.value = updated.copy(kids = current.kids, kidsMinutes = current.kidsMinutes)
+        }
     }
+
+    /** True when [id] may become a kids profile: another, grown-up profile must remain. */
+    fun canBeKids(id: String): Boolean = _profiles.value.any { it.id != id && !it.kids }
 
     private fun read(): List<Profile> {
         val raw = prefs.getString(KEY_PROFILES, null)

@@ -924,4 +924,5 @@
     <string name="dial_profiles_kids_only">This is a kids profile. A grown-up can switch profiles from here; everything else is in their profile.</string>
     <string name="dial_profiles_gate">Profile settings are kept behind a grown-up’s PIN.</string>
     <string name="dial_profiles_gate_pin">A grown-up’s PIN</string>
+    <string name="dial_profiles_kids_needs_adult">Off · add a grown-up profile first</string>
 </resources>
