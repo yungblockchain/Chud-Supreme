@@ -285,7 +285,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
             .fillMaxSize()
             .focusGroup(),
     ) {
-        item {
+        item(key = "add-title") {
             Text(
                 text = stringResource(R.string.dial_files_add),
                 color = TvColors.TextPrimary,
@@ -294,7 +294,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
                 fontSize = 24.sp,
             )
         }
-        item {
+        item(key = "add-kinds") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ShareKind.entries.forEachIndexed { index, option ->
                     TvActionButton(
@@ -310,7 +310,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
         // Shares announcing themselves on the network: OK fills the address in.
         val nearby = found.filter { it.kind == kind }
         if (nearby.isNotEmpty()) {
-            item {
+            item(key = "add-found") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = stringResource(R.string.dial_files_found),
@@ -333,7 +333,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
                 }
             }
         }
-        item {
+        item(key = "add-hint") {
             Text(
                 text = stringResource(if (kind == ShareKind.Smb) R.string.dial_files_smb_hint else R.string.dial_files_webdav_hint),
                 color = TvColors.TextSecondary,
@@ -342,7 +342,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
                 modifier = Modifier.widthIn(max = 860.dp),
             )
         }
-        item {
+        item(key = "add-fields") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.widthIn(max = 720.dp)) {
                 DialTextField(
                     label = stringResource(if (kind == ShareKind.Smb) R.string.dial_files_host else R.string.dial_files_url),
@@ -402,7 +402,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
                 )
             }
         }
-        item {
+        item(key = "add-buttons") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(
                     text = stringResource(R.string.dial_files_save),

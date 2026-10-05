@@ -24,12 +24,12 @@ import com.m3u.data.repository.extension.ExtensionSettingUpdateResult
 import com.m3u.data.repository.extension.ExtensionSettingsConfiguration
 import com.m3u.data.repository.extension.ExtensionSettingsRepository
 import com.m3u.data.repository.playlist.PlaylistRepository
-import com.m3u.data.repository.programme.ProgrammeRepository
 import com.m3u.data.repository.plugin.ExtensionPluginRepository
 import com.m3u.data.repository.plugin.InstalledPlugin
 import com.m3u.data.repository.plugin.PluginAuthorizationToken
 import com.m3u.data.repository.plugin.PluginDataClearResult
 import com.m3u.data.repository.plugin.PluginEnableResult
+import com.m3u.data.repository.programme.ProgrammeRepository
 import com.m3u.data.repository.provider.DiscoveredSubscriptionProvider
 import com.m3u.data.repository.provider.ProviderAccountSummary
 import com.m3u.data.repository.provider.ProviderDiscoveryException
@@ -37,10 +37,10 @@ import com.m3u.data.repository.provider.SubscriptionProviderRepository
 import com.m3u.data.repository.tv.TvRepository
 import com.m3u.data.service.DPadReactionService
 import com.m3u.data.service.MediaCommand
-import com.m3u.tv.stremio.StremioIds
 import com.m3u.data.service.PlayerManager
 import com.m3u.extension.api.ExtensionId
 import com.m3u.extension.api.subscription.SubscriptionProviderDescriptor
+import com.m3u.tv.stremio.StremioIds
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Collections
 import java.util.Locale
@@ -50,20 +50,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -149,23 +149,32 @@ class TvHomeViewModel @Inject constructor(
 
     /** The UI state, with logos from the tv-logos collection for live channels that have none. */
     val state: StateFlow<TvUiState> = combine(_state, logos.index) { current, index ->
-        if (index.isEmpty()) current else withLogos(current)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, TvUiState())
+        if (index.isEmpty()) current else withLogos(current, index)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, TvUiState())
 
-    private fun withLogos(current: TvUiState): TvUiState {
+    // The last list filled for each field, so an update that didn't touch a list costs nothing.
+    // Only used from the combine above (one coroutine at a time).
+    private val logoMemo = HashMap<String, Triple<List<Channel>, Any, List<Channel>>>()
+
+    private fun withLogos(current: TvUiState, index: Any): TvUiState {
         val live = current.playlists.filter { !it.isVod && !it.isSeries }.map { it.url }.toSet()
         fun Channel.wantsLogo() = cover.isNullOrBlank() && playlistUrl in live
-        fun fill(channels: List<Channel>): List<Channel> {
-            if (channels.none { it.wantsLogo() }) return channels
-            return channels.map { channel ->
-                if (!channel.wantsLogo()) channel else logos.logoFor(channel.title)?.let { channel.copy(cover = it) } ?: channel
-            }
+        fun Channel.withLogo(): Channel =
+            if (!wantsLogo()) this else logos.logoFor(title)?.let { copy(cover = it) } ?: this
+        fun fill(field: String, channels: List<Channel>): List<Channel> {
+            logoMemo[field]?.let { (input, forIndex, output) -> if (input === channels && forIndex === index) return output }
+            val output = if (channels.none { it.wantsLogo() }) channels else channels.map { it.withLogo() }
+            logoMemo[field] = Triple(channels, index, output)
+            return output
         }
         return current.copy(
-            channels = fill(current.channels),
-            favorites = fill(current.favorites),
-            recentlyPlayed = fill(current.recentlyPlayed),
-            searchResults = fill(current.searchResults),
+            channels = fill("channels", current.channels),
+            favorites = fill("favorites", current.favorites),
+            recentlyPlayed = fill("recent", current.recentlyPlayed),
+            searchResults = fill("search", current.searchResults),
+            recent = current.recent?.withLogo(),
         )
     }
 

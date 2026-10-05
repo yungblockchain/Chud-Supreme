@@ -37,29 +37,40 @@ class ChannelLogos @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val cacheFile: File get() = File(context.filesDir, CACHE_NAME)
 
-    /** Matching name to file path in the collection; empty until loaded. */
-    private val _index = MutableStateFlow<Map<String, String>>(emptyMap())
-    val index: StateFlow<Map<String, String>> = _index.asStateFlow()
-    private val looked = ConcurrentHashMap<String, String>()
+    /** Matching name to its files, by country folder; empty until loaded. */
+    private val _index = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+    val index: StateFlow<Map<String, Map<String, String>>> = _index.asStateFlow()
+    private val looked = ConcurrentHashMap<String, Pair<String, String?>>()
+
+    /** The country folder of this device's country ("united-kingdom"), in English like the collection's. */
+    private val home: String = folderOf(Locale.getDefault().country)
 
     init {
         scope.launch { load() }
     }
 
-    /** The logo address for [title], or null. */
+    /**
+     * The logo address for [title], or null. The provider's country prefix ("UK:", "PL |") picks
+     * the country; otherwise this device's country; otherwise only a name that one country has.
+     */
     fun logoFor(title: String): String? {
         val index = _index.value
         if (index.isEmpty()) return null
-        val key = looked.getOrPut(title) { nameKey(title) }
-        return index[key]?.let { RAW + it }
+        val (key, prefixCountry) = looked.getOrPut(title) { nameKey(title) }
+        val byCountry = index[key] ?: return null
+        val path = prefixCountry?.let(byCountry::get)
+            ?: byCountry[home]
+            ?: byCountry.values.singleOrNull()
+            ?: return null
+        return RAW + path
     }
 
     private fun load() {
         val cached = runCatching { cacheFile.takeIf { it.exists() }?.readText() }.getOrNull()
         val fresh = cacheFile.exists() && System.currentTimeMillis() - cacheFile.lastModified() < REFRESH_MS
         cached?.let { text -> _index.value = build(text.lineSequence()) }
-        if (fresh && cached != null) return
-        val paths = fetchPaths() ?: return
+        if (fresh && !cached.isNullOrBlank()) return
+        val paths = fetchPaths()?.takeIf { it.isNotEmpty() } ?: return
         runCatching { cacheFile.writeText(paths.joinToString("\n")) }
         _index.value = build(paths.asSequence())
     }
@@ -89,28 +100,40 @@ class ChannelLogos @Inject constructor(
         }
     }
 
-    /** Name key to path; the person's own country wins when two countries share a name. */
-    private fun build(paths: Sequence<String>): Map<String, String> {
-        val home = Locale.getDefault().displayCountry.lowercase(Locale.ROOT).replace(' ', '-')
-        val out = HashMap<String, String>()
+    /** Name key to (country folder to path). */
+    private fun build(paths: Sequence<String>): Map<String, Map<String, String>> {
+        val out = HashMap<String, HashMap<String, String>>()
         paths.filter { it.isNotBlank() }.forEach { path ->
             val parts = path.split('/')
-            if (parts.size < 3) return@forEach
+            // countries/<country>/<file>.png only (not the obsolete, old or screen-bug folders).
+            if (parts.size != 3 || parts[0] != "countries") return@forEach
             val country = parts[1]
             val file = parts.last().substringBeforeLast('.')
             // "bbc-one-uk": the last part is the country's code.
             val name = file.substringBeforeLast('-', file).takeIf { file.substringAfterLast('-').length in 2..3 } ?: file
             val key = compact(name)
             if (key.length < MIN_KEY) return@forEach
-            if (!out.containsKey(key) || country == home) out[key] = path
+            out.getOrPut(key) { HashMap() }.putIfAbsent(country, path)
         }
         return out
     }
 
-    private fun nameKey(title: String): String {
+    /** The name key, and the country folder its prefix names (if any). */
+    private fun nameKey(title: String): Pair<String, String?> {
         val base = ChannelVariants.key(title)
-        return compact(COUNTRY_PREFIX.replace(base, ""))
+        val prefix = COUNTRY_PREFIX.find(base)?.groupValues?.get(1)
+        val code = when (prefix) {
+            null -> null
+            "uk" -> "GB"
+            "usa" -> "US"
+            else -> prefix.uppercase(Locale.ROOT)
+        }
+        return compact(COUNTRY_PREFIX.replace(base, "")) to code?.let(::folderOf)
     }
+
+    /** "GB" to "united-kingdom": the collection names its folders by country in English. */
+    private fun folderOf(code: String): String =
+        Locale("", code).getDisplayCountry(Locale.ENGLISH).lowercase(Locale.ROOT).replace(' ', '-')
 
     private fun compact(text: String): String = text.lowercase(Locale.ROOT).replace(NOT_WORD, "").replace("&", "and")
 

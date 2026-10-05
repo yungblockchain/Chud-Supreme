@@ -4,6 +4,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -35,33 +36,49 @@ object AniSkip {
     fun looksLikeAnime(category: String?, genre: String?): Boolean =
         ANIME.containsMatchIn(listOfNotNull(category, genre).joinToString(" ").lowercase(Locale.ROOT))
 
-    suspend fun markers(title: String, season: Int, episode: Int): SkipMarkers? = withContext(Dispatchers.IO) {
+    /**
+     * This episode's opening and ending as skip markers. [lengthMs] (when known) must be close to
+     * the length AniSkip timed, or the times belong to another cut or another show.
+     */
+    suspend fun markers(title: String, season: Int, episode: Int, lengthMs: Long = 0L): SkipMarkers? = withContext(Dispatchers.IO) {
         val mal = malId(title, season) ?: return@withContext null
         val root = getJson(json, "https://api.aniskip.com/v2/skip-times/$mal/$episode?types%5B%5D=op&types%5B%5D=ed&episodeLength=0")
             as? JsonObject ?: return@withContext null
         if (root["found"]?.jsonPrimitive?.booleanOrNull != true) return@withContext null
         var markers = SkipMarkers()
+        var timedLength = 0.0
         (root["results"] as? JsonArray).orEmpty().forEach { element ->
             val item = element as? JsonObject ?: return@forEach
             val interval = item["interval"] as? JsonObject ?: return@forEach
             val start = interval["startTime"]?.jsonPrimitive?.doubleOrNull ?: return@forEach
             val end = interval["endTime"]?.jsonPrimitive?.doubleOrNull ?: return@forEach
             val length = item["episodeLength"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+            if (length > 0) timedLength = length
             when (item["skipType"]?.jsonPrimitive?.contentOrNull) {
                 "op" -> if (end > start) markers = markers.copy(introStartMs = (start * 1000).toLong(), introEndMs = (end * 1000).toLong())
                 "ed" -> if (length > start) markers = markers.copy(creditsFromEndMs = ((length - start) * 1000).toLong())
             }
         }
+        if (lengthMs > 0 && timedLength > 0 && abs(lengthMs - timedLength * 1000) > LENGTH_TOLERANCE_MS) {
+            return@withContext null
+        }
         markers.takeUnless { it.isEmpty }
     }
+
+    private const val LENGTH_TOLERANCE_MS = 120_000L
 
     private fun malId(title: String, season: Int): Int? {
         val key = "${normalise(title)}|$season"
         ids[key]?.let { return it.takeIf { id -> id > 0 } }
         val base = normalise(title)
         val searches = if (season <= 1) listOf(title) else listOf("$title season $season", "$title $season")
+        var failed = false
         val found = searches.firstNotNullOfOrNull { query ->
-            search(query).firstOrNull { (names, _) ->
+            val results = search(query) ?: run {
+                failed = true
+                return@firstNotNullOfOrNull null
+            }
+            results.firstOrNull { (names, _) ->
                 names.any { name ->
                     val candidate = normalise(name)
                     if (season <= 1) candidate == base
@@ -69,12 +86,13 @@ object AniSkip {
                 }
             }?.second
         }
-        ids[key] = found ?: 0
+        // A lookup that failed (network, rate limit) is tried again next time; "not anime" is kept.
+        if (found != null || !failed) ids[key] = found ?: 0
         return found
     }
 
-    /** AniList's matches for [query]: their titles, and MyAnimeList ids. */
-    private fun search(query: String): List<Pair<List<String>, Int>> {
+    /** AniList's matches for [query]: their titles, and MyAnimeList ids; null when it couldn't ask. */
+    private fun search(query: String): List<Pair<List<String>, Int>>? {
         val body = buildJsonObject {
             put(
                 "query",
@@ -93,7 +111,7 @@ object AniSkip {
                 setRequestProperty("Accept", "application/json")
             }
             connection.outputStream.use { it.write(body.toByteArray()) }
-            if (connection.responseCode != 200) return emptyList()
+            if (connection.responseCode != 200) return null
             val root = json.parseToJsonElement(connection.inputStream.bufferedReader().use { it.readText() }) as? JsonObject
             val media = ((root?.get("data") as? JsonObject)?.get("Page") as? JsonObject)?.get("media") as? JsonArray
             media.orEmpty().mapNotNull { element ->
@@ -107,7 +125,7 @@ object AniSkip {
                 names to mal
             }
         } catch (e: Exception) {
-            emptyList()
+            null
         } finally {
             connection?.disconnect()
         }

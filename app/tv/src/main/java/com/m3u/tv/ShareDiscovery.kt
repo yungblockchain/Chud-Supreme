@@ -4,12 +4,12 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleStartEffect
 import java.net.Inet4Address
 
 /* -------------------------------------------------------------------------------------------------
@@ -78,10 +78,10 @@ private class ShareDiscovery(context: Context, private val onChange: (List<Found
                 override fun onServiceResolved(resolved: NsdServiceInfo) {
                     @Suppress("DEPRECATION")
                     val host = resolved.host
-                    // IPv4 where there is one: it's what people type and what SMB servers expect.
-                    val address = (host as? Inet4Address)?.hostAddress ?: host?.hostAddress
+                    // IPv4 only: it's what people type, and what fits in an address as it is.
+                    val address = (host as? Inet4Address)?.hostAddress
                     if (address != null) {
-                        val share = FoundShare(resolved.serviceName, address, resolved.port, kind)
+                        val share = FoundShare(info.serviceName, address, resolved.port, kind)
                         synchronized(this@ShareDiscovery) { found["${kind.name}:$address:${resolved.port}"] = share }
                         if (!stopped) onChange(synchronized(this@ShareDiscovery) { found.values.toList() })
                     }
@@ -91,7 +91,10 @@ private class ShareDiscovery(context: Context, private val onChange: (List<Found
                 override fun onResolveFailed(failed: NsdServiceInfo, errorCode: Int) = done()
             })
         }.isSuccess
-        if (!started) resolving = false
+        if (!started) {
+            resolving = false
+            next()
+        }
     }
 
     @Synchronized
@@ -105,15 +108,15 @@ private class ShareDiscovery(context: Context, private val onChange: (List<Found
     }
 }
 
-/** The shares announcing themselves on the network, while this is on screen. */
+/** The shares announcing themselves on the network, while this is on screen (and the app in front). */
 @Composable
 fun rememberFoundShares(): State<List<FoundShare>> {
     val context = LocalContext.current
     val state = remember { mutableStateOf<List<FoundShare>>(emptyList()) }
-    DisposableEffect(Unit) {
+    LifecycleStartEffect(Unit) {
         val discovery = ShareDiscovery(context.applicationContext) { shares -> state.value = shares }
         discovery.start()
-        onDispose { discovery.stop() }
+        onStopOrDispose { discovery.stop() }
     }
     return state
 }

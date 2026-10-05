@@ -1256,6 +1256,9 @@
     <string name="dial_quiz_again">Play again</string>
     <string name="dial_quiz_other_topic">Another topic</string>
     <string name="dial_quiz_progress">Question %1$d of %2$d · %3$s</string>
+    <string name="dial_quiz_easy">easy</string>
+    <string name="dial_quiz_medium">medium</string>
+    <string name="dial_quiz_hard">hard</string>
     <string name="dial_setting_aniskip">Anime intro and ending times (AniSkip)</string>
     <string name="dial_files_found">Found on your network</string>
 </resources>

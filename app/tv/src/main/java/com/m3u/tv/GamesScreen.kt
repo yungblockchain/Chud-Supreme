@@ -8,15 +8,16 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -112,9 +114,12 @@ private fun GamesMenu(
     onPlay: (MiniGame) -> Unit,
 ) {
     val requesters = remember { MiniGame.entries.associateWith { FocusRequester() } }
+    // Back from a game: its card scrolled into view (off-screen cards don't exist yet), then focused.
+    val rowState = rememberLazyListState(initialFirstVisibleItemIndex = focusOn?.ordinal ?: 0)
     LaunchedEffect(focusOn) {
         val target = focusOn ?: return@LaunchedEffect
-        yield()
+        rowState.scrollToItem(target.ordinal)
+        withFrameNanos { }
         runCatching { requesters.getValue(target).requestFocus() }
     }
     Column(
@@ -136,8 +141,9 @@ private fun GamesMenu(
             fontSize = 16.sp,
         )
         LazyRow(
+            state = rowState,
             horizontalArrangement = Arrangement.spacedBy(24.dp),
-            contentPadding = PaddingValues(vertical = 12.dp, horizontal = 4.dp),
+            contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp),
         ) {
             items(MiniGame.entries) { game ->
                 FocusFrame(

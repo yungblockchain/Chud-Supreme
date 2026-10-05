@@ -163,6 +163,7 @@ internal fun QuizGame(best: Int, onGameOver: (Int) -> Unit) {
             failed -> {
                 Note(stringResource(R.string.dial_quiz_failed))
                 QuizButton(text = stringResource(R.string.dial_quiz_retry), icon = Icons.Rounded.Refresh, focus = true, onClick = { round++ })
+                QuizButton(text = stringResource(R.string.dial_quiz_other_topic), icon = Icons.Rounded.Shuffle, focus = false, onClick = { topic = null })
             }
             finished -> {
                 Note(stringResource(R.string.dial_quiz_done, right, questions.size, score))
@@ -171,7 +172,18 @@ internal fun QuizGame(best: Int, onGameOver: (Int) -> Unit) {
             }
             question != null -> {
                 Text(
-                    text = stringResource(R.string.dial_quiz_progress, index + 1, questions.size, question.difficulty),
+                    text = stringResource(
+                        R.string.dial_quiz_progress,
+                        index + 1,
+                        questions.size,
+                        stringResource(
+                            when (question.difficulty) {
+                                "easy" -> R.string.dial_quiz_easy
+                                "hard" -> R.string.dial_quiz_hard
+                                else -> R.string.dial_quiz_medium
+                            }
+                        ),
+                    ),
                     color = TvColors.TextMuted,
                     fontFamily = TvFonts.Body,
                     fontSize = 14.sp,

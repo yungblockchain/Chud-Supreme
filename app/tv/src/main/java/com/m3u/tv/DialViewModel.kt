@@ -164,13 +164,18 @@ class DialViewModel @Inject constructor(
 
     fun updateSkipMarkers(transform: (SkipMarkers) -> SkipMarkers) {
         val series = _nowPlaying.value?.series ?: return
-        val next = transform(_skipMarkers.value)
+        // AniSkip's times belong to one episode: an edit starts from the series' own markers.
+        val base = if (markersFromAniSkip) store.skipMarkers(series.id) else _skipMarkers.value
+        markersFromAniSkip = false
+        val next = transform(base)
         _skipMarkers.value = next
         store.saveSkipMarkers(series.id, next)
     }
 
     private var detailsJob: Job? = null
     private var aniSkipJob: Job? = null
+    /** The markers shown now came from AniSkip (this episode only), not the series' saved ones. */
+    private var markersFromAniSkip = false
     private var scheduleJob: Job? = null
     private val nowNextCache = mutableMapOf<Int, TimedListing>()
     private val nowNextInFlight = mutableSetOf<Int>()
@@ -503,14 +508,19 @@ class DialViewModel @Inject constructor(
             // An anime with no markers of its own: this episode's opening and ending from AniSkip.
             aniSkipJob?.cancel()
             val number = episode.episodeNum?.toIntOrNull()
+            markersFromAniSkip = false
             if (_skipMarkers.value.isEmpty && number != null && preferences.value.aniSkip &&
                 AniSkip.looksLikeAnime(series.category, details?.genre)
             ) {
-                val showTitle = details?.title ?: OpenSubtitles.cleanTitle(series.title)
+                val showTitle = OpenSubtitles.cleanTitle(details?.title ?: series.title)
+                val lengthMs = parseDuration(episode.duration)
                 aniSkipJob = viewModelScope.launch {
-                    val found = runCatching { AniSkip.markers(showTitle, episode.season.toIntOrNull() ?: 1, number) }.getOrNull()
+                    val found = runCatching { AniSkip.markers(showTitle, episode.season.toIntOrNull() ?: 1, number, lengthMs) }.getOrNull()
                         ?: return@launch
-                    if (_nowPlaying.value?.episode?.id == episode.id && _skipMarkers.value.isEmpty) _skipMarkers.value = found
+                    if (_nowPlaying.value?.episode?.id == episode.id && _skipMarkers.value.isEmpty) {
+                        _skipMarkers.value = found
+                        markersFromAniSkip = true
+                    }
                 }
             }
             playerManager.play(MediaCommand.XtreamEpisode(series.id, info), applyContinueWatching = resume)
