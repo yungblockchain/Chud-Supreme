@@ -1,6 +1,7 @@
 package com.m3u.tv
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
@@ -148,7 +149,10 @@ fun LyricsPanel(song: String, lyrics: String?, loading: Boolean, modifier: Modif
             fontFamily = TvFonts.Body,
             fontSize = 18.sp,
             lineHeight = 27.sp,
-            modifier = Modifier.verticalScroll(scroll, enabled = false),
+            // Takes what's left, so the credit line underneath always shows.
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(scroll, enabled = false),
         )
         Text(
             text = stringResource(R.string.dial_lyrics_credit),

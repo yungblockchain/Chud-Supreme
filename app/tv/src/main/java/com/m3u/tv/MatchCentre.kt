@@ -1,5 +1,12 @@
 package com.m3u.tv
 
+import android.content.Context
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,16 +27,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SportsMotorsports
 import androidx.compose.material.icons.rounded.SportsSoccer
-import androidx.compose.ui.platform.LocalContext
-import android.content.Context
-import java.util.Locale
-import kotlinx.serialization.json.JsonPrimitive
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,13 +35,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -61,6 +62,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 /*
@@ -207,11 +209,21 @@ fun MatchCentreScreen(
     var showF1 by remember { mutableStateOf(false) }
     var f1 by remember { mutableStateOf<F1Weekend?>(null) }
     var f1Loading by remember { mutableStateOf(false) }
-    LaunchedEffect(showF1, reload) {
+    var f1Reloads by remember { mutableIntStateOf(0) }
+    LaunchedEffect(showF1, f1Reloads) {
         if (!showF1) return@LaunchedEffect
         f1Loading = true
-        f1 = FormulaOne.weekend() ?: f1
-        f1Loading = false
+        try {
+            f1 = FormulaOne.weekend(force = f1Reloads > 0) ?: f1
+        } finally {
+            f1Loading = false
+        }
+    }
+    // The competitions row starts focused on the chosen one.
+    val leagueFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { leagueFocus.requestFocus() }
     }
     val context = LocalContext.current
     var shots by remember { mutableStateOf<List<FootballFeeds.Shot>>(emptyList()) }
@@ -357,7 +369,7 @@ fun MatchCentreScreen(
                 TvActionButton(
                     text = "Refresh",
                     icon = Icons.Rounded.Refresh,
-                    onClick = { reload++ },
+                    onClick = { if (showF1) f1Reloads++ else reload++ },
                 )
             }
         }
@@ -381,6 +393,7 @@ fun MatchCentreScreen(
                             showF1 = false
                             leagueIndex = index
                         },
+                        focusRequester = leagueFocus.takeIf { index == leagueIndex },
                     )
                 }
                 item {
@@ -388,7 +401,10 @@ fun MatchCentreScreen(
                         text = stringResource(R.string.dial_f1_title),
                         icon = Icons.Rounded.SportsMotorsports,
                         selected = showF1,
-                        onClick = { showF1 = true },
+                        onClick = {
+                            if (!showF1 && f1 == null) f1Loading = true
+                            showF1 = true
+                        },
                     )
                 }
             }

@@ -52,9 +52,18 @@ object FormulaOne {
     @Volatile private var cached: F1Weekend? = null
     @Volatile private var cachedAt = 0L
 
-    suspend fun weekend(): F1Weekend? = withContext(Dispatchers.IO) {
-        cached?.takeIf { System.currentTimeMillis() - cachedAt < CACHE_MS }?.let { return@withContext it }
-        val loaded = coroutineScope {
+    /** The F1 weekend; [force] skips the ten-minute cache (Refresh). */
+    suspend fun weekend(force: Boolean = false): F1Weekend? = withContext(Dispatchers.IO) {
+        if (!force) cached?.takeIf { System.currentTimeMillis() - cachedAt < CACHE_MS }?.let { return@withContext it }
+        val loaded = runCatching { load() }.getOrNull() ?: return@withContext cached
+        if (loaded.next == null && loaded.results.isEmpty() && loaded.standings.isEmpty()) return@withContext cached
+        cached = loaded
+        cachedAt = System.currentTimeMillis()
+        loaded
+    }
+
+    private suspend fun load(): F1Weekend = withContext(Dispatchers.IO) {
+        coroutineScope {
             val next = async { races("$BASE/next.json").firstOrNull() }
             val last = async { getJson(json, "$BASE/last/results.json") as? JsonObject }
             val standings = async { getJson(json, "$BASE/driverStandings.json") as? JsonObject }
@@ -82,10 +91,6 @@ object FormulaOne {
                 }
             F1Weekend(next.await(), lastRace?.let(::raceOf), results, drivers)
         }
-        if (loaded.next == null && loaded.results.isEmpty() && loaded.standings.isEmpty()) return@withContext cached
-        cached = loaded
-        cachedAt = System.currentTimeMillis()
-        loaded
     }
 
     private fun raceList(root: JsonObject): JsonArray? =

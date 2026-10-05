@@ -134,6 +134,7 @@ private const val SLEEP_FADE_MS = 30_000L
 private const val SLEEP_FADE_TICK_MS = 500L
 private const val SLEEP_TICK_MS = 30_000L
 private const val SLEEP_MIN_VOLUME = 0.05f
+private const val LYRICS_SETTLE_MS = 4_000L
 
 /** How long the "+30 s" bubble stays after the last scrub step. */
 private const val SCRUB_BUBBLE_MS = 900L
@@ -280,6 +281,8 @@ fun TvPlayerScreen(
     onZapTo: (Channel) -> Unit = {},
     /** A sports channel with the score ticker on: live scores along the top. */
     scoreTicker: Boolean = false,
+    /** A radio station: the song playing and its words are shown. */
+    radioStation: Boolean = false,
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -680,17 +683,21 @@ fun TvPlayerScreen(
     // "What's going on?": the last couple of minutes of subtitles go to Claude with the title.
     val sceneViewModel: SceneExplainerViewModel = hiltViewModel()
     val sceneAnswer by sceneViewModel.answer.collectAsStateWithLifecycle()
-    // Radio: the song now, and its words.
-    val streamTitle = if (artwork != null) rememberStreamTitle(player, channel?.title) else null
-    var lyrics by remember { mutableStateOf<String?>(null) }
-    var lyricsLoading by remember { mutableStateOf(false) }
-    LaunchedEffect(streamTitle, preferences.radioLyrics, live) {
-        lyrics = null
+    // Radio: the song now, and its words (looked up once a title has stayed a few seconds, so
+    // short adverts and jingles don't each cost a lookup).
+    val streamTitle = if (radioStation) rememberStreamTitle(player, channel?.title) else null
+    var lyrics by remember(streamTitle) { mutableStateOf<String?>(null) }
+    var lyricsLoading by remember(streamTitle) { mutableStateOf(false) }
+    LaunchedEffect(streamTitle, preferences.radioLyrics) {
         val song = streamTitle ?: return@LaunchedEffect
-        if (!preferences.radioLyrics || !live) return@LaunchedEffect
+        if (!preferences.radioLyrics) return@LaunchedEffect
         lyricsLoading = true
-        lyrics = LrcLib.lyrics(song)
-        lyricsLoading = false
+        try {
+            delay(LYRICS_SETTLE_MS)
+            lyrics = LrcLib.lyrics(song)
+        } finally {
+            lyricsLoading = false
+        }
     }
     val dialogue = remember(player) { player?.let { RecentDialogue(it) } }
     DisposableEffect(player, dialogue) {
@@ -853,17 +860,27 @@ fun TvPlayerScreen(
             )
         }
 
-        // Radio and podcasts: the artwork where the picture would be, with the song playing now
-        // and (for radio) its words beside it.
+        // Radio and podcasts: the artwork where the picture would be; for radio, the song playing
+        // now (while the controls are away) and its words beside it.
+        val showLyrics = radioStation && preferences.radioLyrics && streamTitle != null
+        val shift = if (showLyrics) (-220).dp else 0.dp
         if (artwork != null) {
-            val showLyrics = live && preferences.radioLyrics && streamTitle != null
             AudioArtwork(
                 artwork = artwork,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(x = if (showLyrics) (-220).dp else 0.dp, y = (-72).dp),
+                    .offset(x = shift, y = (-72).dp),
             )
-            streamTitle?.let { song ->
+        }
+        streamTitle?.let { song ->
+            AnimatedVisibility(
+                visible = !controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(x = shift, y = if (artwork != null) 104.dp else 0.dp),
+            ) {
                 Text(
                     text = song,
                     color = TvColors.TextPrimary,
@@ -872,22 +889,19 @@ fun TvPlayerScreen(
                     fontSize = 18.sp,
                     maxLines = 2,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(x = if (showLyrics) (-220).dp else 0.dp, y = 104.dp)
-                        .widthIn(max = 420.dp),
+                    modifier = Modifier.widthIn(max = 420.dp),
                 )
-                if (showLyrics) {
-                    LyricsPanel(
-                        song = song,
-                        lyrics = lyrics,
-                        loading = lyricsLoading,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 40.dp)
-                            .offset(y = (-40).dp),
-                    )
-                }
+            }
+            if (showLyrics) {
+                LyricsPanel(
+                    song = song,
+                    lyrics = lyrics,
+                    loading = lyricsLoading,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 40.dp)
+                        .offset(y = (-24).dp),
+                )
             }
         }
         segmentSkipped?.let { category ->
