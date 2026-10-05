@@ -41,7 +41,7 @@ check() {
 # The launch animation takes about 3.5 seconds, so the wait includes it.
 # Text boxes open the keyboard only when OK is pressed on them; a keyboard showing on arrival is a bug.
 open_tab() {
-    adb shell am start -S -W -n "$PKG/$ACTIVITY" --es destination "$1" >/dev/null
+    adb shell am start -S -W -n "$PKG/$ACTIVITY" --es destination "$1" --ez no_bundled_login true >/dev/null
     sleep "${2:-8}"
     if keyboard_up; then
         echo "::error title=Keyboard opened by itself on API $API::The on-screen keyboard came up on the $1 tab without OK being pressed."
@@ -110,7 +110,8 @@ adb install -r chud-supreme.apk || { echo "::error::Install failed on API $API";
 adb logcat -c
 # Room for a long session's worth of log (the big import is chatty).
 adb logcat -G 16M || true
-adb shell am start -n "$PKG/$ACTIVITY"
+# The first start says "no bundled login": the walkthrough signs into its own test server.
+adb shell am start -n "$PKG/$ACTIVITY" --ez no_bundled_login true
 sleep 1.6; shot 01-launch-logo
 sleep 7;   shot 02-first-screen
 
@@ -231,8 +232,10 @@ if check "launch"; then
                 check "film playback"
                 # Player extras: the cursor and picture on the progress bar, stats for nerds,
                 # the options panel (subtitle style, skip markers, watch party).
-                press $UP; sleep 1; press $UP; sleep 1; press $RIGHT $RIGHT; sleep 3; shot 33g-seek-preview
-                press $BACK; sleep 1; press $DOWN; sleep 1
+                # Pause first (the test clip is short): wake the controls, get to play/pause, OK.
+                press $UP $DOWN; for _ in $(seq 1 10); do press $LEFT; done; press $OK; sleep 1
+                press $UP $UP; press $RIGHT $RIGHT; sleep 3; shot 33g-seek-preview
+                press $DOWN $DOWN; for _ in $(seq 1 10); do press $LEFT; done
                 for _ in 1 2 3 4 5 6 7; do press $RIGHT; done; press $OK; sleep 3; shot 33h-stats
                 press $OK; sleep 1
                 adb shell input keyevent 82; sleep 2; shot 33i-player-options

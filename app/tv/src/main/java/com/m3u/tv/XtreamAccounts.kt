@@ -282,8 +282,9 @@ class XtreamAccountViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val sessionPrefs = context.getSharedPreferences(SESSION_PREFS, Context.MODE_PRIVATE).also { prefs ->
-        // Fresh installs open already signed in. A login the person saved themselves is left alone.
-        if (prefs.getString(KEY_SERVER, null).isNullOrBlank()) {
+        // Fresh installs open already signed in. A login the person saved themselves is left alone,
+        // and the emulator walkthrough asks to be left signed out (it uses its own test server).
+        if (prefs.getString(KEY_SERVER, null).isNullOrBlank() && !prefs.getBoolean(KEY_SKIP_BUNDLED, false)) {
             prefs.edit()
                 .putString(KEY_SERVER, BUNDLED_XTREAM.server)
                 .putString(KEY_USER, BUNDLED_XTREAM.username)
@@ -652,18 +653,19 @@ class XtreamAccountViewModel @Inject constructor(
         _hasSession.value = false
     }
 
-    private companion object {
+    companion object {
         const val SESSION_PREFS = "xtream_session"
-        const val KEY_SERVER = "server"
-        const val KEY_USER = "username"
-        const val KEY_PASS = "password"
-        const val KEY_TITLE = "title"
-        const val IMPORT_TIMEOUT_MS = 30 * 60_000L
-        val BUNDLED_XTREAM = XtreamCredentials(
+        const val KEY_SKIP_BUNDLED = "skip_bundled_login"
+        private const val KEY_SERVER = "server"
+        private const val KEY_USER = "username"
+        private const val KEY_PASS = "password"
+        private const val KEY_TITLE = "title"
+        private const val IMPORT_TIMEOUT_MS = 30 * 60_000L
+        private val BUNDLED_XTREAM = XtreamCredentials(
             server = "http://www.cool13535.wd.ness-8k-all.online",
             username = "b7850079f070",
             password = "bc69d28478",
         )
-        const val BUNDLED_TITLE = "Ness"
+        private const val BUNDLED_TITLE = "Ness"
     }
 }

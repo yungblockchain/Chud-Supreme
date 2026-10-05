@@ -86,6 +86,9 @@ import kotlinx.coroutines.yield
 /** Launch extra naming the tab to open first, e.g. `--es destination games` (see [tvDestinationFromExtra]). */
 const val EXTRA_DESTINATION = "destination"
 
+/** Launch extra (boolean): skip the bundled provider login; the emulator walkthrough sets it. */
+const val EXTRA_NO_BUNDLED_LOGIN = "no_bundled_login"
+
 /**
  * Maps the [EXTRA_DESTINATION] launch extra to a tab: a tab name such as "games" or "guide", or
  * "settings" for the settings tab. Anything else means the normal start.

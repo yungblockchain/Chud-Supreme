@@ -21,6 +21,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val initialDestination = tvDestinationFromExtra(intent?.getStringExtra(EXTRA_DESTINATION))
+        // The emulator walkthrough: no bundled provider login, so the test server is all it sees.
+        if (intent?.getBooleanExtra(EXTRA_NO_BUNDLED_LOGIN, false) == true) {
+            getSharedPreferences(XtreamAccountViewModel.SESSION_PREFS, MODE_PRIVATE).edit()
+                .putBoolean(XtreamAccountViewModel.KEY_SKIP_BUNDLED, true)
+                .apply()
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT)
