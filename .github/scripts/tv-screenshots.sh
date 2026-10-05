@@ -178,7 +178,7 @@ if check "launch"; then
         press $DOWN $OK; sleep 2; shot 45-settings-profiles-add
         # The channel editor (the tab before Profiles): the first category's channels, then a rename box.
         open_tab settings 8; for _ in 1 2 3 4 5 6; do press $RIGHT; done; press $OK; sleep 4; shot 47-settings-channels
-        press $DOWN $DOWN; sleep 1; press $OK; sleep 2; shot 47a-settings-channels-rename
+        press $DOWN; sleep 1; press $OK; sleep 2; shot 47a-settings-channels-rename
         hide_keyboard; press $BACK; sleep 1
         # YouTube: what's live (from YouTube itself) with a live stream playing in the app, then
         # trending with a video playing (the DASH path).

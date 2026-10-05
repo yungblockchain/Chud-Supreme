@@ -261,7 +261,12 @@ class ChannelEditorViewModel @Inject constructor(
 
     fun selectCategory(category: String) {
         val playlist = _state.value.playlist ?: return
-        _state.update { it.copy(category = category, showingHidden = false, channels = emptyList(), loading = true, renaming = null) }
+        // Reloading the open category keeps its rows on screen (and focus on them) until the
+        // fresh list lands.
+        _state.update {
+            val same = it.category == category && !it.showingHidden
+            it.copy(category = category, showingHidden = false, channels = if (same) it.channels else emptyList(), loading = true, renaming = null)
+        }
         loadJob?.cancel()
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             val channels = store.arrange(playlist.url, channelRepository.getUnhidden(playlist.url, category, byTitle = false))
