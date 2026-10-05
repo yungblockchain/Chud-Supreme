@@ -13,6 +13,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +30,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
@@ -327,24 +331,30 @@ class TraktService @Inject constructor(
         add("recommended-shows", TraktRowKind.RecommendedSeries) {
             getArray("/recommendations/shows?extended=full,images&limit=20").mapNotNull { titleOf(it as? JsonObject, MediaKind.Tv) }
         }
-        // What the people you follow on Trakt watched lately (their history, where it's public).
+        // What the people you follow on Trakt watched lately: public profiles only, read with
+        // the app's client id (someone else's history never touches this account's sign-in).
         add("friends", TraktRowKind.Friends) {
             val people = getArray("/users/me/following").mapNotNull { element ->
                 val user = (element as? JsonObject)?.get("user") as? JsonObject ?: return@mapNotNull null
+                if ((user["private"] as? JsonPrimitive)?.booleanOrNull == true) return@mapNotNull null
                 val slug = (user["ids"] as? JsonObject)?.text("slug") ?: return@mapNotNull null
-                slug to (user.text("name")?.takeIf { it.isNotBlank() } ?: user.text("username") ?: slug)
+                slug to (user.text("username") ?: slug)
             }.take(MAX_FRIENDS)
-            people.flatMap { (slug, name) ->
-                runCatching { getArray("/users/$slug/history?extended=full,images&limit=$FRIEND_HISTORY") }
-                    .getOrDefault(JsonArray(emptyList()))
-                    .mapNotNull { element ->
-                        val row = element as? JsonObject ?: return@mapNotNull null
-                        val title = titleOf(row) ?: return@mapNotNull null
-                        val episode = row["episode"] as? JsonObject
-                        val label = episode?.let { "S${it.int("season")}E${it.int("number")}" }
-                        val at = row.text("watched_at").orEmpty()
-                        at to title.copy(overview = listOfNotNull("@$name", label).joinToString(" · "))
+            coroutineScope {
+                people.map { (slug, username) ->
+                    async {
+                        runCatching { getArray("/users/$slug/history?extended=full,images&limit=$FRIEND_HISTORY", auth = false) }
+                            .getOrDefault(JsonArray(emptyList()))
+                            .mapNotNull { element ->
+                                val row = element as? JsonObject ?: return@mapNotNull null
+                                val title = titleOf(row) ?: return@mapNotNull null
+                                val episode = row["episode"] as? JsonObject
+                                val label = episode?.let { "S${it.int("season")}E${it.int("number")}" }
+                                val at = row.text("watched_at").orEmpty()
+                                at to title.copy(overview = listOfNotNull("@$username", label).joinToString(" · "))
+                            }
                     }
+                }.awaitAll().flatten()
             }
                 .sortedByDescending { it.first }
                 .map { it.second }

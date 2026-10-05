@@ -27,6 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.Text
 import com.m3u.data.database.model.Channel
 import java.util.Locale
@@ -35,42 +38,56 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /* -------------------------------------------------------------------------------------------------
- * The score ticker: on a sports channel, the matches being played right now go by along the bottom
- * of the picture, one at a time, while the controls are hidden (the Match Centre's feed, so no
- * extra requests). Settings › Dial › Player switches it off.
+ * The score ticker: on a football channel, the matches being played right now go by along the top
+ * of the picture, one at a time, while nothing else is on screen. It shares the Match Centre's
+ * feed (and its two-minute cache), asks only while it's showing and the app is in front, and
+ * Settings › Dial › Player switches it off.
  * ---------------------------------------------------------------------------------------------- */
 
-private val SPORTS_WORDS = listOf(
-    "sport", "football", "soccer", "premier", "league", "liga", "laliga", "serie a", "bundesliga", "ligue",
-    "bein", "dazn", "espn", "tnt sports", "bt sport", "sky sports", "eleven", "arena", "match", "uefa", "fifa",
-    "supersport", "canal+ foot", "movistar", "ziggo sport", "viaplay", "fox soccer", "goal", "futbol", "fútbol",
+/** Football channels, by whole words: brand names alone (beIN, Movistar, Viaplay) also run films. */
+private val FOOTBALL = Regex(
+    "\\b(sports?|football|soccer|futbol|fútbol|calcio|premier league|la ?liga|serie a|bundesliga|ligue 1|eredivisie|" +
+        "champions league|europa league|uefa|fifa|bein sports?|dazn|espn|tnt sports|bt sport|sky sports?|eleven sports?|" +
+        "supersport|ziggo sport|viaplay sports?|movistar (?:deportes|liga|laliga)|canal\\+ (?:foot|sport))\\b",
 )
 
-/** Whether a channel looks like sport, by its name or its category. */
+/** Sport the feed doesn't cover, and the things that only share a word with sport. */
+private val NOT_FOOTBALL = Regex(
+    "\\b(f1|formula|nba|nfl|nhl|mlb|cricket|golf|tennis|racing|motogp|ufc|boxing|wwe|darts|rugby|cycling|" +
+        "esports?|cinema|movies?|films?|premiere|series|kids|music)\\b",
+)
+
+/** Whether a channel looks like football, by its name or its category. */
 fun isSportsChannel(channel: Channel?): Boolean {
     if (channel == null) return false
     val text = (channel.title + " " + channel.category).lowercase(Locale.ROOT)
-    return SPORTS_WORDS.any { it in text }
+    return FOOTBALL.containsMatchIn(text) && !NOT_FOOTBALL.containsMatchIn(text)
 }
 
 @Composable
 fun ScoreTicker(visible: Boolean, modifier: Modifier = Modifier) {
     var scores by remember { mutableStateOf<List<LiveScore>>(emptyList()) }
     var index by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                scores = withContext(Dispatchers.IO) { liveScores() }
+                delay(TICKER_REFRESH_MS)
+            }
+        }
+    }
+    // One match after another; a refresh carries on from where it was.
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
         while (true) {
-            scores = withContext(Dispatchers.IO) { liveScores() }
-            delay(TICKER_REFRESH_MS)
-        }
-    }
-    LaunchedEffect(scores) {
-        index = 0
-        while (scores.size > 1) {
             delay(TICKER_ROTATE_MS)
-            index = (index + 1) % scores.size
+            val count = scores.size
+            if (count > 1) index = (index + 1) % count
         }
     }
-    val score = scores.getOrNull(index)
+    val score = scores.takeIf { it.isNotEmpty() }?.let { it[index % it.size] }
     AnimatedVisibility(visible = visible && score != null, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         AnimatedContent(
             targetState = score,
@@ -82,7 +99,7 @@ fun ScoreTicker(visible: Boolean, modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier
-                    .widthIn(max = 760.dp)
+                    .widthIn(max = 640.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .background(Color.Black.copy(alpha = 0.72f))
                     .padding(horizontal = 14.dp, vertical = 7.dp),
@@ -92,17 +109,17 @@ fun ScoreTicker(visible: Boolean, modifier: Modifier = Modifier) {
                     color = Color.White,
                     fontFamily = TvFonts.Body,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontSize = 13.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .background(TvColors.Danger)
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
                 if (shown.clock.isNotBlank()) {
-                    Text(text = shown.clock, color = TvColors.TextSecondary, fontFamily = TvFonts.Body, fontSize = 14.sp, maxLines = 1)
+                    Text(text = shown.clock, color = Color.White, fontFamily = TvFonts.Body, fontSize = 15.sp, maxLines = 1)
                 }
                 Text(
-                    text = "${shown.home} ${shown.homeScore}–${shown.awayScore} ${shown.away}",
+                    text = stringResource(R.string.dial_ticker_score, shown.home, shown.homeScore, shown.awayScore, shown.away),
                     color = Color.White,
                     fontFamily = TvFonts.Body,
                     fontWeight = FontWeight.SemiBold,
@@ -113,9 +130,9 @@ fun ScoreTicker(visible: Boolean, modifier: Modifier = Modifier) {
                 )
                 Text(
                     text = shown.league,
-                    color = TvColors.TextMuted,
+                    color = Color.White.copy(alpha = 0.78f),
                     fontFamily = TvFonts.Body,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

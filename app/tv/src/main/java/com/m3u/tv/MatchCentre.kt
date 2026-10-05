@@ -837,7 +837,8 @@ private object MatchFeed {
         val loaded = loadAllFresh()
         if (loaded.isNotEmpty()) {
             cached = loaded
-            cachedAt = now
+            // From when the fetch finished, so a caller asking every two minutes gets the cache.
+            cachedAt = System.currentTimeMillis()
         }
         return loaded
     }

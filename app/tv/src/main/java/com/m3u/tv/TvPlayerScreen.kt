@@ -922,7 +922,8 @@ fun TvPlayerScreen(
         }
         if (scoreTicker) {
             ScoreTicker(
-                visible = !controlsVisible && !channelListOpen && !optionsOpen && !zapBannerVisible,
+                visible = !controlsVisible && !channelListOpen && !optionsOpen && !zapBannerVisible &&
+                    sceneAnswer == SceneAnswer.Idle,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 24.dp),

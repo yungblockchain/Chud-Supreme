@@ -73,6 +73,8 @@ sealed interface BackupNotice {
     data object NoGitHub : BackupNotice
     /** No backup gist on that GitHub account yet. */
     data object NoGist : BackupNotice
+    /** The gist was saved with a different GitHub token. */
+    data object GistLocked : BackupNotice
 }
 
 @Singleton
@@ -332,7 +334,7 @@ class BackupViewModel @Inject constructor(
                 when (GistSync.save(token, text)) {
                     is GistSync.Result.Done -> BackupNotice.Synced
                     GistSync.Result.NoAccess -> BackupNotice.NoGitHub
-                    GistSync.Result.NotFound, GistSync.Result.Failed -> BackupNotice.Failed
+                    GistSync.Result.NotFound, GistSync.Result.Locked, GistSync.Result.Failed -> BackupNotice.Failed
                 }
             }
             _kept.value = backup.summaryOfKept()
@@ -360,6 +362,10 @@ class BackupViewModel @Inject constructor(
                 }
                 GistSync.Result.NotFound -> {
                     _notice.value = BackupNotice.NoGist
+                    _busy.value = false
+                }
+                GistSync.Result.Locked -> {
+                    _notice.value = BackupNotice.GistLocked
                     _busy.value = false
                 }
                 GistSync.Result.Failed -> {
@@ -430,6 +436,7 @@ fun BackupRows() {
                     BackupNotice.Synced -> stringResource(R.string.dial_backup_github_saved)
                     BackupNotice.NoGitHub -> stringResource(R.string.dial_backup_github_no_token)
                     BackupNotice.NoGist -> stringResource(R.string.dial_backup_github_none)
+                    BackupNotice.GistLocked -> stringResource(R.string.dial_backup_github_locked)
                 },
                 color = TvColors.TextSecondary,
                 fontFamily = TvFonts.Body,
