@@ -33,6 +33,15 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -71,6 +80,9 @@ fun DetailsScreen(
     onBack: () -> Unit,
     extras: DetailsExtrasState? = null,
     onOpenPerson: (CastMember) -> Unit = {},
+    onTraktRate: (Int) -> Unit = {},
+    onTraktComment: (String, Boolean) -> Unit = { _, _ -> },
+    onTraktWatched: () -> Unit = {},
 ) {
     BackHandler(enabled = active, onBack = onBack)
     val primaryFocus = remember { FocusRequester() }
@@ -133,23 +145,40 @@ fun DetailsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = title,
-                            color = TvColors.TextPrimary,
-                            fontFamily = TvFonts.Body,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 36.sp,
-                            lineHeight = 42.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        val tmdb = extras?.extras?.takeIf { extras.channelId == state.channel.id }
+                        val logo = tmdb?.logo
+                        if (logo != null) {
+                            // The title's own artwork, with the name underneath for screen readers.
+                            AsyncImage(
+                                model = logo,
+                                contentDescription = title,
+                                contentScale = ContentScale.Fit,
+                                alignment = Alignment.CenterStart,
+                                modifier = Modifier
+                                    .widthIn(max = 480.dp)
+                                    .height(96.dp),
+                            )
+                        } else {
+                            Text(
+                                text = title,
+                                color = TvColors.TextPrimary,
+                                fontFamily = TvFonts.Body,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 36.sp,
+                                lineHeight = 42.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         MetaLine(
                             year = film?.year ?: series?.year,
-                            rating = film?.rating ?: series?.rating,
-                            duration = film?.duration,
-                            genre = film?.genre ?: series?.genre,
+                            rating = if (extras?.ratings.isNullOrEmpty()) film?.rating ?: series?.rating else null,
+                            duration = film?.duration ?: tmdb?.runtimeMinutes?.let { stringResource(R.string.dial_details_minutes, it) },
+                            genre = film?.genre ?: series?.genre ?: tmdb?.genres?.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                            certification = tmdb?.certification,
                         )
-                        val tmdb = extras?.extras?.takeIf { extras.channelId == state.channel.id }
+                        val ratings = extras?.ratings.orEmpty()
+                        if (ratings.isNotEmpty()) RatingsRow(ratings)
                         val plot = film?.plot ?: series?.plot ?: tmdb?.overview
                         tmdb?.tagline?.let { tagline ->
                             Text(
@@ -226,6 +255,17 @@ fun DetailsScreen(
             currentExtras?.extras?.imdbId?.let { imdbId ->
                 item(key = "imdb") {
                     ImdbLink(url = "https://www.imdb.com/title/$imdbId/")
+                }
+            }
+            if (currentExtras?.traktItem != null) {
+                item(key = "trakt") {
+                    TraktPanel(
+                        state = currentExtras,
+                        isFilm = state.kind == DetailsKind.Film,
+                        onRate = onTraktRate,
+                        onComment = onTraktComment,
+                        onWatched = onTraktWatched,
+                    )
                 }
             }
 
@@ -343,9 +383,10 @@ private fun SeriesActions(
 }
 
 @Composable
-private fun MetaLine(year: String?, rating: String?, duration: String?, genre: String?) {
+private fun MetaLine(year: String?, rating: String?, duration: String?, genre: String?, certification: String? = null) {
     val parts = listOfNotNull(
         year,
+        certification,
         rating?.let { stringResource(R.string.dial_details_rating, it) },
         duration,
         genre,
@@ -355,6 +396,161 @@ private fun MetaLine(year: String?, rating: String?, duration: String?, genre: S
         parts.forEach { InfoPill(text = it, minHeight = 32.dp) }
     }
 }
+
+/** One pill per source: TMDB 7.8 · Trakt 82% · IMDb 8.1 · RT 94% ... */
+@Composable
+private fun RatingsRow(ratings: List<RatingBadge>) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        ratings.forEach { badge ->
+            val label = stringResource(
+                when (badge.source) {
+                    RatingSource.Tmdb -> R.string.dial_rating_tmdb
+                    RatingSource.Trakt -> R.string.dial_rating_trakt
+                    RatingSource.Imdb -> R.string.dial_rating_imdb
+                    RatingSource.RottenTomatoes -> R.string.dial_rating_rt
+                    RatingSource.Metacritic -> R.string.dial_rating_metacritic
+                    RatingSource.Letterboxd -> R.string.dial_rating_letterboxd
+                    RatingSource.Audience -> R.string.dial_rating_audience
+                }
+            )
+            InfoPill(text = "$label ${badge.value}", minHeight = 32.dp)
+        }
+    }
+}
+
+/**
+ * Rate, comment and mark watched on Trakt. Rating is a stepper (Left/Right pick 1–10, OK saves);
+ * the comment box opens on demand and posts with its button.
+ */
+@Composable
+private fun TraktPanel(
+    state: DetailsExtrasState,
+    isFilm: Boolean,
+    onRate: (Int) -> Unit,
+    onComment: (String, Boolean) -> Unit,
+    onWatched: () -> Unit,
+) {
+    var ratingOpen by remember(state.channelId) { mutableStateOf(false) }
+    var draftRating by remember(state.channelId, state.myRating) { mutableStateOf(state.myRating ?: 7) }
+    var commentOpen by remember(state.channelId) { mutableStateOf(false) }
+    var comment by remember(state.channelId) { mutableStateOf("") }
+    var spoiler by remember(state.channelId) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = stringResource(R.string.dial_trakt_title),
+            color = TvColors.TextPrimary,
+            fontFamily = TvFonts.Body,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 20.sp,
+        )
+        if (!state.traktSignedIn) {
+            Credit(stringResource(R.string.dial_trakt_sign_in_hint))
+            return@Column
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TvActionButton(
+                text = state.myRating?.let { stringResource(R.string.dial_trakt_rated, it) }
+                    ?: stringResource(R.string.dial_trakt_rate),
+                icon = Icons.Rounded.Star,
+                selected = ratingOpen,
+                onClick = { ratingOpen = !ratingOpen },
+            )
+            TvActionButton(
+                text = stringResource(R.string.dial_trakt_comment),
+                icon = Icons.Rounded.ChatBubble,
+                selected = commentOpen,
+                onClick = { commentOpen = !commentOpen },
+            )
+            if (isFilm) {
+                TvActionButton(
+                    text = stringResource(R.string.dial_trakt_watched),
+                    icon = Icons.Rounded.Check,
+                    enabled = !state.busy,
+                    onClick = onWatched,
+                )
+            }
+        }
+        if (ratingOpen) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                FocusFrame(
+                    onClick = {
+                        onRate(draftRating)
+                        ratingOpen = false
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    semanticsLabel = stringResource(R.string.dial_trakt_rating_value, draftRating),
+                    onKey = { event -> stepperKeys(event) { delta -> draftRating = (draftRating + delta).coerceIn(1, 10) } },
+                ) { focused ->
+                    Text(
+                        text = "\u2605".repeat(draftRating) + "\u2606".repeat(10 - draftRating) + "  $draftRating / 10",
+                        color = if (focused) TvColors.OnFocus else TvColors.TextPrimary,
+                        fontFamily = TvFonts.Body,
+                        fontSize = 20.sp,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    )
+                }
+                Credit(stringResource(R.string.dial_trakt_rating_hint))
+                if (state.myRating != null) {
+                    TvActionButton(
+                        text = stringResource(R.string.dial_trakt_unrate),
+                        icon = Icons.Rounded.Close,
+                        onClick = {
+                            onRate(0)
+                            ratingOpen = false
+                        },
+                    )
+                }
+            }
+        }
+        if (commentOpen) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.widthIn(max = 820.dp)) {
+                DialTextField(
+                    label = stringResource(R.string.dial_trakt_comment_label),
+                    value = comment,
+                    onValueChange = { comment = it.take(MAX_COMMENT) },
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done,
+                    readOnly = false,
+                    placeholder = stringResource(R.string.dial_trakt_comment_placeholder),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvActionButton(
+                        text = stringResource(R.string.dial_trakt_post),
+                        icon = Icons.Rounded.Send,
+                        enabled = !state.busy && comment.isNotBlank(),
+                        onClick = {
+                            onComment(comment, spoiler)
+                            commentOpen = false
+                            comment = ""
+                        },
+                    )
+                    TvActionButton(
+                        text = stringResource(R.string.dial_trakt_spoiler),
+                        icon = Icons.Rounded.VisibilityOff,
+                        checked = spoiler,
+                        onClick = { spoiler = !spoiler },
+                    )
+                }
+            }
+        }
+        state.notice?.let { notice ->
+            Credit(
+                stringResource(
+                    when (notice) {
+                        TraktNotice.Rated -> R.string.dial_trakt_notice_rated
+                        TraktNotice.RatingRemoved -> R.string.dial_trakt_notice_unrated
+                        TraktNotice.Commented -> R.string.dial_trakt_notice_commented
+                        TraktNotice.CommentTooShort -> R.string.dial_trakt_notice_short
+                        TraktNotice.Watched -> R.string.dial_trakt_notice_watched
+                        TraktNotice.Failed -> R.string.dial_trakt_notice_failed
+                    }
+                )
+            )
+        }
+    }
+}
+
+private const val MAX_COMMENT = 1_000
 
 @Composable
 private fun Credit(text: String) {

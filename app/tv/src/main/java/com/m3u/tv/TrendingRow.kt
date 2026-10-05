@@ -69,3 +69,43 @@ fun TrendingRow(
 }
 
 private const val CAROUSEL_STEP_MS = 4_000L
+
+/** A plain row of titles (a Trakt list, say): no auto-scroll, a rating on each card. */
+@Composable
+fun TitleRow(
+    title: String,
+    subtitle: String,
+    titles: List<TmdbTitle>,
+    onOpen: (TmdbTitle) -> Unit,
+) {
+    if (titles.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(title = title, subtitle = subtitle, modifier = Modifier.padding(start = 48.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = 48.dp, top = 8.dp, end = 48.dp, bottom = 8.dp),
+            modifier = Modifier.focusGroup(),
+        ) {
+            items(titles, key = { "${it.kind}-${it.id}" }) { item ->
+                TitlePoster(
+                    title = item,
+                    badge = item.rating?.let { "\u2605 %.1f".format(it) },
+                    onClick = { onOpen(item) },
+                )
+            }
+        }
+    }
+}
+
+/** The name of a built-in Trakt row. */
+@Composable
+fun TraktRow.displayName(): String = listName ?: stringResource(
+    when (kind) {
+        TraktRowKind.Playback -> R.string.dial_trakt_row_playback
+        TraktRowKind.Watchlist -> R.string.dial_trakt_row_watchlist
+        TraktRowKind.UpNext -> R.string.dial_trakt_row_upnext
+        TraktRowKind.RecommendedFilms -> R.string.dial_trakt_row_films
+        TraktRowKind.RecommendedSeries -> R.string.dial_trakt_row_series
+        TraktRowKind.Custom -> R.string.dial_trakt_row_list
+    }
+)

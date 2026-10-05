@@ -119,6 +119,9 @@ private const val SETTINGS_TAB_ADDONS = 4
 private const val REMOTE_IDLE_AFTER_MS = 3_000L
 private const val REMOTE_IDLE_CHECK_MS = 1_000L
 
+/** How often the scrobbler is told where playback has got to. */
+private const val SCROBBLE_TICK_MS = 60_000L
+
 /** How long the "press Back again" hint waits for the second press. */
 private const val EXIT_WINDOW_MS = 2_500L
 
@@ -375,8 +378,32 @@ fun App(
     val person by metadata.person.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val notInPlaylists = stringResource(R.string.dial_trending_not_found)
-    LaunchedEffect(destination) {
-        if (destination == TvDestination.Home) metadata.loadTrending()
+    val traktRows by metadata.traktRows.collectAsStateWithLifecycle()
+    val traktAccount by metadata.traktAccount.collectAsStateWithLifecycle()
+    LaunchedEffect(destination, traktAccount) {
+        if (destination == TvDestination.Home) {
+            metadata.loadTrending()
+            metadata.loadTraktRows()
+        }
+    }
+    // Scrobbling: Trakt hears when a film or episode starts, pauses and stops, and how far in.
+    val scrobbler = metadata.scrobbler
+    val scrobbleItem = if (surface == TvSurface.Player || surface == TvSurface.Mini) nowPlaying?.traktItem else null
+    LaunchedEffect(scrobbleItem, isPlaying, playbackState == Player.STATE_ENDED) {
+        val current = player
+        val ended = playbackState == Player.STATE_ENDED
+        scrobbler.update(
+            item = scrobbleItem,
+            positionMs = if (ended) current?.duration ?: 0L else current?.currentPosition ?: 0L,
+            durationMs = current?.duration ?: 0L,
+            isPlaying = isPlaying && !ended,
+        )
+        // While playing, keep the progress fresh so a close reports where it got to.
+        while (scrobbleItem != null && isPlaying && !ended) {
+            delay(SCROBBLE_TICK_MS)
+            val playing = player ?: break
+            scrobbler.update(scrobbleItem, playing.currentPosition, playing.duration, isPlaying = true)
+        }
     }
     LaunchedEffect(details?.channel?.id, details?.loading) {
         val current = details ?: return@LaunchedEffect
@@ -769,6 +796,8 @@ fun App(
                     },
                     trending = trending,
                     onOpenTrending = { entry -> openTmdbTitle(entry.title, entry.channel) },
+                    traktRows = traktRows,
+                    onOpenTitle = { title -> openTmdbTitle(title, null) },
                     myLibraryContent = {
                         MyLibraryScreen(
                             state = state,
@@ -840,6 +869,9 @@ fun App(
                 onBack = dial::closeDetails,
                 extras = detailsExtras,
                 onOpenPerson = { member -> metadata.openPerson(member.id) },
+                onTraktRate = metadata::rate,
+                onTraktComment = metadata::postComment,
+                onTraktWatched = metadata::markWatched,
             )
         }
 

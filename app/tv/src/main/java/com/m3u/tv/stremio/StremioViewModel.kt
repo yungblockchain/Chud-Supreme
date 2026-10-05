@@ -14,6 +14,8 @@ import com.m3u.data.service.MediaCommand
 import com.m3u.data.service.PlayerManager
 import com.m3u.tv.SecretName
 import com.m3u.tv.SecretStore
+import com.m3u.tv.TraktService
+import com.m3u.tv.TraktSignIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -67,6 +69,7 @@ class StremioViewModel @Inject constructor(
     private val channelDao: ChannelDao,
     private val playlistDao: PlaylistDao,
     private val playerManager: PlayerManager,
+    private val trakt: TraktService,
 ) : ViewModel() {
     private val _state = MutableStateFlow(StremioUiState())
     val state: StateFlow<StremioUiState> = _state.asStateFlow()
@@ -94,6 +97,25 @@ class StremioViewModel @Inject constructor(
                 throw error
             } catch (_: Exception) {
                 // A bad saved addon must not take the settings page down with it.
+            }
+        }
+        // One Trakt sign-in for the whole app (Settings > Services owns it); this page mirrors it.
+        viewModelScope.launch {
+            trakt.account.collect { account ->
+                val before = _state.value.traktUser
+                _state.update { it.copy(traktUser = account?.username) }
+                if ((before == null) != (account == null)) refresh()
+            }
+        }
+        viewModelScope.launch {
+            trakt.signIn.collect { step ->
+                _state.update {
+                    when (step) {
+                        is TraktSignIn.Code -> it.copy(traktCode = step.userCode, traktUrl = step.url)
+                        is TraktSignIn.Failed -> it.copy(traktCode = null, traktUrl = null, message = "Trakt sign-in didn't finish. Try again.")
+                        TraktSignIn.Idle -> it.copy(traktCode = null, traktUrl = null)
+                    }
+                }
             }
         }
         refresh()
@@ -410,47 +432,16 @@ class StremioViewModel @Inject constructor(
     }
 
     fun connectTrakt() {
-        val clientId = secrets.get(SecretName.TraktClientId)
-        val secret = secrets.get(SecretName.TraktClientSecret)
-        if (clientId.isNullOrBlank() || secret.isNullOrBlank()) {
+        if (!trakt.hasClient) {
             _state.update { it.copy(message = "Add a Trakt client ID and secret in Settings → Services first.") }
             return
         }
-        viewModelScope.launch {
-            try {
-                val device = TraktClient.device(clientId)
-                _state.update {
-                    it.copy(
-                        traktCode = device.userCode,
-                        traktUrl = device.url,
-                        message = "Open ${device.url} and enter ${device.userCode}",
-                    )
-                }
-                val wait = device.intervalSeconds.coerceIn(5, 15) * 1000L
-                repeat(40) {
-                    delay(wait)
-                    val session = TraktClient.poll(clientId, secret, device.deviceCode) ?: return@repeat
-                    secrets.put(SecretName.TraktAccess, session.access)
-                    if (session.refresh.isNotBlank()) secrets.put(SecretName.TraktRefresh, session.refresh)
-                    val name = runCatching { TraktClient.username(clientId, session.access) }.getOrNull()
-                    _state.update { it.copy(traktUser = name ?: "Connected", traktCode = null, message = "Trakt connected") }
-                    refresh()
-                    return@launch
-                }
-                _state.update { it.copy(message = "Trakt didn't approve in time. Try Connect again.") }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                _state.update { it.copy(message = error.message ?: "Trakt didn't connect") }
-            }
-        }
+        trakt.startSignIn()
     }
 
     fun disconnectTrakt() {
-        secrets.remove(SecretName.TraktAccess)
-        secrets.remove(SecretName.TraktRefresh)
-        _state.update { it.copy(traktUser = null, traktCode = null, traktUrl = null, message = "Trakt disconnected") }
-        refresh()
+        trakt.signOut()
+        _state.update { it.copy(message = "Trakt disconnected") }
     }
 
     private suspend fun continueItems(): List<CatalogItem> =

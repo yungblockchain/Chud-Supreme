@@ -63,8 +63,16 @@ class ServicesSettingsViewModel @Inject constructor(
     private val companion: PhoneCompanion,
     private val store: DialSettingsStore,
     private val addons: StremioAddonStore,
+    private val trakt: TraktService,
 ) : ViewModel() {
     val saved: StateFlow<Set<SecretName>> = secrets.saved
+    val traktAccount: StateFlow<TraktAccount?> = trakt.account
+    val traktSignIn: StateFlow<TraktSignIn> = trakt.signIn
+
+    fun traktSignIn() = trakt.startSignIn()
+    fun traktCancel() = trakt.cancelSignIn()
+    fun traktSignOut() = trakt.signOut()
+    fun toggleScrobble() = store.update { it.copy(traktScrobble = !it.traktScrobble) }
     val phonePage: StateFlow<CompanionInfo?> = companion.info
     val phoneMessages: SharedFlow<PhoneMessage> = companion.messages
     val preferences: StateFlow<DialPreferences> = store.preferences
@@ -146,6 +154,8 @@ fun ServicesSettingsScreen(
     val upload by viewModel.upload.collectAsStateWithLifecycle()
     val phonePage by viewModel.phonePage.collectAsStateWithLifecycle()
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
+    val traktAccount by viewModel.traktAccount.collectAsStateWithLifecycle()
+    val traktSignIn by viewModel.traktSignIn.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf<SecretName?>(null) }
     var showReports by rememberSaveable { mutableStateOf(false) }
 
@@ -186,6 +196,48 @@ fun ServicesSettingsScreen(
         item {
             KeyRow(SecretName.TraktClientSecret, R.string.dial_services_trakt_secret, R.string.dial_services_trakt_secret_hint)
         }
+        // Signed in once here, Trakt works everywhere: Home rows, ratings, comments, scrobbling.
+        item {
+            val account = traktAccount
+            val signIn = traktSignIn
+            SettingRow(
+                label = when {
+                    account != null -> stringResource(R.string.dial_trakt_signed_in, account.username)
+                    signIn is TraktSignIn.Code -> stringResource(R.string.dial_trakt_enter_code, signIn.url, signIn.userCode)
+                    else -> stringResource(R.string.dial_trakt_sign_in)
+                },
+                value = when {
+                    account != null -> stringResource(R.string.dial_trakt_sign_out)
+                    signIn is TraktSignIn.Code -> stringResource(R.string.dial_action_cancel)
+                    signIn is TraktSignIn.Failed -> stringResource(
+                        when (signIn.message) {
+                            "needs_keys" -> R.string.dial_trakt_needs_keys
+                            "expired" -> R.string.dial_trakt_expired
+                            else -> R.string.dial_trakt_failed
+                        }
+                    )
+                    else -> stringResource(R.string.dial_trakt_sign_in_value)
+                },
+                onClick = {
+                    when {
+                        account != null -> viewModel.traktSignOut()
+                        signIn is TraktSignIn.Code -> viewModel.traktCancel()
+                        else -> viewModel.traktSignIn()
+                    }
+                },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_trakt_scrobble),
+                value = stringResource(if (preferences.traktScrobble) R.string.dial_value_on else R.string.dial_value_off),
+                onClick = viewModel::toggleScrobble,
+            )
+        }
+        item { SettingsSection(stringResource(R.string.dial_services_section_ratings)) }
+        item { KeyRow(SecretName.MdbList, R.string.dial_services_mdblist, R.string.dial_services_mdblist_hint) }
+        item { KeyRow(SecretName.Omdb, R.string.dial_services_omdb, R.string.dial_services_omdb_hint) }
+        item { KeyRow(SecretName.FanartTv, R.string.dial_services_fanart, R.string.dial_services_fanart_hint) }
         item { SettingsSection(stringResource(R.string.dial_services_section_debrid)) }
         item {
             KeyRow(SecretName.RealDebrid, R.string.dial_services_realdebrid, R.string.dial_services_realdebrid_hint)

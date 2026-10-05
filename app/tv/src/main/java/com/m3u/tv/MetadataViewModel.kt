@@ -28,6 +28,9 @@ data class TrendingEntry(
     val channel: Channel? = null,
 )
 
+/** What the last Trakt action on the details page came to. */
+enum class TraktNotice { Rated, RatingRemoved, Commented, CommentTooShort, Watched, Failed }
+
 @Immutable
 data class DetailsExtrasState(
     val channelId: Int,
@@ -36,6 +39,14 @@ data class DetailsExtrasState(
     val comments: List<TraktComment> = emptyList(),
     val hasTmdbKey: Boolean = false,
     val hasTraktKey: Boolean = false,
+    /** TMDB, Trakt, IMDb, Rotten Tomatoes... whichever answered. */
+    val ratings: List<RatingBadge> = emptyList(),
+    val traktSignedIn: Boolean = false,
+    /** The film or show as Trakt knows it (for rating, commenting, marking watched). */
+    val traktItem: TraktItem? = null,
+    val myRating: Int? = null,
+    val busy: Boolean = false,
+    val notice: TraktNotice? = null,
 )
 
 @Immutable
@@ -51,7 +62,16 @@ class MetadataViewModel @Inject constructor(
     private val secrets: SecretStore,
     private val channelRepository: ChannelRepository,
     private val playlistRepository: PlaylistRepository,
+    private val trakt: TraktService,
+    val scrobbler: TraktScrobbler,
 ) : ViewModel() {
+
+    /** The person's Trakt rows for Home (empty when signed out). */
+    private val _traktRows = MutableStateFlow<List<TraktRow>>(emptyList())
+    val traktRows: StateFlow<List<TraktRow>> = _traktRows.asStateFlow()
+    val traktAccount: StateFlow<TraktAccount?> = trakt.account
+    private var traktRowsLoadedAt = 0L
+    private var traktRowsJob: Job? = null
 
     private val _trending = MutableStateFlow<List<TrendingEntry>>(emptyList())
     val trending: StateFlow<List<TrendingEntry>> = _trending.asStateFlow()
@@ -126,13 +146,124 @@ class MetadataViewModel @Inject constructor(
                 )?.id
                 id?.let { TmdbClient.extras(tmdbKey, kind, it) }
             }.onFailure { if (it is CancellationException) throw it }.getOrNull()
-            update(details.channel.id) { it.copy(loading = false, extras = extras) }
-            if (extras != null && traktKey != null) {
-                val comments = runCatching { TmdbClient.traktComments(traktKey, kind, extras.tmdbId) }
-                    .onFailure { if (it is CancellationException) throw it }
-                    .getOrDefault(emptyList())
-                update(details.channel.id) { it.copy(comments = comments) }
+            val year = details.film?.year ?: details.series?.year ?: OpenSubtitles.yearIn(details.channel.title)
+            val cleanTitle = OpenSubtitles.cleanTitle(details.film?.title ?: details.series?.title ?: details.channel.title)
+            val traktItem: TraktItem = if (kind == MediaKind.Movie) {
+                TraktItem.Movie(cleanTitle, year?.toIntOrNull(), extras?.tmdbId)
+            } else {
+                TraktItem.Show(cleanTitle, year?.toIntOrNull(), extras?.tmdbId)
             }
+            val tmdbBadge = extras?.rating?.let { listOf(RatingBadge(RatingSource.Tmdb, "%.1f".format(it), extras.votes)) }.orEmpty()
+            update(details.channel.id) {
+                it.copy(
+                    loading = false,
+                    extras = extras,
+                    ratings = tmdbBadge,
+                    traktSignedIn = trakt.signedIn,
+                    traktItem = traktItem,
+                )
+            }
+            if (extras == null) return@launch
+            // The other ratings, each in its own breath so one slow service doesn't hold the rest.
+            if (traktKey != null) {
+                launch {
+                    val comments = runCatching { TmdbClient.traktComments(traktKey, kind, extras.tmdbId) }
+                        .onFailure { if (it is CancellationException) throw it }
+                        .getOrDefault(emptyList())
+                    update(details.channel.id) { it.copy(comments = comments) }
+                }
+                launch {
+                    val community = runCatching { trakt.ratings(kind, extras.tmdbId) }.getOrNull()
+                    if (community != null) {
+                        addRatings(details.channel.id, listOf(RatingBadge(RatingSource.Trakt, "${(community.rating * 10).toInt()}%", community.votes)))
+                    }
+                }
+                if (trakt.signedIn) {
+                    launch {
+                        val mine = runCatching { trakt.myRating(kind, extras.tmdbId) }.getOrNull()
+                        update(details.channel.id) { it.copy(myRating = mine) }
+                    }
+                }
+            }
+            secrets.get(SecretName.MdbList)?.let { key ->
+                launch {
+                    addRatings(details.channel.id, runCatching { RatingsClient.mdbList(key, kind, extras.tmdbId) }.getOrDefault(emptyList()))
+                }
+            }
+            val omdbKey = secrets.get(SecretName.Omdb)
+            if (omdbKey != null && extras.imdbId != null && secrets.get(SecretName.MdbList) == null) {
+                launch {
+                    addRatings(details.channel.id, runCatching { RatingsClient.omdb(omdbKey, extras.imdbId) }.getOrDefault(emptyList()))
+                }
+            }
+        }
+    }
+
+    /** Adds badges from one source, keeping one pill per source, TMDB first. */
+    private fun addRatings(channelId: Int, badges: List<RatingBadge>) {
+        if (badges.isEmpty()) return
+        update(channelId) { state ->
+            val merged = (state.ratings + badges).distinctBy { it.source }.sortedBy { it.source.ordinal }
+            state.copy(ratings = merged)
+        }
+    }
+
+    /* ---------------------------------------------------------------------- Trakt actions */
+
+    fun rate(rating: Int) = traktAction { item ->
+        if (trakt.rate(item, rating)) {
+            update(item) { it.copy(myRating = rating.takeIf { r -> r in 1..10 }) }
+            if (rating in 1..10) TraktNotice.Rated else TraktNotice.RatingRemoved
+        } else TraktNotice.Failed
+    }
+
+    fun postComment(text: String, spoiler: Boolean) = traktAction { item ->
+        if (text.trim().split(Regex("\\s+")).size < MIN_COMMENT_WORDS) TraktNotice.CommentTooShort
+        else if (trakt.comment(item, text.trim(), spoiler)) TraktNotice.Commented
+        else TraktNotice.Failed
+    }
+
+    /** Films only; a series is marked episode by episode as they play. */
+    fun markWatched() = traktAction { item ->
+        if (trakt.markWatched(item)) TraktNotice.Watched else TraktNotice.Failed
+    }
+
+    fun clearNotice() {
+        _extras.update { it?.copy(notice = null) }
+    }
+
+    private fun traktAction(block: suspend (TraktItem) -> TraktNotice) {
+        val state = _extras.value ?: return
+        val item = state.traktItem ?: return
+        if (state.busy) return
+        _extras.update { it?.copy(busy = true, notice = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val notice = runCatching { block(item) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(TraktNotice.Failed)
+            update(state.channelId) { it.copy(busy = false, notice = notice) }
+        }
+    }
+
+    private fun update(item: TraktItem, transform: (DetailsExtrasState) -> DetailsExtrasState) {
+        _extras.update { if (it?.traktItem == item) transform(it) else it }
+    }
+
+    /* -------------------------------------------------------------------------- Home rows */
+
+    fun loadTraktRows(force: Boolean = false) {
+        if (!trakt.signedIn) {
+            _traktRows.value = emptyList()
+            return
+        }
+        if (!force && System.currentTimeMillis() - traktRowsLoadedAt < TRAKT_ROWS_TTL_MS && _traktRows.value.isNotEmpty()) return
+        traktRowsJob?.cancel()
+        traktRowsJob = viewModelScope.launch(Dispatchers.IO) {
+            val rows = runCatching { trakt.homeRows() }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
+            traktRowsLoadedAt = System.currentTimeMillis()
+            _traktRows.value = rows
         }
     }
 
@@ -188,6 +319,8 @@ class MetadataViewModel @Inject constructor(
 
     private companion object {
         const val TRENDING_TTL_MS = 6 * 60 * 60_000L
+        const val TRAKT_ROWS_TTL_MS = 10 * 60_000L
+        const val MIN_COMMENT_WORDS = 5
         const val MAX_TRENDING = 20
         const val SEARCH_LIMIT = 40
     }

@@ -77,6 +77,10 @@ data class DialPreferences(
     val subtitleBackdrop: SubtitleBackdrop = SubtitleBackdrop.Outline,
     /** How far up from the bottom edge subtitles sit, as a percentage of the picture height. */
     val subtitleRaisePercent: Int = 8,
+    /** Tell Trakt what's playing (start, pause, stop), when signed in. */
+    val traktScrobble: Boolean = true,
+    /** Which Trakt rows Home shows, by row id; empty means all of them. */
+    val traktRowsHidden: Set<String> = emptySet(),
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -380,6 +384,8 @@ class DialSettingsStore @Inject constructor(
             .putString(KEY_SUBTITLE_COLOUR, next.subtitleColour.name)
             .putString(KEY_SUBTITLE_BACKDROP, next.subtitleBackdrop.name)
             .putInt(KEY_SUBTITLE_RAISE, next.subtitleRaisePercent)
+            .putBoolean(KEY_TRAKT_SCROBBLE, next.traktScrobble)
+            .putStringSet(KEY_TRAKT_ROWS_HIDDEN, next.traktRowsHidden)
             .apply()
     }
 
@@ -511,6 +517,8 @@ class DialSettingsStore @Inject constructor(
                 ?.let { name -> SubtitleBackdrop.entries.firstOrNull { it.name == name } }
                 ?: defaults.subtitleBackdrop,
             subtitleRaisePercent = prefs.getInt(KEY_SUBTITLE_RAISE, defaults.subtitleRaisePercent),
+            traktScrobble = prefs.getBoolean(KEY_TRAKT_SCROBBLE, defaults.traktScrobble),
+            traktRowsHidden = prefs.getStringSet(KEY_TRAKT_ROWS_HIDDEN, null)?.toSet() ?: defaults.traktRowsHidden,
         )
     }
 
@@ -551,6 +559,8 @@ class DialSettingsStore @Inject constructor(
         const val KEY_SUBTITLE_BACKDROP = "subtitle_backdrop"
         const val KEY_SUBTITLE_RAISE = "subtitle_raise"
         const val KEY_SKIP_PREFIX = "skip_markers_"
+        const val KEY_TRAKT_SCROBBLE = "trakt_scrobble"
+        const val KEY_TRAKT_ROWS_HIDDEN = "trakt_rows_hidden"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"
         const val KEY_FAVOURITE_GROUPS = "favourite_groups"

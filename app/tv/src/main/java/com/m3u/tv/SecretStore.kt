@@ -35,6 +35,9 @@ enum class SecretName(val key: String) {
     SportsGameOdds("sportsgameodds_api_key"),
     ApiSports("api_sports_key"),
     YouTube("youtube_api_key"),
+    Omdb("omdb_api_key"),
+    MdbList("mdblist_api_key"),
+    FanartTv("fanart_tv_api_key"),
 }
 
 /**

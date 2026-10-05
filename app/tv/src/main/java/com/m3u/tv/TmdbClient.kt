@@ -55,6 +55,12 @@ data class TitleExtras(
     val cast: List<CastMember>,
     val imdbId: String?,
     val rating: Double?,
+    /** The title's logo artwork (transparent PNG), to draw instead of the name. */
+    val logo: String? = null,
+    val votes: Int = 0,
+    val genres: List<String> = emptyList(),
+    val runtimeMinutes: Int? = null,
+    val certification: String? = null,
 )
 
 @Immutable
@@ -88,6 +94,7 @@ internal object TmdbClient {
     fun poster(path: String?): String? = path?.let { "$IMAGES/w342$it" }
     fun backdrop(path: String?): String? = path?.let { "$IMAGES/w780$it" }
     fun profile(path: String?): String? = path?.let { "$IMAGES/w185$it" }
+    fun logo(path: String?): String? = path?.let { "$IMAGES/w500$it" }
 
     suspend fun trending(key: String, kind: MediaKind): List<TmdbTitle> {
         val root = get(key, "/trending/${kind.path}/week") as? JsonObject ?: return emptyList()
@@ -106,8 +113,36 @@ internal object TmdbClient {
 
     suspend fun extras(key: String, kind: MediaKind, id: Int): TitleExtras? {
         val credits = if (kind == MediaKind.Tv) "aggregate_credits" else "credits"
-        val root = get(key, "/${kind.path}/$id", listOf("append_to_response" to "$credits,external_ids"))
-            as? JsonObject ?: return null
+        val root = get(
+            key,
+            "/${kind.path}/$id",
+            listOf(
+                "append_to_response" to "$credits,external_ids,images,release_dates,content_ratings",
+                "include_image_language" to "${Locale.getDefault().language},en,null",
+            ),
+        ) as? JsonObject ?: return null
+        // The first logo in the person's language, else English, else any.
+        val logos = ((root["images"] as? JsonObject)?.get("logos") as? JsonArray).orEmpty()
+            .mapNotNull { it as? JsonObject }
+        val language = Locale.getDefault().language
+        val logoPath = (logos.firstOrNull { it.text("iso_639_1") == language }
+            ?: logos.firstOrNull { it.text("iso_639_1") == "en" }
+            ?: logos.firstOrNull())?.text("file_path")
+        val certification = if (kind == MediaKind.Movie) {
+            ((root["release_dates"] as? JsonObject)?.get("results") as? JsonArray).orEmpty()
+                .mapNotNull { it as? JsonObject }
+                .sortedBy { if (it.text("iso_3166_1") == Locale.getDefault().country) 0 else 1 }
+                .firstNotNullOfOrNull { country ->
+                    ((country["release_dates"] as? JsonArray).orEmpty())
+                        .mapNotNull { (it as? JsonObject)?.text("certification") }
+                        .firstOrNull()
+                }
+        } else {
+            ((root["content_ratings"] as? JsonObject)?.get("results") as? JsonArray).orEmpty()
+                .mapNotNull { it as? JsonObject }
+                .sortedBy { if (it.text("iso_3166_1") == Locale.getDefault().country) 0 else 1 }
+                .firstNotNullOfOrNull { it.text("rating") }
+        }
         val castArray = (root[credits] as? JsonObject)?.get("cast") as? JsonArray
         val cast = castArray.orEmpty().mapNotNull { element ->
             val person = element as? JsonObject ?: return@mapNotNull null
@@ -130,6 +165,12 @@ internal object TmdbClient {
             cast = cast,
             imdbId = imdb,
             rating = (root["vote_average"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it > 0 },
+            logo = logo(logoPath),
+            votes = root.int("vote_count") ?: 0,
+            genres = (root["genres"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.text("name") },
+            runtimeMinutes = root.int("runtime")
+                ?: ((root["episode_run_time"] as? JsonArray)?.firstOrNull() as? JsonPrimitive)?.intOrNull,
+            certification = certification,
         )
     }
 

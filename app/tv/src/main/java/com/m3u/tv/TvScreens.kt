@@ -180,6 +180,8 @@ fun TvBrowsePane(
     favouritesContent: @Composable () -> Unit = {},
     trending: List<TrendingEntry> = emptyList(),
     onOpenTrending: (TrendingEntry) -> Unit = {},
+    traktRows: List<TraktRow> = emptyList(),
+    onOpenTitle: (TmdbTitle) -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
     servicesSettingsContent: @Composable () -> Unit = {},
     /** Live TV, Films or Series should show a source of its kind. */
@@ -254,6 +256,8 @@ fun TvBrowsePane(
                         trending = trending,
                         onOpenTrending = onOpenTrending,
                         onShowCatalog = onShowCatalog,
+                        traktRows = traktRows,
+                        onOpenTitle = onOpenTitle,
                     )
 
                     TvDestination.Search -> SearchScreen(
@@ -418,6 +422,8 @@ private fun HomeScreen(
     trending: List<TrendingEntry> = emptyList(),
     onOpenTrending: (TrendingEntry) -> Unit = {},
     onShowCatalog: (CatalogKind) -> Unit = {},
+    traktRows: List<TraktRow> = emptyList(),
+    onOpenTitle: (TmdbTitle) -> Unit = {},
 ) {
     // The last ten things watched (live, films, episodes); before anything's been watched, a
     // taste of the selected playlist.
@@ -500,6 +506,16 @@ private fun HomeScreen(
             item(key = "trending") {
                 TrendingRow(entries = trending, onOpen = onOpenTrending)
             }
+        }
+        // Trakt: continue watching, watchlist, up next, picks and the person's own lists.
+        val traktSubtitle = stringResource(R.string.dial_trakt_row_subtitle)
+        items(traktRows, key = { "trakt-${it.id}" }) { row ->
+            TitleRow(
+                title = row.displayName(),
+                subtitle = traktSubtitle,
+                titles = row.titles,
+                onOpen = onOpenTitle,
+            )
         }
         // Dial: films and series with saved progress, opened on their details page.
         if (continueWatching.isNotEmpty()) {

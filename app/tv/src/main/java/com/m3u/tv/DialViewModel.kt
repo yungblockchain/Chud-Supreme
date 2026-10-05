@@ -39,6 +39,8 @@ data class OnDemandPlayback(
     val subtitleTarget: SubtitleTarget,
     val series: Channel? = null,
     val episode: SeriesEpisode? = null,
+    /** The same thing as Trakt knows it, for scrobbling; null when it can't be named. */
+    val traktItem: TraktItem? = null,
 )
 
 @Immutable
@@ -328,11 +330,18 @@ class DialViewModel @Inject constructor(
             }
             if (fromStart) playerManager.onResetPlayback(channel.url)
             val film = _details.value?.takeIf { it.channel.id == channel.id }?.film
+            val filmTitle = film?.title ?: OpenSubtitles.cleanTitle(channel.title)
+            val filmYear = film?.year ?: OpenSubtitles.yearIn(channel.title)
             _nowPlaying.value = OnDemandPlayback(
                 subtitleTarget = SubtitleTarget(
                     title = film?.title ?: channel.title,
-                    year = film?.year ?: OpenSubtitles.yearIn(channel.title),
+                    year = filmYear,
                     tmdbId = film?.tmdbId,
+                ),
+                traktItem = TraktItem.Movie(
+                    title = filmTitle,
+                    year = filmYear?.toIntOrNull(),
+                    tmdbId = film?.tmdbId?.toIntOrNull(),
                 ),
             )
             _skipMarkers.value = SkipMarkers()
@@ -379,6 +388,15 @@ class DialViewModel @Inject constructor(
                 ),
                 series = series,
                 episode = episode,
+                traktItem = episode.episodeNum?.toIntOrNull()?.let { number ->
+                    TraktItem.Episode(
+                        title = details?.title ?: OpenSubtitles.cleanTitle(series.title),
+                        year = details?.year?.toIntOrNull(),
+                        showTmdbId = details?.tmdbId?.toIntOrNull(),
+                        season = episode.season.toIntOrNull() ?: 1,
+                        number = number,
+                    )
+                },
             )
             _skipMarkers.value = store.skipMarkers(series.id)
             playerManager.play(MediaCommand.XtreamEpisode(series.id, info), applyContinueWatching = resume)
