@@ -211,6 +211,15 @@ if check "launch"; then
         open_tab home 10; adb shell input keyevent --longpress 82; sleep 2; shot 51-quick-settings
         press $BACK; sleep 1
         open_tab settings 8; for _ in $(seq 1 30); do press $DOWN; done; sleep 1; shot 51a-settings-sound-language
+        # Stage 6a: the Files tab and its add form, and the smart-home rows in Services.
+        open_tab files 8; shot 52-files
+        press $OK; sleep 2; shot 52a-files-add
+        press $BACK; sleep 1
+        open_tab settings 8; press $RIGHT $RIGHT $RIGHT; press $OK; sleep 2
+        for _ in $(seq 1 40); do press $DOWN; done; sleep 1; shot 52b-settings-services-end
+        # Stage 6b: Settings › Devices (sound output and controllers), the last tab.
+        open_tab settings 8; for _ in 1 2 3 4 5 6 7 8; do press $RIGHT; done; press $OK; sleep 2; shot 53-settings-devices
+        for _ in $(seq 1 9); do press $DOWN; done; sleep 1; shot 53a-settings-devices-controllers
         open_tab search 8; type_text "Film%s12345"; sleep 5; shot 43-search-universal
         # The Menu key opens the hidden side menu with its labels; Left from the hero does too.
         press $UP; adb shell input keyevent 82; sleep 1; shot 26-menu-open

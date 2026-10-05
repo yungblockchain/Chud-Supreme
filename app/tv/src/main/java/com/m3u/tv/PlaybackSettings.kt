@@ -74,6 +74,7 @@ data class PlaybackSettingsState(
 class PlaybackSettingsViewModel @Inject constructor(
     private val settings: Settings,
     private val secrets: SecretStore,
+    private val outputs: AudioOutputMonitor,
 ) : ViewModel() {
 
     val state: StateFlow<PlaybackSettingsState> = settings.data
@@ -86,10 +87,13 @@ class PlaybackSettingsViewModel @Inject constructor(
         viewModelScope.launch { settings[key] = value }
     }
 
-    fun nudgeAudioDelay(stepMs: Int) = set(
-        PreferencesKeys.AUDIO_DELAY_MS,
-        (state.value.audioDelayMs + stepMs).coerceIn(-MAX_DELAY_MS, MAX_DELAY_MS),
-    )
+    /** The delay is kept for the speakers or headphones in use, too (Settings › Devices). */
+    fun setAudioDelay(ms: Int) {
+        outputs.rememberDelay(ms)
+        set(PreferencesKeys.AUDIO_DELAY_MS, ms)
+    }
+
+    fun nudgeAudioDelay(stepMs: Int) = setAudioDelay((state.value.audioDelayMs + stepMs).coerceIn(-MAX_DELAY_MS, MAX_DELAY_MS))
 
     fun nudgeSubtitleDelay(stepMs: Int) = set(
         PreferencesKeys.SUBTITLE_DELAY_MS,
@@ -249,7 +253,7 @@ fun PlaybackSettingsScreen(
             SettingRow(
                 label = stringResource(R.string.dial_playback_audio_delay),
                 value = delayText(state.audioDelayMs),
-                onClick = { viewModel.set(PreferencesKeys.AUDIO_DELAY_MS, 0) },
+                onClick = { viewModel.setAudioDelay(0) },
                 onKey = { event ->
                     stepperKeys(event) { viewModel.nudgeAudioDelay(it * PlaybackSettingsViewModel.DELAY_STEP_MS) }
                 },

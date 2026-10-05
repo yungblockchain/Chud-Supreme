@@ -108,6 +108,10 @@ data class DialPreferences(
     val hideWatched: Boolean = false,
     /** The next episode starts at once, without the countdown card. */
     val bingeMode: Boolean = false,
+    /** Controllers that can rumble do so when a reminder comes up. */
+    val controllerRumble: Boolean = true,
+    /** A and B (Cross and Circle) swapped, for Nintendo-style "right button confirms". */
+    val swapControllerAB: Boolean = false,
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -459,6 +463,8 @@ class DialSettingsStore @Inject constructor(
             .putBoolean(KEY_DIALOGUE_BOOST, next.dialogueBoost)
             .putBoolean(KEY_HIDE_WATCHED, next.hideWatched)
             .putBoolean(KEY_BINGE, next.bingeMode)
+            .putBoolean(KEY_CONTROLLER_RUMBLE, next.controllerRumble)
+            .putBoolean(KEY_SWAP_AB, next.swapControllerAB)
             .apply()
     }
 
@@ -656,6 +662,8 @@ class DialSettingsStore @Inject constructor(
             dialogueBoost = prefs.getBoolean(KEY_DIALOGUE_BOOST, defaults.dialogueBoost),
             hideWatched = prefs.getBoolean(KEY_HIDE_WATCHED, defaults.hideWatched),
             bingeMode = prefs.getBoolean(KEY_BINGE, defaults.bingeMode),
+            controllerRumble = prefs.getBoolean(KEY_CONTROLLER_RUMBLE, defaults.controllerRumble),
+            swapControllerAB = prefs.getBoolean(KEY_SWAP_AB, defaults.swapControllerAB),
         )
     }
 
@@ -716,6 +724,8 @@ class DialSettingsStore @Inject constructor(
         const val KEY_DIALOGUE_BOOST = "dialogue_boost"
         const val KEY_HIDE_WATCHED = "hide_watched"
         const val KEY_BINGE = "binge_mode"
+        const val KEY_CONTROLLER_RUMBLE = "controller_rumble"
+        const val KEY_SWAP_AB = "controller_swap_ab"
         const val KEY_WATCHED_PREFIX = "watched_"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"

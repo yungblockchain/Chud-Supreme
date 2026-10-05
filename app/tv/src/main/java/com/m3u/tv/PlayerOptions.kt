@@ -113,6 +113,7 @@ class PlayerOptionsViewModel @Inject constructor(
     private val playerManager: PlayerManager,
     private val settings: Settings,
     private val secrets: SecretStore,
+    private val outputs: AudioOutputMonitor,
 ) : ViewModel() {
 
     val tracks: StateFlow<PlayerOptionsState> = combine(
@@ -164,8 +165,11 @@ class PlayerOptionsViewModel @Inject constructor(
     }
 
     fun nudgeAudioDelay(steps: Int) = viewModelScope.launch {
-        settings[PreferencesKeys.AUDIO_DELAY_MS] = (playback.value.audioDelayMs + steps * STEP_MS)
+        val next = (playback.value.audioDelayMs + steps * STEP_MS)
             .coerceIn(-PlaybackSettingsViewModel.MAX_DELAY_MS, PlaybackSettingsViewModel.MAX_DELAY_MS)
+        // The delay belongs to the speakers or headphones in use (Bluetooth often needs its own).
+        outputs.rememberDelay(next)
+        settings[PreferencesKeys.AUDIO_DELAY_MS] = next
     }
 
     fun nudgeSubtitleDelay(steps: Int) = viewModelScope.launch {
@@ -173,7 +177,10 @@ class PlayerOptionsViewModel @Inject constructor(
             .coerceIn(-PlaybackSettingsViewModel.MAX_DELAY_MS, PlaybackSettingsViewModel.MAX_DELAY_MS)
     }
 
-    fun resetAudioDelay() = viewModelScope.launch { settings[PreferencesKeys.AUDIO_DELAY_MS] = 0 }
+    fun resetAudioDelay() = viewModelScope.launch {
+        outputs.rememberDelay(0)
+        settings[PreferencesKeys.AUDIO_DELAY_MS] = 0
+    }
 
     fun resetSubtitleDelay() = viewModelScope.launch { settings[PreferencesKeys.SUBTITLE_DELAY_MS] = 0 }
 

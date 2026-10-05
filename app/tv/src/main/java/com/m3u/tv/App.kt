@@ -137,6 +137,7 @@ private const val SCROBBLE_TICK_MS = 60_000L
 /** Reminders: how early the card shows, and how often the clock is checked. */
 private const val REMINDER_LEAD_MS = 2 * 60_000L
 private const val REMINDER_CHECK_MS = 20_000L
+private const val REMINDER_RUMBLE_MS = 250L
 private const val NOTICE_REMINDER_WINDOW_MS = 6 * 60 * 60_000L
 private const val WATCHED_CHECK_MS = 30_000L
 private const val LIGHTS_DIM_DELAY_MS = 1_500L
@@ -189,6 +190,7 @@ fun App(
     discover: DiscoverViewModel = hiltViewModel(),
     smartHome: SmartHomeViewModel = hiltViewModel(),
     files: FilesViewModel = hiltViewModel(),
+    outputs: AudioOutputViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -551,8 +553,25 @@ fun App(
     // the corner, behind a details page).
     val enhancer = remember(player) { (player as? ExoPlayer)?.let { AudioEnhancer(it) } }
     DisposableEffect(enhancer) { onDispose { enhancer?.release() } }
-    LaunchedEffect(enhancer, preferences.nightMode, preferences.dialogueBoost) {
-        enhancer?.set(night = preferences.nightMode, dialogue = preferences.dialogueBoost)
+    LaunchedEffect(preferences.swapControllerAB) { Gamepad.swapAB = preferences.swapControllerAB }
+    val audioOutput by outputs.current.collectAsStateWithLifecycle()
+    val outputProfile by outputs.profile.collectAsStateWithLifecycle()
+    val audioShape = AudioShape(
+        night = preferences.nightMode,
+        dialogue = preferences.dialogueBoost,
+        eq = outputProfile.eq,
+        boostDb = outputProfile.boostDb,
+        surround = outputProfile.surround && audioOutput.kind.personal,
+    )
+    LaunchedEffect(enhancer, audioShape) { enhancer?.set(audioShape) }
+    // Sound moved to other headphones or speakers: say where, and that its own settings came back.
+    val outputMessage = stringResource(R.string.dial_output_now)
+    val outputNames = outputKindNames()
+    LaunchedEffect(outputs) {
+        outputs.changes.collect { output ->
+            val label = output.name.ifBlank { outputNames.getValue(output.kind) }
+            Toast.makeText(context, outputMessage.format(label), Toast.LENGTH_SHORT).show()
+        }
     }
     // The lights: dimmed while video plays full screen, back up a few seconds after it stops.
     val videoPlaying = surface == TvSurface.Player && isPlaying && !audioSource
@@ -622,6 +641,7 @@ fun App(
             if (due != null && dueReminder == null && !reminderBlocked) {
                 shownReminders += due.key
                 dueReminder = due
+                if (preferences.controllerRumble) Gamepad.rumbleAll(REMINDER_RUMBLE_MS)
             }
             delay(REMINDER_CHECK_MS)
         }

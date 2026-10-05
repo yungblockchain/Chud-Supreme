@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -17,6 +18,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.key.Key
@@ -25,8 +28,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 
 /* -------------------------------------------------------------------------------------------------
  * Quick settings: hold Menu anywhere (or Y / Triangle on a controller) and the switches people
- * reach for mid-film slide in from the right: night mode, dialogue boost, subtitle size, binge
- * mode, duplicate merging, the screensaver. Back closes it.
+ * reach for mid-film slide in from the right: night mode, dialogue boost, the sound profile of the
+ * speakers or headphones in use, subtitle size, binge mode, duplicate merging, the screensaver.
+ * Back closes it.
  * ---------------------------------------------------------------------------------------------- */
 
 @Composable
@@ -35,7 +39,10 @@ fun QuickSettingsPanel(
     onUpdate: ((DialPreferences) -> DialPreferences) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    outputs: AudioOutputViewModel = hiltViewModel(),
 ) {
+    val output by outputs.current.collectAsStateWithLifecycle()
+    val profile by outputs.profile.collectAsStateWithLifecycle()
     BackHandler(onBack = onClose)
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -79,6 +86,23 @@ fun QuickSettingsPanel(
                 value = onOff(preferences.dialogueBoost),
                 onClick = { onUpdate { it.copy(dialogueBoost = !it.dialogueBoost) } },
             )
+        }
+        item {
+            // The sound profile of whatever the sound is going to (TV, soundbar, AirPods…).
+            SettingRow(
+                label = stringResource(R.string.dial_output_eq_for, outputLabel(output)),
+                value = profile.eq.label(),
+                onClick = { outputs.update { it.copy(eq = EqPreset.entries.nextAfter(it.eq)) } },
+            )
+        }
+        if (output.kind.personal && AudioEffectsSupport.virtualizer) {
+            item {
+                SettingRow(
+                    label = stringResource(R.string.dial_output_surround),
+                    value = onOff(profile.surround),
+                    onClick = { outputs.update { it.copy(surround = !it.surround) } },
+                )
+            }
         }
         item {
             SettingRow(

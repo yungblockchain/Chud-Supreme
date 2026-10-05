@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.SwitchAccount
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Favorite
@@ -420,6 +421,11 @@ fun TvBrowsePane(
                                 label = stringResource(R.string.dial_settings_tab_profiles),
                                 icon = Icons.Rounded.SwitchAccount,
                                 content = { ProfilesSettingsScreen(onSwitchProfile = onSwitchProfile) },
+                            ),
+                            SettingsTab(
+                                label = stringResource(R.string.dial_settings_tab_devices),
+                                icon = Icons.Rounded.Headphones,
+                                content = { DevicesSettingsScreen() },
                             ),
                         ),
                         selectedTab = settingsTab,
