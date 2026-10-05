@@ -362,6 +362,10 @@ interface ChannelDao {
     @Query("SELECT * FROM streams WHERE playlist_url = :playlistUrl AND relation_id = :relationId")
     suspend fun getByPlaylistUrlAndRelationId(playlistUrl: String, relationId: String): Channel?
 
+    /** The channels (not hidden) in [playlistUrls] with any of the [relationIds] (tvg-ids). */
+    @Query("SELECT * FROM streams WHERE playlist_url IN (:playlistUrls) AND relation_id IN (:relationIds) AND hidden = 0")
+    suspend fun getVisibleByPlaylistUrlsAndRelationIds(playlistUrls: List<String>, relationIds: List<String>): List<Channel>
+
     @Query("SELECT * FROM streams WHERE relation_id IN (:relationIds) AND hidden = 0")
     suspend fun getByRelationIds(relationIds: List<String>): List<Channel>
 

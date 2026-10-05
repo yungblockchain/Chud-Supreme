@@ -83,7 +83,10 @@ interface ProgrammeDao {
     @Query("DELETE FROM programmes WHERE epg_url = :epgUrl")
     suspend fun deleteAllByEpgUrl(epgUrl: String)
 
-    /** Programmes in [epgUrls] whose title contains [pattern] (%, _ and the backslash escaped with a backslash), overlapping [from, to). */
+    /**
+     * Programmes in [epgUrls] whose title contains [pattern] (%, _ and the backslash escaped with
+     * a backslash), overlapping [from, to), on channels the [playlistUrls] show (not hidden).
+     */
     @Query(
         """
         SELECT * FROM programmes
@@ -91,12 +94,19 @@ interface ProgrammeDao {
         AND `end` > :from
         AND start < :to
         AND title LIKE '%' || :pattern || '%' ESCAPE '\'
+        AND relation_id IN (
+            SELECT relation_id FROM streams
+            WHERE playlist_url IN (:playlistUrls)
+            AND hidden = 0
+            AND relation_id IS NOT NULL
+        )
         ORDER BY start ASC, id ASC
         LIMIT :limit
         """
     )
     suspend fun searchByTitle(
         epgUrls: List<String>,
+        playlistUrls: List<String>,
         pattern: String,
         from: Long,
         to: Long,

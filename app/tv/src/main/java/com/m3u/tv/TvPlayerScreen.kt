@@ -293,6 +293,9 @@ fun TvPlayerScreen(
     var zapBannerVisible by remember { mutableStateOf(false) }
     var sleepMinutes by remember { mutableStateOf<Int?>(null) }
     var sleepEndsAt by remember { mutableStateOf<Long?>(null) }
+    /** What was playing when "end of this" was picked: anything else playing counts as the end. */
+    var sleepItem by remember { mutableStateOf<Int?>(null) }
+    val playingItem by rememberUpdatedState(channel?.id)
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -388,6 +391,7 @@ fun TvPlayerScreen(
         val current = sleepMinutes
         val nextMinutes = if (current == null) steps.first() else steps.getOrNull(steps.indexOf(current) + 1)
         sleepMinutes = nextMinutes
+        sleepItem = channel?.id
         now = System.currentTimeMillis()
         sleepEndsAt = nextMinutes?.takeIf { it > 0 }?.let { now + it * 60_000L }
     }
@@ -495,8 +499,12 @@ fun TvPlayerScreen(
                 now = System.currentTimeMillis()
                 val left = if (untilEnd) {
                     val length = target?.duration ?: C.TIME_UNSET
-                    if (target == null || length == C.TIME_UNSET || length <= 0L) Long.MAX_VALUE
-                    else length - target.currentPosition - SLEEP_END_MARGIN_MS
+                    when {
+                        // The credits were skipped into the next episode: this one is over.
+                        playingItem != sleepItem -> 0L
+                        target == null || length == C.TIME_UNSET || length <= 0L -> Long.MAX_VALUE
+                        else -> length - target.currentPosition - SLEEP_END_MARGIN_MS
+                    }
                 } else {
                     (sleepEndsAt ?: break) - now
                 }
@@ -685,6 +693,7 @@ fun TvPlayerScreen(
     }
     LaunchedEffect(refocus) {
         if (refocus == 0) return@LaunchedEffect
+        channelListOpen = false
         withFrameNanos { }
         runCatching { playPauseFocusRequester.requestFocus() }
         showControls()
@@ -693,6 +702,7 @@ fun TvPlayerScreen(
     val startMenuPresses = remember { menuPresses }
     LaunchedEffect(menuPresses) {
         if (menuPresses == startMenuPresses) return@LaunchedEffect
+        channelListOpen = false
         showControls()
         optionsOpen = !optionsOpen
         if (!optionsOpen) restoreOptionsFocus = true

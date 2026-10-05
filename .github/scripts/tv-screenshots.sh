@@ -333,8 +333,9 @@ if check "launch"; then
         open_tab guide 14;   shot 42-m3u-guide
         # Stage 6c: the guide in search ("On TV" from the XMLTV), then the channel list over live TV.
         open_tab search 8; type_text "World"; sleep 6; shot 54-search-on-tv
+        # (The mock live streams don't decode, so the controls stay up: Back hides them first.)
         open_tab live 12; press $RIGHT; sleep 2; press $OK; sleep 14
-        press $LEFT; sleep 2; shot 55-player-channel-list
+        press $BACK; sleep 1; press $LEFT; sleep 2; shot 55-player-channel-list
         press $BACK; sleep 1; press $BACK; sleep 2; press $BACK; sleep 2
         open_tab account 8;  shot 43-m3u-accounts
         open_tab claude 8;   shot 44-claude-setup

@@ -90,6 +90,7 @@ class PhoneCompanion @Inject constructor(
     private var workers: ExecutorService? = null
     @Volatile private var pin: String = ""
     @Volatile private var failures = 0
+    @Volatile private var failuresSince = 0L
     @Volatile private var lockedUntil = 0L
 
     val running: Boolean get() = server != null
@@ -198,17 +199,10 @@ class PhoneCompanion @Inject constructor(
         val now = System.currentTimeMillis()
         if (now < lockedUntil) return 429 to """{"ok":false,"error":"locked"}"""
         return when (val answer = party?.state(code, guestId) ?: PartyAnswer.NoParty) {
-            is PartyAnswer.State -> {
-                failures = 0
-                200 to answer.json
-            }
+            is PartyAnswer.State -> 200 to answer.json
             PartyAnswer.Busy -> 503 to """{"ok":false,"error":"busy"}"""
             PartyAnswer.NoParty -> {
-                failures++
-                if (failures >= MAX_FAILURES) {
-                    lockedUntil = now + LOCK_MS
-                    failures = 0
-                }
+                fail(now)
                 404 to """{"ok":false,"error":"no_party"}"""
             }
         }
@@ -219,15 +213,26 @@ class PhoneCompanion @Inject constructor(
         val now = System.currentTimeMillis()
         if (now < lockedUntil) return 429 to """{"ok":false,"error":"locked"}"""
         if (!pinMatches(form["pin"].orEmpty())) {
-            failures++
-            if (failures >= MAX_FAILURES) {
-                lockedUntil = now + LOCK_MS
-                failures = 0
-            }
+            fail(now)
             return 403 to """{"ok":false,"error":"pin"}"""
         }
-        failures = 0
+        // A right PIN doesn't wipe the count: the phone page polls with it, and that mustn't
+        // give someone else on the network unlimited guesses in between.
         return null
+    }
+
+    /** Counts a wrong PIN or party code; too many within [FAILURE_WINDOW_MS] lock it for a while. */
+    @Synchronized
+    private fun fail(now: Long) {
+        if (now - failuresSince > FAILURE_WINDOW_MS) {
+            failures = 0
+            failuresSince = now
+        }
+        failures++
+        if (failures >= MAX_FAILURES) {
+            lockedUntil = now + LOCK_MS
+            failures = 0
+        }
     }
 
     private fun api(action: String, form: Map<String, String>): Pair<Int, String> {
@@ -345,6 +350,7 @@ class PhoneCompanion @Inject constructor(
         private const val MAX_SKIN = 8_192
         private const val MAX_FAILURES = 5
         private const val LOCK_MS = 60_000L
+        private const val FAILURE_WINDOW_MS = 10 * 60_000L
         private const val JSON = "application/json"
         private const val BAD = """{"ok":false,"error":"missing"}"""
     }
@@ -355,16 +361,9 @@ object CaptionFeed {
     @Volatile
     private var text: String = ""
 
-    @Volatile
-    private var at = 0L
-
     fun update(line: String) {
         text = line
-        at = System.currentTimeMillis()
     }
 
-    /** A line older than half a minute is stale (subtitles off, or the player closed). */
-    fun current(): String = if (System.currentTimeMillis() - at > STALE_MS) "" else text
-
-    private const val STALE_MS = 30_000L
+    fun current(): String = text
 }

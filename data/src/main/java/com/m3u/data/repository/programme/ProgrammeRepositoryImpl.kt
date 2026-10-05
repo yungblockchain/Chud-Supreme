@@ -168,12 +168,18 @@ internal class ProgrammeRepositoryImpl @Inject constructor(
             .forEach { playlist -> playlist.epgUrlsOrXtreamXmlUrl().forEach { owners.getOrPut(it) { mutableListOf() } += playlist } }
         if (owners.isEmpty()) return emptyList()
         val pattern = words.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        val found = programmeDao.searchByTitle(owners.keys.toList(), pattern, from, to, limit * SEARCH_OVERSCAN)
+        val playlistUrls = owners.values.flatten().map { it.url }.distinct()
+        val found = programmeDao.searchByTitle(owners.keys.toList(), playlistUrls, pattern, from, to, limit * SEARCH_OVERSCAN)
+        if (found.isEmpty()) return emptyList()
+        // Every channel those programmes could be on, in one go; per playlist and tvg-id.
+        val channels = channelDao.getVisibleByPlaylistUrlsAndRelationIds(playlistUrls, found.map { it.channelId }.distinct())
+            .filter { it.relationId != null }
+            .groupBy { it.playlistUrl to it.relationId!! }
         val out = mutableListOf<Pair<Channel, Programme>>()
         val seen = HashSet<String>()
         for (programme in found) {
             val channel = owners[programme.epgUrl].orEmpty().firstNotNullOfOrNull { playlist ->
-                channelDao.getByPlaylistUrlAndRelationId(playlist.url, programme.channelId)?.takeIf { !it.hidden }
+                channels[playlist.url to programme.channelId]?.firstOrNull()
             } ?: continue
             if (seen.add("${channel.id}@${programme.start}")) out += channel to programme
             if (out.size >= limit) break

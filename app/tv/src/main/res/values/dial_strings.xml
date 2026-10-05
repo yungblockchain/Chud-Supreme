@@ -1222,7 +1222,8 @@
     <string name="dial_player_sleep_end">End of this</string>
     <string name="dial_setting_audio_description">Audio description (where there is one)</string>
     <string name="dial_remote_lock">Lock the remote</string>
-    <string name="dial_remote_lock_value">Up, Up, Down, Down unlocks</string>
-    <string name="dial_remote_locked">Remote locked. Press Up, Up, Down, Down to unlock.</string>
+    <string name="dial_remote_lock_value">Up Up Down Down Left Right unlocks</string>
+    <string name="dial_remote_locked">Remote locked. Press Up, Up, Down, Down, Left, Right to unlock.</string>
+    <string name="dial_remote_locked_badge">Remote locked</string>
     <string name="dial_remote_unlocked">Remote unlocked</string>
 </resources>

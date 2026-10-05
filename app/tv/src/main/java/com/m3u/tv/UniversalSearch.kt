@@ -354,12 +354,11 @@ fun AiringRow(title: String, airings: List<Airing>, reminded: Set<String>, onPic
                     semanticsLabel = airing.title,
                     focusedScale = 1.04f,
                     modifier = Modifier.width(300.dp),
-                ) {
+                ) { focused ->
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(TvColors.Surface)
                             .padding(14.dp),
                     ) {
                         Text(
@@ -367,14 +366,18 @@ fun AiringRow(title: String, airings: List<Airing>, reminded: Set<String>, onPic
                                 on -> stringResource(R.string.dial_airing_now)
                                 else -> airingTime(airing.startMs, now)
                             },
-                            color = if (on) TvColors.Danger else TvColors.Focus,
+                            color = when {
+                                focused -> TvColors.OnFocus
+                                on -> TvColors.Danger
+                                else -> TvColors.Focus
+                            },
                             fontFamily = TvFonts.Body,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                         )
                         Text(
                             text = airing.title,
-                            color = TvColors.TextPrimary,
+                            color = if (focused) TvColors.OnFocus else TvColors.TextPrimary,
                             fontFamily = TvFonts.Body,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 16.sp,
@@ -383,7 +386,7 @@ fun AiringRow(title: String, airings: List<Airing>, reminded: Set<String>, onPic
                         )
                         Text(
                             text = airing.channel.title,
-                            color = TvColors.TextSecondary,
+                            color = if (focused) TvColors.OnFocus else TvColors.TextSecondary,
                             fontFamily = TvFonts.Body,
                             fontSize = 13.sp,
                             maxLines = 1,
@@ -397,7 +400,7 @@ fun AiringRow(title: String, airings: List<Airing>, reminded: Set<String>, onPic
                                     else -> R.string.dial_airing_remind
                                 }
                             ),
-                            color = TvColors.TextMuted,
+                            color = if (focused) TvColors.OnFocus else TvColors.TextMuted,
                             fontFamily = TvFonts.Body,
                             fontSize = 12.sp,
                         )

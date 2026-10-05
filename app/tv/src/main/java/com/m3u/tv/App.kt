@@ -495,6 +495,7 @@ fun App(
     val trailerTitle = stringResource(R.string.dial_trailer_title)
     val noTrailer = stringResource(R.string.dial_trailer_none)
     var trailerJob by remember { mutableStateOf<Job?>(null) }
+    val remoteLocked by RemoteLock.locked.collectAsStateWithLifecycle()
     LaunchedEffect(youtube) {
         youtube.events.collect { event ->
             when (event) {
@@ -1147,7 +1148,7 @@ fun App(
                         universal.search(query)
                     },
                     universal = universalResults,
-                    remindedKeys = reminders.map { it.key }.toSet(),
+                    remindedKeys = reminderKeys,
                     onAiring = { airing ->
                         if (airing.isOn(System.currentTimeMillis())) {
                             openOrPlay(airing.channel)
@@ -1601,6 +1602,10 @@ fun App(
                 },
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
+        }
+        // Remote lock on: a small badge, so a parent knows why nothing answers.
+        if (remoteLocked) {
+            RemoteLockBadge(modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = 32.dp))
         }
         if (screensaverOn) {
             val slides = remember(trending, state.recentlyPlayed) {

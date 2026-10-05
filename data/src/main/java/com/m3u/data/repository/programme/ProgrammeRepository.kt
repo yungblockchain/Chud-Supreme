@@ -33,15 +33,15 @@ interface ProgrammeRepository {
     suspend fun getProgrammesCurrently(playlistUrl: String): Map<String, Programme>
 
     /**
-     * Programmes from the playlist's EPG (XMLTV) for one channel ([relationId], its tvg-id)
-     * overlapping the time range [from, to) in epoch milliseconds.
-     */
-    /**
      * Programmes on the live playlists' guides whose title contains [query], airing between
      * [from] and [to], each with the (visible) channel that shows it; soonest first.
      */
     suspend fun searchAirings(query: String, from: Long, to: Long, limit: Int): List<Pair<Channel, Programme>>
 
+    /**
+     * Programmes from the playlist's EPG (XMLTV) for one channel ([relationId], its tvg-id)
+     * overlapping the time range [from, to) in epoch milliseconds.
+     */
     suspend fun getProgrammesInRange(
         playlistUrl: String,
         relationId: String,

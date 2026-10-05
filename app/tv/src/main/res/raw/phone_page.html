@@ -201,28 +201,41 @@
       }
     });
   });
-  // Subtitles: asks the TV for the line on screen a couple of times a second while it's on.
+  // Subtitles: asks the TV for the line on screen a couple of times a second while it's on
+  // (one request at a time; closing the section or leaving the page stops it).
   const captionsToggle = document.getElementById('captions-toggle');
   const captionsBox = document.getElementById('captions');
   const captionsStatus = document.getElementById('captions-status');
-  let captionsTimer = null;
+  let captionsRun = 0;
   function stopCaptions(text) {
-    clearInterval(captionsTimer); captionsTimer = null;
+    captionsRun++;
     captionsToggle.textContent = 'Show subtitles here';
     captionsStatus.className = text ? 'status bad' : 'status'; captionsStatus.textContent = text || '';
   }
-  captionsToggle.addEventListener('click', () => {
-    if (captionsTimer) { stopCaptions(); return; }
-    captionsToggle.textContent = 'Stop';
-    captionsTimer = setInterval(async () => {
+  async function pollCaptions(run) {
+    while (run === captionsRun) {
       try {
         const response = await fetch('/captions?pin=' + encodeURIComponent(pin.value.trim()));
         const result = await response.json();
+        if (run !== captionsRun) return;
         if (!result.ok) { stopCaptions(messages[result.error] || 'That did not work.'); return; }
         captionsBox.textContent = result.text;
-      } catch (e) { stopCaptions('Could not reach the TV.'); }
-    }, 600);
+      } catch (e) {
+        if (run === captionsRun) stopCaptions('Could not reach the TV.');
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+  }
+  captionsToggle.addEventListener('click', () => {
+    if (captionsToggle.textContent === 'Stop') { stopCaptions(); return; }
+    captionsRun++;
+    captionsToggle.textContent = 'Stop';
+    captionsStatus.textContent = '';
+    pollCaptions(captionsRun);
   });
+  captionsToggle.closest('details').addEventListener('toggle', event => { if (!event.target.open) stopCaptions(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && captionsToggle.textContent === 'Stop') stopCaptions(); });
   // Voice search: the phone listens (the browser's own speech recognition) and sends the words.
   const voice = document.getElementById('voice');
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;

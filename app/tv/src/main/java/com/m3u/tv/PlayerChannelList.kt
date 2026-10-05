@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -92,7 +93,10 @@ fun PlayerChannelList(
             state = listState,
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(bottom = 48.dp),
-            modifier = Modifier.focusGroup(),
+            // The player's controls underneath are only faded out: focus stays in the list.
+            modifier = Modifier
+                .focusProperties { onExit = { cancelFocusChange() } }
+                .focusGroup(),
         ) {
             itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
                 val playing = channel.id == currentId
@@ -104,7 +108,7 @@ fun PlayerChannelList(
                     focusedScale = 1.02f,
                     semanticsLabel = channel.title,
                     modifier = Modifier.fillMaxWidth(),
-                ) {
+                ) { focused ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -114,7 +118,11 @@ fun PlayerChannelList(
                     ) {
                         Text(
                             text = (index + 1).toString(),
-                            color = if (playing) TvColors.Focus else TvColors.TextMuted,
+                            color = when {
+                                focused -> TvColors.OnFocus
+                                playing -> TvColors.Focus
+                                else -> TvColors.TextMuted
+                            },
                             fontFamily = TvFonts.Body,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
@@ -129,7 +137,7 @@ fun PlayerChannelList(
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
                             Text(
                                 text = channel.title,
-                                color = TvColors.TextPrimary,
+                                color = if (focused) TvColors.OnFocus else TvColors.TextPrimary,
                                 fontFamily = TvFonts.Body,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 17.sp,
@@ -139,7 +147,7 @@ fun PlayerChannelList(
                             nowTitles[channel.id]?.let { now ->
                                 Text(
                                     text = now,
-                                    color = TvColors.TextSecondary,
+                                    color = if (focused) TvColors.OnFocus else TvColors.TextSecondary,
                                     fontFamily = TvFonts.Body,
                                     fontSize = 13.sp,
                                     maxLines = 1,
