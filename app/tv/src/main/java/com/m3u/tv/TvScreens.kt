@@ -508,11 +508,10 @@ private fun HomeScreen(
             }
         }
         // Trakt: continue watching, watchlist, up next, picks and the person's own lists.
-        val traktSubtitle = stringResource(R.string.dial_trakt_row_subtitle)
         items(traktRows, key = { "trakt-${it.id}" }) { row ->
             TitleRow(
                 title = row.displayName(),
-                subtitle = traktSubtitle,
+                subtitle = stringResource(R.string.dial_trakt_row_subtitle),
                 titles = row.titles,
                 onOpen = onOpenTitle,
             )
