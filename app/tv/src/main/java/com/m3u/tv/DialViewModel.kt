@@ -622,7 +622,8 @@ class DialViewModel @Inject constructor(
             _missed.value = emptyList()
             return
         }
-        if (System.currentTimeMillis() - missedLoadedAt < MISSED_TTL_MS && _missed.value.isNotEmpty()) return
+        if (System.currentTimeMillis() - missedLoadedAt < MISSED_TTL_MS) return
+        missedLoadedAt = System.currentTimeMillis()
         missedJob?.cancel()
         missedJob = viewModelScope.launch {
             val now = System.currentTimeMillis()
@@ -640,7 +641,6 @@ class DialViewModel @Inject constructor(
                     .forEach { found += MissedProgramme(channel, it) }
                 _missed.value = found.sortedByDescending { it.programme.endMillis }.take(MISSED_MAX)
             }
-            missedLoadedAt = System.currentTimeMillis()
         }
     }
 

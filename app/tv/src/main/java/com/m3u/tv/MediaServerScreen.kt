@@ -56,7 +56,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
-import kotlinx.coroutines.yield
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 
 /* -------------------------------------------------------------------------------------------------
  * The Media server tab: sign in to Jellyfin or Emby, then rows (continue, latest per library),
@@ -86,7 +87,7 @@ private fun ServerSignIn(state: MediaServerState, viewModel: MediaServerViewMode
     var password by rememberSaveable { mutableStateOf("") }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        yield()
+        withFrameNanos { }
         runCatching { first.requestFocus() }
     }
     LazyColumn(
@@ -195,9 +196,11 @@ private fun ServerBrowse(state: MediaServerState, viewModel: MediaServerViewMode
     val session = state.session ?: return
     var focused by remember { mutableStateOf<ServerItem?>(null) }
     val first = remember { FocusRequester() }
+    var focusedOnce by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        yield()
-        runCatching { first.requestFocus() }
+        if (focusedOnce) return@LaunchedEffect
+        withFrameNanos { }
+        if (runCatching { first.requestFocus() }.isSuccess) focusedOnce = true
     }
     Box(Modifier.fillMaxSize()) {
         ServerBackdrop(focused?.backdrop ?: focused?.poster)
@@ -268,10 +271,16 @@ private fun ServerBrowse(state: MediaServerState, viewModel: MediaServerViewMode
 @Composable
 private fun ServerLibraryPage(state: MediaServerState, library: ServerLibrary, viewModel: MediaServerViewModel, onPlaying: () -> Unit) {
     val first = remember { FocusRequester() }
+    val grid = rememberLazyGridState()
     LaunchedEffect(state.libraryItems.isNotEmpty()) {
         if (state.libraryItems.isEmpty()) return@LaunchedEffect
-        yield()
+        withFrameNanos { }
         runCatching { first.requestFocus() }
+    }
+    // Fetch the next page as the last rows come into view.
+    val lastVisible = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+    LaunchedEffect(lastVisible, state.libraryItems.size, state.libraryComplete) {
+        if (!state.libraryComplete && lastVisible >= state.libraryItems.size - PAGE_AHEAD) viewModel.loadMoreOfLibrary()
     }
     Column(Modifier.fillMaxSize()) {
         Text(
@@ -283,6 +292,7 @@ private fun ServerLibraryPage(state: MediaServerState, library: ServerLibrary, v
         )
         if (state.loading && state.libraryItems.isEmpty()) ServerStatus(stringResource(R.string.dial_addons_loading))
         LazyVerticalGrid(
+            state = grid,
             columns = GridCells.Adaptive(150.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -306,7 +316,7 @@ private fun ServerSeriesPage(state: MediaServerState, series: ServerItem, viewMo
     val first = remember { FocusRequester() }
     LaunchedEffect(state.episodes.isNotEmpty()) {
         if (state.episodes.isEmpty()) return@LaunchedEffect
-        yield()
+        withFrameNanos { }
         runCatching { first.requestFocus() }
     }
     Box(Modifier.fillMaxSize()) {
@@ -553,6 +563,8 @@ private fun ServerEpisodeRow(episode: ServerItem, focusRequester: FocusRequester
         }
     }
 }
+
+private const val PAGE_AHEAD = 12
 
 @Composable
 private fun ServerStatus(text: String) {

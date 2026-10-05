@@ -31,7 +31,8 @@ private val BADGE_PATTERNS: List<Pair<Regex, String>> = listOf(
     Regex("""(?<![\w])(truehd)(?![\w])""", RegexOption.IGNORE_CASE) to "TrueHD",
     Regex("""(?<![\w])(hevc|h\.?265|x265)(?![\w])""", RegexOption.IGNORE_CASE) to "HEVC",
     Regex("""(?<![\w])(av1)(?![\w])""", RegexOption.IGNORE_CASE) to "AV1",
-    Regex("""(?<![\w])(60\s?fps|50\s?fps)(?![\w])""", RegexOption.IGNORE_CASE) to "60fps",
+    Regex("""(?<![\w])(60\s?fps)(?![\w])""", RegexOption.IGNORE_CASE) to "60fps",
+    Regex("""(?<![\w])(50\s?fps)(?![\w])""", RegexOption.IGNORE_CASE) to "50fps",
 )
 
 /** "DV", "4K", "Atmos"... for a title, in a fixed order, at most three. */

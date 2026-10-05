@@ -1200,7 +1200,7 @@ private fun ProgressLine(
                             .offset(x = maxWidth * at - 2.dp)
                             .width(4.dp)
                             .fillMaxHeight()
-                            .background(TvColors.Accent),
+                            .background(Color.White),
                     )
                 }
             }

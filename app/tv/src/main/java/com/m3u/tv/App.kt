@@ -75,6 +75,7 @@ import androidx.tv.material3.Text
 import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.isSeries
 import com.m3u.data.database.model.isVod
+import com.m3u.tv.stremio.StremioIds
 import com.m3u.data.tv.model.keyCode
 import com.m3u.i18n.R.string
 import kotlinx.coroutines.delay
@@ -210,7 +211,10 @@ fun App(
     val catchUp = currentChannel?.url?.contains("/timeshift/") == true
     // A watch-party guest follows the host's kind of stream, whatever playlist its own copy is in.
     val partyGuestLive = (partyGuestState as? GuestState.InParty)?.live
-    val live = partyGuestLive ?: (!catchUp &&
+    // Media-server and addon items are films and episodes, whatever their stand-in playlist says.
+    val onDemandSource = currentChannel?.playlistUrl == MediaServerViewModel.PLAYLIST_URL ||
+        currentChannel?.playlistUrl == StremioIds.PLAYLIST_URL
+    val live = partyGuestLive ?: (!catchUp && !onDemandSource &&
         (playingPlaylist == null || !(playingPlaylist.isVod || playingPlaylist.isSeries)))
     val zapChannels = when {
         playingId == null || !live -> emptyList()
@@ -289,7 +293,7 @@ fun App(
         viewModel.refreshGuide(currentChannel)
     }
     LaunchedEffect(playingId, live, playingPlaylist != null) {
-        if (playingId != null && live && playingPlaylist != null) dial.rememberLastChannel(playingId)
+        if (playingId != null && live && playingPlaylist != null && !onDemandSource) dial.rememberLastChannel(playingId)
         if (live || catchUp) dial.clearNowPlaying()
     }
 
@@ -379,15 +383,17 @@ fun App(
     }
 
     // A Jellyfin/Emby item: the server hears where playback is, so its own apps resume there too.
-    val serverPlaying = (surface == TvSurface.Player || surface == TvSurface.Mini) &&
-        currentChannel?.playlistUrl == MediaServerViewModel.PLAYLIST_URL
-    LaunchedEffect(serverPlaying, playingId, isPlaying) {
-        if (!serverPlaying) {
-            server.reportProgress(player?.currentPosition ?: 0L, paused = true, stopped = true)
-            return@LaunchedEffect
-        }
+    val serverChannelId = playingId.takeIf {
+        (surface == TvSurface.Player || surface == TvSurface.Mini) &&
+            currentChannel?.playlistUrl == MediaServerViewModel.PLAYLIST_URL
+    }
+    DisposableEffect(serverChannelId) {
+        onDispose { if (serverChannelId != null) server.reportProgress(serverChannelId, 0L, paused = true, stopped = true) }
+    }
+    LaunchedEffect(serverChannelId, isPlaying) {
+        val id = serverChannelId ?: return@LaunchedEffect
         while (true) {
-            server.reportProgress(player?.currentPosition ?: 0L, paused = !isPlaying, stopped = false)
+            server.reportProgress(id, player?.currentPosition ?: 0L, paused = !isPlaying, stopped = false)
             delay(SERVER_PROGRESS_MS)
         }
     }
@@ -814,7 +820,14 @@ fun App(
                     },
                     universal = universalResults,
                     onOpenVideo = { video -> openVideo(video) },
-                    onPlayServer = { item -> server.play(item) { surface = TvSurface.Player } },
+                    onPlayServer = { item ->
+                        if (item.isSeries) {
+                            server.openSeries(item)
+                            destination = TvDestination.Server
+                        } else {
+                            server.play(item) { surface = TvSurface.Player }
+                        }
+                    },
                     guideContent = {
                         GuideScreen(
                             state = state,

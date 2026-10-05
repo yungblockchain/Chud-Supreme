@@ -928,6 +928,7 @@ class TvHomeViewModel @Inject constructor(
                     val playlists = counts.keys
                         .filterNot { it.source == DataSource.EPG }
                         .filterNot { it.url == StremioIds.PLAYLIST_URL }
+            .filterNot { it.url == MediaServerViewModel.PLAYLIST_URL }
                         .sortedWith(
                             localeAwareComparator(
                                 primarySelector = Playlist::title,

@@ -192,7 +192,7 @@ object MediaServerClient {
         items(
             session,
             deviceId,
-            "/Users/${session.userId}/Items?ParentId=$libraryId&Recursive=true&IncludeItemTypes=Movie,Series" +
+            "/Users/${session.userId}/Items?ParentId=$libraryId&Recursive=true&IncludeItemTypes=Movie,Series,Video" +
                 "&SortBy=SortName&SortOrder=Ascending&StartIndex=$start&Limit=$limit&$FIELDS",
         )
 
@@ -342,7 +342,7 @@ object MediaServerClient {
 sealed interface ServerPage {
     data object Browse : ServerPage
     data class Library(val library: ServerLibrary) : ServerPage
-    data class Series(val series: ServerItem) : ServerPage
+    data class Series(val series: ServerItem, val from: ServerPage = Browse) : ServerPage
 }
 
 @Immutable
@@ -355,6 +355,7 @@ data class MediaServerState(
     val libraries: List<ServerLibrary> = emptyList(),
     val page: ServerPage = ServerPage.Browse,
     val libraryItems: List<ServerItem> = emptyList(),
+    val libraryComplete: Boolean = false,
     val seasons: List<ServerSeason> = emptyList(),
     val selectedSeason: ServerSeason? = null,
     val episodes: List<ServerItem> = emptyList(),
@@ -373,14 +374,21 @@ class MediaServerViewModel @Inject constructor(
     val state: StateFlow<MediaServerState> = _state.asStateFlow()
     private var loadJob: Job? = null
 
-    /** The item playing now (for progress reports), with its server. */
-    @Volatile private var playing: Pair<ServerSession, ServerItem>? = null
+    /** The item playing now (for progress reports), with its server and the channel it plays as. */
+    @Volatile private var playing: Playing? = null
+
+    private data class Playing(val session: ServerSession, val item: ServerItem, val channelId: Int)
 
     init {
         viewModelScope.launch {
             store.session.collect { session ->
                 _state.update { it.copy(session = session, page = ServerPage.Browse) }
-                if (session != null) refresh() else _state.update { it.copy(rows = emptyList(), libraries = emptyList()) }
+                if (session != null) {
+                    refresh()
+                } else {
+                    loadJob?.cancel()
+                    _state.update { it.copy(rows = emptyList(), libraries = emptyList()) }
+                }
             }
         }
     }
@@ -408,6 +416,7 @@ class MediaServerViewModel @Inject constructor(
     }
 
     fun signOut() {
+        loadJob?.cancel()
         store.clear()
         _state.update { MediaServerState() }
     }
@@ -439,17 +448,37 @@ class MediaServerViewModel @Inject constructor(
     }
 
     fun openLibrary(library: ServerLibrary) {
+        _state.update { it.copy(page = ServerPage.Library(library), libraryItems = emptyList(), libraryComplete = false, loading = true) }
+        loadMoreOfLibrary()
+    }
+
+    /** The next page of the open library; called as the grid nears its end. */
+    fun loadMoreOfLibrary() {
         val session = store.session.value ?: return
-        _state.update { it.copy(page = ServerPage.Library(library), libraryItems = emptyList(), loading = true) }
-        viewModelScope.launch(Dispatchers.IO) {
-            val items = runCatching { MediaServerClient.library(session, store.deviceId, library.id) }.getOrDefault(emptyList())
-            _state.update { if (it.page == ServerPage.Library(library)) it.copy(libraryItems = items, loading = false) else it }
+        val library = (_state.value.page as? ServerPage.Library)?.library ?: return
+        if (_state.value.libraryComplete || libraryPageJob?.isActive == true) return
+        val start = _state.value.libraryItems.size
+        libraryPageJob = viewModelScope.launch(Dispatchers.IO) {
+            val items = runCatching { MediaServerClient.library(session, store.deviceId, library.id, start, LIBRARY_PAGE) }
+                .getOrDefault(emptyList())
+            _state.update {
+                if (it.page == ServerPage.Library(library)) {
+                    it.copy(
+                        libraryItems = (it.libraryItems + items).distinctBy { item -> item.id },
+                        libraryComplete = items.size < LIBRARY_PAGE,
+                        loading = false,
+                    )
+                } else it
+            }
         }
     }
 
+    private var libraryPageJob: Job? = null
+
     fun openSeries(series: ServerItem) {
         val session = store.session.value ?: return
-        _state.update { it.copy(page = ServerPage.Series(series), seasons = emptyList(), episodes = emptyList(), selectedSeason = null, loading = true) }
+        val from = _state.value.page.let { if (it is ServerPage.Library) it else ServerPage.Browse }
+        _state.update { it.copy(page = ServerPage.Series(series, from), seasons = emptyList(), episodes = emptyList(), selectedSeason = null, loading = true) }
         viewModelScope.launch(Dispatchers.IO) {
             val seasons = runCatching { MediaServerClient.seasons(session, store.deviceId, series.id) }.getOrDefault(emptyList())
             _state.update { it.copy(seasons = seasons, loading = false) }
@@ -469,8 +498,9 @@ class MediaServerViewModel @Inject constructor(
 
     /** True when Back stayed inside the tab. */
     fun back(): Boolean {
-        if (_state.value.page == ServerPage.Browse) return false
-        _state.update { it.copy(page = ServerPage.Browse) }
+        val page = _state.value.page
+        if (page == ServerPage.Browse) return false
+        _state.update { it.copy(page = (page as? ServerPage.Series)?.from ?: ServerPage.Browse) }
         return true
     }
 
@@ -484,32 +514,37 @@ class MediaServerViewModel @Inject constructor(
         viewModelScope.launch {
             val url = MediaServerClient.streamUrl(session, item.id)
             val channelId = rememberChannel(session, item, url)
-            playing = session to item
+            playing = Playing(session, item, channelId)
+            lastPositionMs = 0L
             runCatching { playerManager.play(MediaCommand.Common(channelId), applyContinueWatching = true) }
+            // Started on another of the server's apps: carry on from there, unless this box knows better.
+            if (item.resumeMs > RESUME_MIN_MS && runCatching { playerManager.getCwPosition(url) }.getOrDefault(0L) <= 0L) {
+                playerManager.player.value?.seekTo(item.resumeMs)
+            }
             onPlaying()
         }
     }
 
     /** The player's position, every so often and on pause/stop, for the server's own history. */
-    fun reportProgress(positionMs: Long, paused: Boolean, stopped: Boolean) {
-        val (session, item) = playing ?: return
+    fun reportProgress(channelId: Int, positionMs: Long, paused: Boolean, stopped: Boolean) {
+        val current = playing ?: return
+        // Reports belong to the item playing as this channel; a stale one for another is dropped.
+        if (current.channelId != channelId) return
         // By the time the player closes its position is gone; the last report stands in for it.
         val position = if (stopped && positionMs <= 0L) lastPositionMs else positionMs
         if (!stopped && positionMs > 0L) lastPositionMs = positionMs
+        if (stopped) playing = null
         viewModelScope.launch(Dispatchers.IO) {
             if (stopped) {
-                MediaServerClient.reportStopped(session, store.deviceId, item.id, position)
-                playing = null
-                lastPositionMs = 0L
+                MediaServerClient.reportStopped(current.session, store.deviceId, current.item.id, position)
             } else {
-                MediaServerClient.reportProgress(session, store.deviceId, item.id, position, paused)
+                MediaServerClient.reportProgress(current.session, store.deviceId, current.item.id, position, paused)
             }
         }
     }
 
     @Volatile private var lastPositionMs = 0L
 
-    val playingItemId: String? get() = playing?.second?.id
 
     private suspend fun rememberChannel(session: ServerSession, item: ServerItem, url: String): Int {
         if (playlistDao.get(PLAYLIST_URL) == null) {
@@ -538,6 +573,8 @@ class MediaServerViewModel @Inject constructor(
     }
 
     companion object {
+        const val LIBRARY_PAGE = 60
+        const val RESUME_MIN_MS = 30_000L
         const val PLAYLIST_URL = "mediaserver://library"
         const val PLAYLIST_TITLE = "Media server"
     }

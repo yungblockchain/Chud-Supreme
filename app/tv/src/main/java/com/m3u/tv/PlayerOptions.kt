@@ -588,7 +588,6 @@ fun PlayerOptionsPanel(
                 item(key = "bookmark-add") {
                     OptionRow(
                         label = stringResource(R.string.dial_bookmarks_add),
-                        value = formatClock(positionMs()),
                         onClick = { onAddBookmark(positionMs()) },
                     )
                 }
