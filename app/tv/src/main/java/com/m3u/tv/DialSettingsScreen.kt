@@ -688,10 +688,11 @@ fun UpdateRows() {
             UpdateState.Idle -> latest?.let { stringResource(R.string.dial_update_available, it) } ?: stringResource(R.string.dial_update_none)
         },
         onClick = {
-            when (state) {
+            when (val current = state) {
                 is UpdateState.Failed -> updater.reset()
                 is UpdateState.Downloading -> Unit
-                else -> if (latest != null) updater.install()
+                is UpdateState.Ready -> updater.open(current.file)
+                UpdateState.Idle -> if (latest != null) updater.install()
             }
         },
     )

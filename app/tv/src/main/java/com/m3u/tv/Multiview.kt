@@ -181,9 +181,9 @@ class MultiviewViewModel @Inject constructor(
 
     /** Replaces the tiles with the preset's channels (the ones still in the playlists). */
     fun loadPreset(preset: MultiviewPreset) {
+        releaseAll()
         viewModelScope.launch {
             val channels = preset.channelIds.mapNotNull { channelRepository.get(it) }.filter(::supports)
-            releaseAll()
             for (channel in channels.take(MAX_TILES)) {
                 val player = createPlayer(channel)
                 _tiles.value = _tiles.value + MultiviewTile(channel, player)

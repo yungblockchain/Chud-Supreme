@@ -487,15 +487,17 @@ fun TvPlayerScreen(
     // Live TV paused: the clock starts, so Play can pick up the catch-up stream from that moment
     // once the player's own buffer would have run out.
     var pausedLiveAt by remember(player) { mutableLongStateOf(0L) }
-    LaunchedEffect(isPlaying, live) {
-        pausedLiveAt = if (live && !isPlaying) System.currentTimeMillis() else 0L
+    // A real pause (the player ready, told not to play), not a stall or a tune-in.
+    val pausedByUser = live && !isPlaying && playbackState == Player.STATE_READY && player?.playWhenReady == false
+    LaunchedEffect(pausedByUser) {
+        pausedLiveAt = if (pausedByUser) System.currentTimeMillis() else 0L
     }
     fun playPauseOrResume() {
         val resume = onResumeLiveFrom
         val pausedAt = pausedLiveAt
-        if (resume != null && !isPlaying && live && !liveSeekable && pausedAt > 0L &&
-            System.currentTimeMillis() - pausedAt > LIVE_PAUSE_BUFFER_MS
-        ) {
+        // How long the player can hold a pause: its rewind window on a seekable stream, else its buffer.
+        val hold = if (liveSeekable) ((player?.duration ?: 0L) - 5_000L).coerceAtLeast(LIVE_PAUSE_BUFFER_MS) else LIVE_PAUSE_BUFFER_MS
+        if (resume != null && !isPlaying && live && pausedAt > 0L && System.currentTimeMillis() - pausedAt > hold) {
             resume(pausedAt)
         } else {
             onPlayPause()

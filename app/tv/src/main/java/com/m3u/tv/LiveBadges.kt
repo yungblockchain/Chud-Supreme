@@ -61,9 +61,12 @@ class LiveBadgesViewModel @Inject constructor(
         val prepared = live.map { Triple(it, it.home.teamWords(), it.away.teamWords()) }
         val result = HashMap<Int, String>()
         for (channel in channels) {
-            val title = channel.title.lowercase(Locale.ROOT)
+            val words = channel.title.lowercase(Locale.ROOT).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
+            // Every distinctive word of both teams must be in the name, and the two sides must
+            // match on different words (a derby's shared city name isn't enough).
             val hit = prepared.firstOrNull { (_, home, away) ->
-                home.isNotEmpty() && away.isNotEmpty() && home.any { title.contains(it) } && away.any { title.contains(it) }
+                home.isNotEmpty() && away.isNotEmpty() && words.containsAll(home) && words.containsAll(away) &&
+                    (home.toSet() - away.toSet()).isNotEmpty() && (away.toSet() - home.toSet()).isNotEmpty()
             } ?: continue
             result[channel.id] = "LIVE ${hit.first.score}"
         }
@@ -72,11 +75,11 @@ class LiveBadgesViewModel @Inject constructor(
 
     /** The distinctive words of a team name ("Manchester United" → manchester, united; "FC" and the like dropped). */
     private fun String.teamWords(): List<String> =
-        lowercase(Locale.ROOT).split(' ', '-', '.').map { it.trim() }
-            .filter { it.length >= 4 && it !in STOP_WORDS }
+        lowercase(Locale.ROOT).split(Regex("[^a-z0-9]+")).map { it.trim() }
+            .filter { it.length >= 3 && it !in STOP_WORDS }
 
     private companion object {
         const val REFRESH_MS = 120_000L
-        val STOP_WORDS = setOf("united", "city", "town", "club", "athletic", "real", "sporting", "football", "association", "rovers", "wanderers")
+        val STOP_WORDS = setOf("club", "football", "association", "the", "and")
     }
 }

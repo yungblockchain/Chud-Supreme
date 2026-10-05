@@ -735,7 +735,7 @@ class DialViewModel @Inject constructor(
             val url = if (credentials != null && streamId != null && programme != null) {
                 XtreamCatalog.timeshiftUrl(credentials, streamId, programme)
             } else null
-            if (url == null) {
+            if (programme == null || url == null) {
                 playerManager.pauseOrContinue(true)
                 return@launch
             }

@@ -240,13 +240,17 @@ fun App(
         currentChannel?.playlistUrl == RadioViewModel.PODCASTS_URL
     val live = partyGuestLive ?: (!catchUp && !onDemandSource &&
         (playingPlaylist == null || !(playingPlaylist.isVod || playingPlaylist.isSeries)))
+    // With duplicates merged, a copy that's playing counts as the card that stands for it.
+    val shownId = playingId?.let { id ->
+        state.variants.entries.firstOrNull { (_, copies) -> copies.any { it.id == id } }?.key ?: id
+    }
     val zapChannels = when {
         playingId == null || !live -> emptyList()
-        state.channels.any { it.id == playingId } -> state.channels
+        state.channels.any { it.id == shownId } -> state.channels
         state.favorites.any { it.id == playingId } -> state.favorites
         else -> listOfNotNull(currentChannel)
     }
-    val zapIndex = zapChannels.indexOfFirst { it.id == playingId }
+    val zapIndex = zapChannels.indexOfFirst { it.id == shownId }
     val zap: (Int) -> Unit = { step ->
         if (zapIndex >= 0 && zapChannels.size > 1) {
             viewModel.play(zapChannels[Math.floorMod(zapIndex + step, zapChannels.size)])
@@ -654,9 +658,16 @@ fun App(
                 is PhoneMessage.Restored ->
                     Toast.makeText(context, restoredFromPhone.format(message.settings, message.favourites), Toast.LENGTH_LONG).show()
                 is PhoneMessage.Key -> {
-                    // The phone page as a remote: the key lands exactly as one from the real remote.
-                    view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, message.code))
-                    view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, message.code))
+                    // The phone page as a remote: the key lands exactly as one from the real remote
+                    // (through the activity, so Back reaches the screens' own Back handling).
+                    val target = view.context.findActivity()
+                    if (target != null) {
+                        target.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, message.code))
+                        target.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, message.code))
+                    } else {
+                        view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, message.code))
+                        view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, message.code))
+                    }
                 }
             }
         }
@@ -780,8 +791,10 @@ fun App(
     val lastKeyAt = remember { longArrayOf(SystemClock.uptimeMillis()) }
     // The ambient screensaver, after the menus sit untouched for the time set in Settings.
     var screensaverOn by remember { mutableStateOf(false) }
-    val screensaverMs = preferences.screensaverMinutes * 60_000L
-    val screensaverAllowed = surface == TvSurface.Browse && details == null && person == null && !showSplash && !overlayUp
+    val screensaverMs by rememberUpdatedState(preferences.screensaverMinutes * 60_000L)
+    val screensaverAllowed by rememberUpdatedState(
+        surface == TvSurface.Browse && details == null && person == null && !showSplash && !overlayUp
+    )
     LaunchedEffect(Unit) {
         while (true) {
             delay(REMOTE_IDLE_CHECK_MS)
@@ -1265,7 +1278,7 @@ fun App(
                 onBackToLive = if (catchUp && playingId != null) {
                     { scope.launch { dial.channelById(playingId)?.let(viewModel::play) } }
                 } else null,
-                variants = playingId?.let { state.variants[it] }.orEmpty(),
+                variants = playingId?.let { id -> state.variants.values.firstOrNull { copies -> copies.any { it.id == id } } }.orEmpty(),
                 onPlayVariant = { copy -> viewModel.play(copy) },
             )
         }

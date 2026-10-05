@@ -531,7 +531,11 @@ private fun HomeScreen(
                 state = state,
                 channel = activeChannel,
                 primaryFocusRequester = heroFocusRequester,
-                nextFocusRequester = firstFeaturedFocusRequester,
+                // Down from the hero: the first row's first card, but only when that row is the
+                // "last watched" row (the one that holds the requester); otherwise the default.
+                nextFocusRequester = if (featuredChannels.isNotEmpty() &&
+                    homeRows.firstOrNull { it !in hiddenRows } == HomeRow.LastWatched
+                ) firstFeaturedFocusRequester else FocusRequester.Default,
                 onOpenLibrary = onOpenLibrary,
                 onPlayRecent = onPlayRecent,
                 onPlay = onPlay

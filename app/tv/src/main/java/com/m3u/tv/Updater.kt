@@ -110,7 +110,7 @@ class UpdaterViewModel @Inject constructor(
         }
     }
 
-    private fun open(file: File) {
+    fun open(file: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")

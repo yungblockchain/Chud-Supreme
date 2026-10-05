@@ -132,7 +132,7 @@ enum class HomeRow(val id: String) {
 
     companion object {
         fun parse(ids: String?): List<HomeRow> {
-            val saved = ids?.split(',')?.mapNotNull { id -> entries.firstOrNull { it.id == id } }.orEmpty()
+            val saved = ids?.split(',')?.mapNotNull { id -> entries.firstOrNull { it.id == id } }.orEmpty().distinct()
             return saved + entries.filterNot { it in saved }
         }
     }

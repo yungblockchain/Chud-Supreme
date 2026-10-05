@@ -33,13 +33,15 @@ val LocalChannelBadges = compositionLocalOf<Map<Int, ChannelBadge>> { emptyMap()
 object ChannelVariants {
     /** Quality words that make copies of one channel differ, and how good each is. */
     private val QUALITY_RANK: List<Pair<Regex, Int>> = listOf(
-        Regex("""(?i)\b(4k|uhd|2160p?)\b""") to 4,
-        Regex("""(?i)\b(fhd|1080p?|full ?hd)\b""") to 3,
-        Regex("""(?i)(\bhd\b|ᴴᴰ|720p?)""") to 2,
-        Regex("""(?i)\b(sd|480p?|576p?|lq|low)\b""") to 1,
+        Regex("""(?i)(\b(4k|uhd|2160[pi]?)\b|ᵁᴴᴰ|⁴ᴷ)""") to 4,
+        Regex("""(?i)(\b(fhd|1080[pi]?|full ?hd)\b|ᶠᴴᴰ)""") to 3,
+        Regex("""(?i)(\bhd\b|ᴴᴰ|\b720[pi]?\b)""") to 2,
+        Regex("""(?i)(\b(sd|480[pi]?|576[pi]?|lq)\b|ˢᴰ)""") to 1,
     )
+    /** Quality and server marks: bare words, superscripts, and bracketed tags made only of them. */
+    private const val MARKS = """4k|uhd|2160[pi]?|fhd|1080[pi]?|full ?hd|hd\+?|hdr|720[pi]?|sd|480[pi]?|576[pi]?|lq|hevc|h\.?26[45]|x26[45]|50 ?fps|60 ?fps|backup|bk|alt|alternative|server ?\d*|src ?\d*|link ?\d+|feed ?\d+|option ?\d+|vip"""
     private val NOISE = Regex(
-        """(?i)(\b(4k|uhd|2160p?|fhd|1080p?|full ?hd|hd|720p?|sd|480p?|576p?|lq|low|hevc|h\.?265|h\.?264|50 ?fps|60 ?fps|raw|backup|bk|b|alt|alternative|server ?\d*|src ?\d*|link ?\d*|feed ?\d*|option ?\d*)\b|ᴴᴰ|[\[(][^\])]*[\])]|[|•·:_\-–—]+)""",
+        """(?i)(\b($MARKS)\b|ᵁᴴᴰ|ᶠᴴᴰ|ᴴᴰ|ˢᴰ|⁴ᴷ|[\[(]\s*(($MARKS)[\s,/|-]*)+[\])]|[|•·:_\-–—]+)""",
     )
     private val SPACES = Regex("""\s+""")
 
@@ -49,7 +51,8 @@ object ChannelVariants {
         return SPACES.replace(stripped, " ").trim().lowercase()
     }
 
-    fun rank(title: String): Int = QUALITY_RANK.firstOrNull { it.first.containsMatchIn(title) }?.second ?: 2
+    /** An unmarked name is usually the plain SD feed. */
+    fun rank(title: String): Int = QUALITY_RANK.firstOrNull { it.first.containsMatchIn(title) }?.second ?: 1
 
     /** The copy that plays for [preferred]: the closest quality at or below it, else the best. */
     fun pick(copies: List<Channel>, preferred: PreferredQuality): Channel {
