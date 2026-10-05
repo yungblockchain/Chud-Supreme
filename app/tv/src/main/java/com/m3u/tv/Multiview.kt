@@ -515,10 +515,16 @@ fun MiniPlayer(
     player: Player,
     channel: Channel?,
     modifier: Modifier = Modifier,
+    size: MiniSize = MiniSize.Medium,
 ) {
+    val width = when (size) {
+        MiniSize.Small -> MINI_WIDTH_SMALL
+        MiniSize.Medium -> MINI_WIDTH
+        MiniSize.Large -> MINI_WIDTH_LARGE
+    }
     Column(
         verticalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = modifier.width(MINI_WIDTH),
+        modifier = modifier.width(width),
     ) {
         Box(
             modifier = Modifier
@@ -560,3 +566,5 @@ fun MiniPlayer(
 }
 
 private val MINI_WIDTH = 384.dp
+private val MINI_WIDTH_SMALL = 288.dp
+private val MINI_WIDTH_LARGE = 520.dp

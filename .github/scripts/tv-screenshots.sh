@@ -143,6 +143,8 @@ if check "launch"; then
 
     open_tab settings 8;  shot 12-settings
     press $RIGHT; for _ in 1 2 3 4 5 6 7 8; do press $DOWN; done; sleep 1; shot 13-settings-more
+    for _ in $(seq 1 22); do press $DOWN; done; sleep 1; shot 13b-settings-player-buttons
+    for _ in $(seq 1 15); do press $DOWN; done; sleep 1; shot 13c-settings-party
     # The settings tabs: Appearance (skins), Playback and Services.
     # Focus starts on the first tab; Appearance is the second.
     open_tab settings 8; press $RIGHT $OK; sleep 2; shot 15-settings-appearance
@@ -227,6 +229,16 @@ if check "launch"; then
                     fi
                 fi
                 check "film playback"
+                # Player extras: the cursor and picture on the progress bar, stats for nerds,
+                # the options panel (subtitle style, skip markers, watch party).
+                press $UP; sleep 1; press $UP; sleep 1; press $RIGHT $RIGHT; sleep 3; shot 33g-seek-preview
+                press $BACK; sleep 1; press $DOWN; sleep 1
+                for _ in 1 2 3 4 5 6 7; do press $RIGHT; done; press $OK; sleep 3; shot 33h-stats
+                press $OK; sleep 1
+                adb shell input keyevent 82; sleep 2; shot 33i-player-options
+                for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do press $DOWN; done; sleep 1; shot 33j-player-options-more
+                press $BACK; sleep 1
+                check "player extras"
                 press $BACK; sleep 2; press $BACK; sleep 2
                 # Series: into the first show's page.
                 open_tab series 12; shot 37-big-series

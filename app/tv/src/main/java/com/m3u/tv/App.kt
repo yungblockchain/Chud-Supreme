@@ -110,7 +110,7 @@ private val CatalogKind.destination: TvDestination
 
 /** How long a screen gets to take focus itself before the app puts focus in it. */
 private const val FOCUS_RESCUE_MS = 450L
-private const val SETTINGS_TAB_ADDONS = 3
+private const val SETTINGS_TAB_ADDONS = 4
 
 /** The remote counts as resting after this long without a key press. */
 private const val REMOTE_IDLE_AFTER_MS = 3_000L
@@ -149,6 +149,7 @@ fun App(
     services: ServicesSettingsViewModel = hiltViewModel(),
     accounts: XtreamAccountViewModel = hiltViewModel(),
     multiview: MultiviewViewModel = hiltViewModel(),
+    party: WatchPartyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -285,6 +286,64 @@ fun App(
         }
     }
 
+    // Watch party: what the host is playing, for guests; and a guest's player coming to the front.
+    val partyHosting by party.hosting.collectAsStateWithLifecycle()
+    val partyGuest by party.guest.collectAsStateWithLifecycle()
+    val skipMarkers by dial.skipMarkers.collectAsStateWithLifecycle()
+    LaunchedEffect(currentChannel, nowPlaying, live, player?.currentMediaItem?.mediaId) {
+        val channel = currentChannel
+        val url = player?.currentMediaItem?.localConfiguration?.uri?.toString() ?: channel?.url
+        party.updateProgramme(
+            if (channel == null || url == null) null else PartyProgramme(
+                title = channel.title,
+                url = url,
+                live = live,
+                seriesTitle = nowPlaying?.series?.title,
+                season = nowPlaying?.episode?.season,
+                episode = nowPlaying?.episode?.toEpisodeInfo(),
+            )
+        )
+    }
+    val partyHostStream = stringResource(R.string.dial_party_host_stream)
+    val partyStarted = stringResource(R.string.dial_party_started)
+    val partyFailed = stringResource(R.string.dial_party_failed)
+    LaunchedEffect(party) {
+        party.events.collect { event ->
+            when (event) {
+                PartyEvent.ShowPlayer -> surface = TvSurface.Player
+                is PartyEvent.JoinedStream ->
+                    if (!event.ownStream) Toast.makeText(context, partyHostStream, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    val partyErrors = PartyFailure.entries.associateWith { reason ->
+        stringResource(
+            when (reason) {
+                PartyFailure.BadCode -> R.string.dial_party_error_code
+                PartyFailure.NoNetwork -> R.string.dial_party_error_network
+                PartyFailure.HostNotFound -> R.string.dial_party_error_host
+                PartyFailure.Rejected -> R.string.dial_party_error_rejected
+                PartyFailure.NothingPlaying -> R.string.dial_party_error_nothing
+            }
+        )
+    }
+    LaunchedEffect(partyGuest) {
+        val failed = partyGuest as? GuestState.Failed ?: return@LaunchedEffect
+        Toast.makeText(context, partyErrors[failed.reason], Toast.LENGTH_LONG).show()
+    }
+    val startParty: () -> Unit = {
+        val code = party.startHosting()
+        Toast.makeText(context, if (code != null) partyStarted.format(code) else partyFailed, Toast.LENGTH_LONG).show()
+    }
+    val partyControls = PartyControls(
+        hosting = partyHosting,
+        guest = partyGuest,
+        onStartHosting = startParty,
+        onStopHosting = party::stopHosting,
+        onJoin = party::join,
+        onLeave = party::leave,
+    )
+
     // Up next: when an episode finishes, the following one starts after a short countdown.
     val upNext = if (
         surface == TvSurface.Player &&
@@ -355,6 +414,7 @@ fun App(
                 is PhoneMessage.KeySaved -> Toast.makeText(context, keySaved, Toast.LENGTH_SHORT).show()
                 is PhoneMessage.SkinApplied ->
                     Toast.makeText(context, skinSaved.format(message.name), Toast.LENGTH_SHORT).show()
+                is PhoneMessage.JoinParty -> party.join(message.code)
             }
         }
     }
@@ -724,6 +784,7 @@ fun App(
                             onUpdate = dial::updatePreferences,
                             onClearHistory = dial::clearContinueWatching,
                             pairingCode = remoteControlCode?.toString()?.padStart(6, '0'),
+                            party = partyControls,
                         )
                     },
                 )
@@ -873,6 +934,16 @@ fun App(
                 onClose = closePlayer,
                 onMinimize = minimizePlayer,
                 onMultiview = { currentChannel?.let(openMultiview) },
+                skipMarkers = skipMarkers,
+                onUpdateSkipMarkers = if (nowPlaying?.series != null) dial::updateSkipMarkers else null,
+                onNextEpisode = if (nowPlaying?.series != null) {
+                    { dial.nextEpisode()?.let { (series, episode) -> dial.playEpisode(series, episode, fromStart = true) } }
+                } else null,
+                partyHosting = partyHosting,
+                partyGuest = partyGuest,
+                onStartParty = startParty,
+                onStopParty = party::stopHosting,
+                onLeaveParty = party::leave,
             )
         }
 
@@ -881,9 +952,17 @@ fun App(
                 MiniPlayer(
                     player = current,
                     channel = currentChannel,
+                    size = preferences.miniSize,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 32.dp, bottom = 24.dp),
+                        .align(
+                            when (preferences.miniCorner) {
+                                MiniCorner.BottomRight -> Alignment.BottomEnd
+                                MiniCorner.BottomLeft -> Alignment.BottomStart
+                                MiniCorner.TopRight -> Alignment.TopEnd
+                                MiniCorner.TopLeft -> Alignment.TopStart
+                            }
+                        )
+                        .padding(horizontal = 32.dp, vertical = 24.dp),
                 )
             }
         }

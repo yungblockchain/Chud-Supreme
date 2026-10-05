@@ -8,6 +8,8 @@ import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.animation.slideOutHorizontally
@@ -30,6 +32,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -113,6 +117,9 @@ private val SLEEP_STEPS_MINUTES = listOf(30, 60, 90, 120)
 
 /** How long the "+30 s" bubble stays after the last scrub step. */
 private const val SCRUB_BUBBLE_MS = 900L
+
+/** How often the "still watching?" clock is checked. */
+private const val STILL_WATCHING_CHECK_MS = 30_000L
 
 /** "+30 s", "−1:30", "+12:00". */
 private fun scrubLabel(deltaMs: Long): String {
@@ -201,6 +208,17 @@ fun TvPlayerScreen(
     onClose: () -> Unit,
     onMinimize: (() -> Unit)? = null,
     onMultiview: (() -> Unit)? = null,
+    /** Intro and credits markers for the series playing (empty otherwise). */
+    skipMarkers: SkipMarkers = SkipMarkers(),
+    /** Set when a series episode is playing, so markers can be placed. */
+    onUpdateSkipMarkers: (((SkipMarkers) -> SkipMarkers) -> Unit)? = null,
+    /** Starts the following episode now (skipping the credits). */
+    onNextEpisode: (() -> Unit)? = null,
+    partyHosting: HostedParty? = null,
+    partyGuest: GuestState = GuestState.Idle,
+    onStartParty: (() -> Unit)? = null,
+    onStopParty: () -> Unit = {},
+    onLeaveParty: () -> Unit = {},
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -220,6 +238,12 @@ fun TvPlayerScreen(
     var duration by remember { mutableLongStateOf(0L) }
     var videoAspect by remember(player) { mutableFloatStateOf(0f) }
     var videoFrameRate by remember(player) { mutableFloatStateOf(0f) }
+    var statsVisible by remember { mutableStateOf(false) }
+    var stillWatching by remember { mutableStateOf(false) }
+    var lastKeyAt by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+    /** The skip the viewer waved away (Back) — not offered again until it changes. */
+    var skipDismissed by remember(player) { mutableStateOf<SkipKind?>(null) }
+    val autoSkipped = remember(player) { mutableSetOf<String>() }
     val activity = remember(view) { view.context.findActivity() }
     DisposableEffect(activity) {
         val window = activity?.window
@@ -308,7 +332,15 @@ fun TvPlayerScreen(
     }
 
     BackHandler {
-        if (controlsVisible) controlsVisible = false else onBack()
+        when {
+            stillWatching -> {
+                stillWatching = false
+                lastKeyAt = SystemClock.uptimeMillis()
+                if (!isPlaying) onPlayPause()
+            }
+            controlsVisible -> controlsVisible = false
+            else -> onBack()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -398,14 +430,64 @@ fun TvPlayerScreen(
         }
     }
 
-    LaunchedEffect(player, live, controlsVisible) {
-        if (live || player == null || !controlsVisible) return@LaunchedEffect
+    // Position and length: for the progress bar while the controls show, and all the time when
+    // there are intro/credits markers to watch for.
+    val watchMarkers = !skipMarkers.isEmpty
+    LaunchedEffect(player, live, controlsVisible, watchMarkers) {
+        if (live || player == null || !(controlsVisible || watchMarkers)) return@LaunchedEffect
         while (true) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
             delay(500)
         }
     }
+
+    // Skip intro / skip credits. A marker window offers the skip (OK takes it, Back waves it
+    // away); with auto-skip on, the jump happens on its own, once per episode.
+    val mediaKey = player?.currentMediaItem?.mediaId.orEmpty()
+    val skipKind = if (!live && watchMarkers) skipMarkers.skipAt(position, duration) else null
+    LaunchedEffect(skipKind) { if (skipKind == null) skipDismissed = null }
+    val skipOffered = skipKind?.takeIf { it != skipDismissed && !stillWatching }
+    fun takeSkip(kind: SkipKind) {
+        when (kind) {
+            SkipKind.Intro -> {
+                player?.seekTo(skipMarkers.introEndMs)
+                position = skipMarkers.introEndMs
+            }
+            SkipKind.Credits -> {
+                val next = onNextEpisode
+                if (next != null) next() else player?.let { it.seekTo(it.duration.coerceAtLeast(0L)) }
+            }
+        }
+        skipDismissed = kind
+    }
+    LaunchedEffect(skipOffered, preferences.autoSkip, mediaKey) {
+        val kind = skipOffered ?: return@LaunchedEffect
+        if (!preferences.autoSkip) return@LaunchedEffect
+        val once = "$mediaKey:${kind.name}"
+        if (once in autoSkipped) return@LaunchedEffect
+        autoSkipped += once
+        takeSkip(kind)
+    }
+
+    // "Still watching?" after hours of a film or series running untouched.
+    val stillWatchingMs = preferences.stillWatchingHours * 3_600_000L
+    LaunchedEffect(player, live, stillWatchingMs, isPlaying) {
+        if (live || player == null || stillWatchingMs <= 0L || !isPlaying) return@LaunchedEffect
+        while (true) {
+            delay(STILL_WATCHING_CHECK_MS)
+            if (SystemClock.uptimeMillis() - lastKeyAt >= stillWatchingMs && !stillWatching) {
+                stillWatching = true
+                onPlayPause()
+                break
+            }
+        }
+    }
+
+    // Stats for nerds, and the picture at the progress-bar cursor.
+    val displayHz = remember(activity) { activity?.let { displayRefreshRate(it) } ?: 0f }
+    val stats by rememberPlaybackStats(player, statsVisible, displayHz)
+    val previews = rememberSeekPreviews(player, enabled = !live && preferences.seekPreviews)
 
     val controlsAlpha by animateFloatAsState(
         targetValue = if (controlsVisible) 1f else 0f,
@@ -423,12 +505,25 @@ fun TvPlayerScreen(
                 val key = event.key
                 val isDown = event.type == KeyEventType.KeyDown
                 val firstPress = isDown && event.nativeKeyEvent.repeatCount == 0
+                if (isDown) lastKeyAt = SystemClock.uptimeMillis()
                 if (event.type == KeyEventType.KeyUp && swallowedKey == key) {
                     swallowedKey = null
                     return@onPreviewKeyEvent true
                 }
-                // The options panel moves with the arrows like any list.
-                if (optionsOpen) return@onPreviewKeyEvent false
+                // The options panel and the "still watching?" card move with the arrows like any list.
+                if (optionsOpen || stillWatching) return@onPreviewKeyEvent false
+                // A skip on offer: OK takes it (with the controls hidden), Back waves it away.
+                val offered = skipOffered
+                if (offered != null && !controlsVisible) {
+                    val confirm = key == Key.DirectionCenter || key == Key.Enter || key == Key.NumPadEnter
+                    if (confirm || key == Key.Back) {
+                        if (firstPress) {
+                            if (confirm) takeSkip(offered) else skipDismissed = offered
+                            swallowedKey = key
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                }
                 when {
                     key == Key.Menu -> {
                         if (firstPress) {
@@ -504,6 +599,9 @@ fun TvPlayerScreen(
                 player = player,
                 sizePercent = preferences.subtitleSizePercent,
                 modifier = Modifier.fillMaxSize(),
+                colour = preferences.subtitleColour,
+                backdrop = preferences.subtitleBackdrop,
+                raisePercent = preferences.subtitleRaisePercent,
             )
         }
 
@@ -520,6 +618,60 @@ fun TvPlayerScreen(
         // "+30 s" / "−1:30" while fast-forwarding or rewinding.
         if (scrubTotalMs != 0L) {
             TuningPill(text = scrubLabel(scrubTotalMs), modifier = Modifier.align(Alignment.Center))
+        }
+        if (statsVisible) {
+            PlaybackStatsPanel(
+                stats = stats,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(40.dp),
+            )
+        }
+        // Party pill, top right: the host's code, or the guest's sync state.
+        val partyLine = when {
+            partyHosting != null -> stringResource(R.string.dial_party_hosting_pill, partyHosting.code, partyHosting.guests)
+            partyGuest is GuestState.InParty -> stringResource(
+                if (partyGuest.synced) R.string.dial_party_guest_synced else R.string.dial_party_guest_syncing,
+                partyGuest.code,
+            )
+            partyGuest is GuestState.Joining -> stringResource(R.string.dial_party_joining, partyGuest.code)
+            else -> null
+        }
+        if (partyLine != null) {
+            Text(
+                text = partyLine,
+                color = TvColors.TextPrimary,
+                fontFamily = TvFonts.Body,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(32.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+            )
+        }
+        val offeredSkip = skipOffered
+        if (offeredSkip != null && !controlsVisible) {
+            SkipPrompt(
+                kind = offeredSkip,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 56.dp, bottom = 56.dp),
+            )
+        }
+        if (stillWatching) {
+            StillWatchingCard(
+                onContinue = {
+                    stillWatching = false
+                    lastKeyAt = SystemClock.uptimeMillis()
+                    if (!isPlaying) onPlayPause()
+                    showControls()
+                },
+                onStop = onClose,
+                modifier = Modifier.align(Alignment.Center),
+            )
         }
 
         AnimatedVisibility(
@@ -570,11 +722,15 @@ fun TvPlayerScreen(
                     ProgressLine(
                         position = position,
                         duration = duration,
-                        skipMs = skipAheadMs,
+                        skipBackMs = skipBackMs,
+                        skipAheadMs = skipAheadMs,
+                        previews = previews,
                         onSeek = { target ->
                             player?.seekTo(target)
+                            position = target
                             showControls()
                         },
+                        onInteraction = { showControls() },
                     )
                 }
                 Row(
@@ -584,112 +740,150 @@ fun TvPlayerScreen(
                         .fillMaxWidth()
                         .focusGroup()
                 ) {
-                    TvIconActionButton(
-                        icon = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (isPlaying) {
-                            stringResource(string.tv_action_pause)
-                        } else {
-                            stringResource(string.tv_action_play)
-                        },
-                        onClick = {
-                            onPlayPause()
-                            showControls()
-                        },
-                        focusRequester = playPauseFocusRequester
-                    )
-                    if (canZap) {
-                        TvIconActionButton(
-                            icon = Icons.Rounded.KeyboardArrowUp,
-                            contentDescription = stringResource(R.string.dial_player_next_channel),
-                            onClick = {
-                                onNextChannel()
-                                showControls()
-                            },
-                        )
-                        TvIconActionButton(
-                            icon = Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = stringResource(R.string.dial_player_previous_channel),
-                            onClick = {
-                                onPreviousChannel()
-                                showControls()
-                            },
-                        )
+                    for (button in preferences.playerButtons) {
+                        when (button) {
+                            PlayerButton.PlayPause -> TvIconActionButton(
+                                icon = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = if (isPlaying) {
+                                    stringResource(string.tv_action_pause)
+                                } else {
+                                    stringResource(string.tv_action_play)
+                                },
+                                onClick = {
+                                    onPlayPause()
+                                    showControls()
+                                },
+                                focusRequester = playPauseFocusRequester
+                            )
+                            PlayerButton.ChannelUp -> if (canZap) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.KeyboardArrowUp,
+                                    contentDescription = stringResource(R.string.dial_player_next_channel),
+                                    onClick = {
+                                        onNextChannel()
+                                        showControls()
+                                    },
+                                )
+                            }
+                            PlayerButton.ChannelDown -> if (canZap) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = stringResource(R.string.dial_player_previous_channel),
+                                    onClick = {
+                                        onPreviousChannel()
+                                        showControls()
+                                    },
+                                )
+                            }
+                            PlayerButton.Rewind -> if (!live) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.FastRewind,
+                                    contentDescription = stringResource(R.string.dial_player_rewind, preferences.skipBackSeconds),
+                                    onClick = { scrubClick(forward = false) },
+                                    onKey = scrubKeys(forward = false),
+                                )
+                            }
+                            PlayerButton.FastForward -> if (!live) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.FastForward,
+                                    contentDescription = stringResource(R.string.dial_player_forward, preferences.skipAheadSeconds),
+                                    onClick = { scrubClick(forward = true) },
+                                    onKey = scrubKeys(forward = true),
+                                )
+                            }
+                            PlayerButton.StartOver -> if (!live) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.Replay,
+                                    contentDescription = stringResource(R.string.dial_player_start_over),
+                                    onClick = {
+                                        player?.seekTo(0L)
+                                        showControls()
+                                    },
+                                )
+                            }
+                            PlayerButton.Favourite -> if (channel != null) {
+                                TvIconActionButton(
+                                    icon = if (isFavourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                    contentDescription = stringResource(
+                                        if (isFavourite) R.string.dial_player_favourite_remove
+                                        else R.string.dial_player_favourite_add
+                                    ),
+                                    onClick = {
+                                        onToggleFavourite()
+                                        showControls()
+                                    },
+                                )
+                            }
+                            PlayerButton.Mini -> onMinimize?.let { minimize ->
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.PictureInPictureAlt,
+                                    contentDescription = stringResource(R.string.dial_player_mini),
+                                    onClick = minimize,
+                                )
+                            }
+                            PlayerButton.Multiview -> if (live && onMultiview != null) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.GridView,
+                                    contentDescription = stringResource(R.string.dial_multiview_title),
+                                    onClick = onMultiview,
+                                )
+                            }
+                            PlayerButton.Options -> TvIconActionButton(
+                                icon = Icons.Rounded.Tune,
+                                contentDescription = stringResource(R.string.dial_options_title),
+                                onClick = {
+                                    optionsOpen = true
+                                    showControls()
+                                },
+                                focusRequester = optionsFocusRequester,
+                            )
+                            PlayerButton.Stats -> TvIconActionButton(
+                                icon = Icons.Rounded.Analytics,
+                                contentDescription = stringResource(
+                                    if (statsVisible) R.string.dial_stats_hide else R.string.dial_stats_show
+                                ),
+                                onClick = {
+                                    statsVisible = !statsVisible
+                                    showControls()
+                                },
+                            )
+                            PlayerButton.Party -> if (onStartParty != null || partyHosting != null || partyGuest !is GuestState.Idle) {
+                                TvIconActionButton(
+                                    icon = Icons.Rounded.Groups,
+                                    contentDescription = when {
+                                        partyHosting != null -> stringResource(R.string.dial_party_end)
+                                        partyGuest is GuestState.Idle -> stringResource(R.string.dial_party_start)
+                                        else -> stringResource(R.string.dial_party_leave)
+                                    },
+                                    onClick = {
+                                        when {
+                                            partyHosting != null -> onStopParty()
+                                            partyGuest is GuestState.Idle -> onStartParty?.invoke()
+                                            else -> onLeaveParty()
+                                        }
+                                        showControls()
+                                    },
+                                )
+                            }
+                            PlayerButton.Sleep -> TvActionButton(
+                                text = stringResource(R.string.dial_player_sleep),
+                                icon = Icons.Rounded.Bedtime,
+                                supportingText = sleepMinutesLeft
+                                    ?.let { stringResource(R.string.dial_player_sleep_left, it) }
+                                    ?: stringResource(R.string.dial_player_sleep_off),
+                                selected = sleepEndsAt != null,
+                                onClick = {
+                                    cycleSleepTimer()
+                                    showControls()
+                                },
+                            )
+                            PlayerButton.Close -> TvIconActionButton(
+                                icon = Icons.Rounded.Close,
+                                contentDescription = stringResource(string.tv_action_close_player),
+                                onClick = onClose
+                            )
+                        }
                     }
-                    if (!live) {
-                        TvIconActionButton(
-                            icon = Icons.Rounded.FastRewind,
-                            contentDescription = stringResource(R.string.dial_player_rewind, preferences.skipBackSeconds),
-                            onClick = { scrubClick(forward = false) },
-                            onKey = scrubKeys(forward = false),
-                        )
-                        TvIconActionButton(
-                            icon = Icons.Rounded.FastForward,
-                            contentDescription = stringResource(R.string.dial_player_forward, preferences.skipAheadSeconds),
-                            onClick = { scrubClick(forward = true) },
-                            onKey = scrubKeys(forward = true),
-                        )
-                        TvIconActionButton(
-                            icon = Icons.Rounded.Replay,
-                            contentDescription = stringResource(R.string.dial_player_start_over),
-                            onClick = {
-                                player?.seekTo(0L)
-                                showControls()
-                            },
-                        )
-                    }
-                    if (channel != null) {
-                        TvIconActionButton(
-                            icon = if (isFavourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            contentDescription = stringResource(
-                                if (isFavourite) R.string.dial_player_favourite_remove
-                                else R.string.dial_player_favourite_add
-                            ),
-                            onClick = {
-                                onToggleFavourite()
-                                showControls()
-                            },
-                        )
-                    }
-                    onMinimize?.let { minimize ->
-                        TvIconActionButton(
-                            icon = Icons.Rounded.PictureInPictureAlt,
-                            contentDescription = stringResource(R.string.dial_player_mini),
-                            onClick = minimize,
-                        )
-                    }
-                    if (live && onMultiview != null) {
-                        TvIconActionButton(
-                            icon = Icons.Rounded.GridView,
-                            contentDescription = stringResource(R.string.dial_multiview_title),
-                            onClick = onMultiview,
-                        )
-                    }
-                    TvIconActionButton(
-                        icon = Icons.Rounded.Tune,
-                        contentDescription = stringResource(R.string.dial_options_title),
-                        onClick = {
-                            optionsOpen = true
-                            showControls()
-                        },
-                        focusRequester = optionsFocusRequester,
-                    )
-                    TvActionButton(
-                        text = stringResource(R.string.dial_player_sleep),
-                        icon = Icons.Rounded.Bedtime,
-                        supportingText = sleepMinutesLeft
-                            ?.let { stringResource(R.string.dial_player_sleep_left, it) }
-                            ?: stringResource(R.string.dial_player_sleep_off),
-                        selected = sleepEndsAt != null,
-                        onClick = {
-                            cycleSleepTimer()
-                            showControls()
-                        },
-                    )
-                    TvIconActionButton(
-                        icon = Icons.Rounded.Close,
-                        contentDescription = stringResource(string.tv_action_close_player),
-                        onClick = onClose
-                    )
                     Spacer(Modifier.weight(1f))
                     Text(
                         text = if (live) {
@@ -727,6 +921,17 @@ fun TvPlayerScreen(
                     restoreOptionsFocus = true
                     showControls()
                 },
+                statsVisible = statsVisible,
+                onToggleStats = { statsVisible = !statsVisible },
+                skipMarkers = skipMarkers,
+                onUpdateSkipMarkers = onUpdateSkipMarkers,
+                positionMs = { player?.currentPosition?.coerceAtLeast(0L) ?: position },
+                durationMs = { player?.duration?.coerceAtLeast(0L) ?: duration },
+                partyHosting = partyHosting,
+                partyGuest = partyGuest,
+                onStartParty = onStartParty,
+                onStopParty = onStopParty,
+                onLeaveParty = onLeaveParty,
             )
         }
     }
@@ -860,28 +1065,62 @@ private fun TuningPill(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * The progress bar. With it focused, Left/Right move a cursor along the film without seeking
+ * (holding ramps like fast-forward), with a picture of that moment above the bar; OK jumps
+ * there. Leaving the bar drops the cursor.
+ */
 @Composable
 private fun ProgressLine(
     position: Long,
     duration: Long,
-    skipMs: Long,
+    skipBackMs: Long,
+    skipAheadMs: Long,
+    previews: SeekPreviews?,
     onSeek: (Long) -> Unit,
+    onInteraction: () -> Unit,
 ) {
-    val fraction = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     var focused by remember { mutableStateOf(false) }
+    var cursor by remember { mutableStateOf<Long?>(null) }
+    val scrub = remember { HoldScrub() }
+    val shown = cursor ?: position
+    val fraction = (shown.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    val playedFraction = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    LaunchedEffect(focused) { if (!focused) cursor = null }
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
             .widthIn(max = 960.dp)
             .onPreviewKeyEvent { event ->
-                if (!focused || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.DirectionLeft -> {
-                        onSeek((position - skipMs).coerceAtLeast(0L))
+                if (!focused) return@onPreviewKeyEvent false
+                val key = event.key
+                val forward = key == Key.DirectionRight
+                val backward = key == Key.DirectionLeft
+                val confirm = key == Key.DirectionCenter || key == Key.Enter || key == Key.NumPadEnter
+                if (event.type != KeyEventType.KeyDown) {
+                    if (forward || backward) scrub.release()
+                    return@onPreviewKeyEvent forward || backward
+                }
+                when {
+                    forward || backward -> {
+                        val tap = if (forward) skipAheadMs else skipBackMs
+                        val step = scrub.step(event.nativeKeyEvent.repeatCount, SystemClock.uptimeMillis(), tap)
+                            ?: return@onPreviewKeyEvent true
+                        val from = cursor ?: position
+                        cursor = (if (forward) from + step else from - step).coerceIn(0L, duration)
+                        onInteraction()
                         true
                     }
-                    Key.DirectionRight -> {
-                        onSeek((position + skipMs).coerceAtMost(duration))
+                    confirm -> {
+                        val target = cursor
+                        if (target != null && event.nativeKeyEvent.repeatCount == 0) {
+                            onSeek(target)
+                            cursor = null
+                        }
+                        target != null
+                    }
+                    key == Key.Back && cursor != null -> {
+                        cursor = null
                         true
                     }
                     else -> false
@@ -890,6 +1129,21 @@ private fun ProgressLine(
             .onFocusChanged { focused = it.isFocused }
             .focusable()
     ) {
+        if (focused) {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val bubbleWidth = 240.dp
+                val x = ((maxWidth - bubbleWidth) * fraction).coerceAtLeast(0.dp)
+                SeekPreviewBubble(
+                    previews = previews,
+                    positionMs = shown,
+                    label = formatTime(shown),
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .offset(x = x)
+                        .width(bubbleWidth),
+                )
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -900,12 +1154,24 @@ private fun ProgressLine(
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(fraction)
+                    .fillMaxWidth(playedFraction)
                     .background(if (focused) TvColors.Accent else TvColors.Focus)
             )
+            if (cursor != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction)
+                        .background(Color.White.copy(alpha = 0.35f))
+                )
+            }
         }
         Text(
-            text = "${formatTime(position)} / ${formatTime(duration)}",
+            text = if (cursor != null) {
+                stringResource(R.string.dial_player_seek_hint, formatTime(shown), formatTime(duration))
+            } else {
+                "${formatTime(position)} / ${formatTime(duration)}"
+            },
             color = if (focused) TvColors.TextPrimary else TvColors.TextSecondary,
             fontFamily = TvFonts.Body,
             fontSize = 14.sp,
@@ -966,6 +1232,11 @@ private fun bestDisplayModeFor(activity: Activity, fps: Float): Int {
     }
     return 0
 }
+
+/** The refresh rate the TV is running at now, for the stats panel. */
+@Suppress("DEPRECATION")
+private fun displayRefreshRate(activity: Activity): Float =
+    runCatching { activity.windowManager.defaultDisplay?.refreshRate ?: 0f }.getOrDefault(0f)
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

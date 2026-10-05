@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -91,14 +93,26 @@ fun DialSettingsPane(
     }
 }
 
+/** The watch-party controls shown in Settings. */
+class PartyControls(
+    val hosting: HostedParty?,
+    val guest: GuestState,
+    val onStartHosting: () -> Unit,
+    val onStopHosting: () -> Unit,
+    val onJoin: (String) -> Unit,
+    val onLeave: () -> Unit,
+)
+
 @Composable
 fun DialSettingsScreen(
     preferences: DialPreferences,
     onUpdate: ((DialPreferences) -> DialPreferences) -> Unit,
     onClearHistory: () -> Unit,
     pairingCode: String? = null,
+    party: PartyControls? = null,
 ) {
     var cleared by remember { mutableStateOf(false) }
+    var partyCode by rememberSaveable { mutableStateOf("") }
     val on = stringResource(R.string.dial_value_on)
     val off = stringResource(R.string.dial_value_off)
     fun onOff(value: Boolean) = if (value) on else off
@@ -175,6 +189,33 @@ fun DialSettingsScreen(
                     if (preferences.backToMini) R.string.dial_value_mini_player else R.string.dial_value_close_player
                 ),
                 onClick = { onUpdate { it.copy(backToMini = !it.backToMini) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_mini_corner),
+                value = stringResource(
+                    when (preferences.miniCorner) {
+                        MiniCorner.BottomRight -> R.string.dial_corner_bottom_right
+                        MiniCorner.BottomLeft -> R.string.dial_corner_bottom_left
+                        MiniCorner.TopRight -> R.string.dial_corner_top_right
+                        MiniCorner.TopLeft -> R.string.dial_corner_top_left
+                    }
+                ),
+                onClick = { onUpdate { it.copy(miniCorner = MiniCorner.entries.nextAfter(it.miniCorner)) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_mini_size),
+                value = stringResource(
+                    when (preferences.miniSize) {
+                        MiniSize.Small -> R.string.dial_size_small
+                        MiniSize.Medium -> R.string.dial_size_medium
+                        MiniSize.Large -> R.string.dial_size_large
+                    }
+                ),
+                onClick = { onUpdate { it.copy(miniSize = MiniSize.entries.nextAfter(it.miniSize)) } },
             )
         }
         item {
@@ -266,6 +307,32 @@ fun DialSettingsScreen(
         }
         item {
             SettingRow(
+                label = stringResource(R.string.dial_setting_seek_previews),
+                value = onOff(preferences.seekPreviews),
+                onClick = { onUpdate { it.copy(seekPreviews = !it.seekPreviews) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_auto_skip),
+                value = onOff(preferences.autoSkip),
+                onClick = { onUpdate { it.copy(autoSkip = !it.autoSkip) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_still_watching),
+                value = if (preferences.stillWatchingHours == 0) off
+                else stringResource(R.string.dial_value_hours, preferences.stillWatchingHours),
+                onClick = {
+                    onUpdate {
+                        it.copy(stillWatchingHours = DialPreferences.STILL_WATCHING_OPTIONS.nextAfter(it.stillWatchingHours))
+                    }
+                },
+            )
+        }
+        item {
+            SettingRow(
                 label = stringResource(R.string.dial_setting_clear_history),
                 value = stringResource(if (cleared) R.string.dial_value_cleared else R.string.dial_value_clear),
                 onClick = {
@@ -273,6 +340,140 @@ fun DialSettingsScreen(
                     cleared = true
                 },
             )
+        }
+
+        // Player buttons: OK shows or hides one, Left/Right move it along the row.
+        item { SettingsSection(stringResource(R.string.dial_settings_section_player_buttons)) }
+        item {
+            Text(
+                text = stringResource(R.string.dial_player_buttons_hint),
+                color = TvColors.TextSecondary,
+                fontFamily = TvFonts.Body,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        val shown = preferences.playerButtons
+        val all = shown + PlayerButton.entries.filter { it !in shown }
+        all.forEach { button ->
+            item(key = "button-${button.id}") {
+                val visible = button in shown
+                SettingRow(
+                    label = stringResource(button.label),
+                    value = when {
+                        !visible -> stringResource(R.string.dial_value_hidden)
+                        button.required -> stringResource(R.string.dial_value_always)
+                        else -> stringResource(R.string.dial_value_position, shown.indexOf(button) + 1)
+                    },
+                    onClick = {
+                        if (button.required) return@SettingRow
+                        onUpdate {
+                            it.copy(
+                                playerButtons = if (visible) it.playerButtons - button else it.playerButtons + button
+                            )
+                        }
+                    },
+                    onKey = { event ->
+                        stepperKeys(event) { delta ->
+                            if (visible) onUpdate { prefs ->
+                                val order = prefs.playerButtons.toMutableList()
+                                val from = order.indexOf(button)
+                                if (from >= 0) {
+                                    val to = (from + delta).coerceIn(0, order.lastIndex)
+                                    order.add(to, order.removeAt(from))
+                                }
+                                prefs.copy(playerButtons = order)
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_player_buttons_reset),
+                value = "",
+                onClick = { onUpdate { it.copy(playerButtons = PlayerButton.entries) } },
+            )
+        }
+
+        // Watch party: host from the player; join here with the host's code.
+        if (party != null) {
+            item { SettingsSection(stringResource(R.string.dial_party_title)) }
+            item {
+                Text(
+                    text = stringResource(R.string.dial_party_settings_hint),
+                    color = TvColors.TextSecondary,
+                    fontFamily = TvFonts.Body,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+            val hosting = party.hosting
+            val guest = party.guest
+            when {
+                hosting != null -> item {
+                    SettingRow(
+                        label = stringResource(R.string.dial_party_end),
+                        value = stringResource(R.string.dial_party_code_guests, hosting.code, hosting.guests),
+                        onClick = party.onStopHosting,
+                    )
+                }
+                guest is GuestState.InParty -> item {
+                    SettingRow(
+                        label = stringResource(R.string.dial_party_leave),
+                        value = guest.title,
+                        onClick = party.onLeave,
+                    )
+                }
+                guest is GuestState.Joining -> item {
+                    SettingRow(
+                        label = stringResource(R.string.dial_party_leave),
+                        value = stringResource(R.string.dial_party_joining, guest.code),
+                        onClick = party.onLeave,
+                    )
+                }
+                else -> {
+                    item {
+                        SettingRow(
+                            label = stringResource(R.string.dial_party_start),
+                            value = stringResource(R.string.dial_party_start_value),
+                            onClick = party.onStartHosting,
+                        )
+                    }
+                    item {
+                        Box(Modifier.widthIn(max = 820.dp)) {
+                            DialTextField(
+                                label = stringResource(R.string.dial_party_code_label),
+                                value = partyCode,
+                                onValueChange = { partyCode = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6) },
+                                keyboardType = KeyboardType.Ascii,
+                                imeAction = ImeAction.Done,
+                                readOnly = false,
+                                onDone = { if (partyCode.length == 6) party.onJoin(partyCode) },
+                            )
+                        }
+                    }
+                    item {
+                        SettingRow(
+                            label = stringResource(R.string.dial_party_join),
+                            value = when (guest) {
+                                is GuestState.Failed -> stringResource(
+                                    when (guest.reason) {
+                                        PartyFailure.BadCode -> R.string.dial_party_error_code
+                                        PartyFailure.NoNetwork -> R.string.dial_party_error_network
+                                        PartyFailure.HostNotFound -> R.string.dial_party_error_host
+                                        PartyFailure.Rejected -> R.string.dial_party_error_rejected
+                                        PartyFailure.NothingPlaying -> R.string.dial_party_error_nothing
+                                    }
+                                )
+                                else -> partyCode
+                            },
+                            onClick = { if (partyCode.length == 6) party.onJoin(partyCode) },
+                        )
+                    }
+                }
+            }
         }
 
         // The phone-remote pairing code lives here rather than on every screen.
@@ -288,6 +489,24 @@ fun DialSettingsScreen(
         }
     }
 }
+
+internal val PlayerButton.label: Int
+    get() = when (this) {
+        PlayerButton.PlayPause -> R.string.dial_button_play_pause
+        PlayerButton.ChannelUp -> R.string.dial_player_next_channel
+        PlayerButton.ChannelDown -> R.string.dial_player_previous_channel
+        PlayerButton.Rewind -> R.string.dial_button_rewind
+        PlayerButton.FastForward -> R.string.dial_button_forward
+        PlayerButton.StartOver -> R.string.dial_player_start_over
+        PlayerButton.Favourite -> R.string.dial_button_favourite
+        PlayerButton.Mini -> R.string.dial_player_mini
+        PlayerButton.Multiview -> R.string.dial_multiview_title
+        PlayerButton.Options -> R.string.dial_options_title
+        PlayerButton.Stats -> R.string.dial_stats_title
+        PlayerButton.Party -> R.string.dial_party_title
+        PlayerButton.Sleep -> R.string.dial_player_sleep
+        PlayerButton.Close -> R.string.dial_button_close
+    }
 
 @Composable
 internal fun SettingsSection(title: String) {

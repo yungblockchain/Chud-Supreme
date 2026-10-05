@@ -45,6 +45,7 @@ sealed interface PhoneMessage {
     data class M3uPlaylist(val url: String, val epgUrl: String) : PhoneMessage
     data class KeySaved(val name: SecretName) : PhoneMessage
     data class SkinApplied(val name: String) : PhoneMessage
+    data class JoinParty(val code: String) : PhoneMessage
 }
 
 @Singleton
@@ -67,6 +68,12 @@ class PhoneCompanion @Inject constructor(
     @Volatile private var lockedUntil = 0L
 
     val running: Boolean get() = server != null
+
+    /** The port the page is on while running. */
+    val port: Int? get() = server?.localPort
+
+    /** Answers watch-party requests (set by [WatchParty]); a guest's code is checked there. */
+    @Volatile var party: PartyEndpoint? = null
 
     @Synchronized
     fun start() {
@@ -107,6 +114,7 @@ class PhoneCompanion @Inject constructor(
             if (parts.size < 2) return
             val method = parts[0]
             val path = parts[1].substringBefore('?')
+            val query = parts[1].substringAfter('?', "")
             var length = 0
             while (true) {
                 val header = readLine(input) ?: break
@@ -120,6 +128,13 @@ class PhoneCompanion @Inject constructor(
                 // The current skin as a file, to share or edit.
                 method == "GET" && path == "/skin.json" ->
                     respond(output, 200, JSON, skins.current.value.toJson().toString())
+                // A watch-party guest asking what's playing and where. The code is the key.
+                method == "GET" && path == "/party" -> {
+                    val form = parseForm(query)
+                    val json = party?.state(form["code"].orEmpty().take(16), form["guest"].orEmpty().take(16))
+                    if (json == null) respond(output, 404, JSON, """{"ok":false,"error":"no_party"}""")
+                    else respond(output, 200, JSON, json)
+                }
                 method == "POST" && path.startsWith("/api/") -> {
                     if (length !in 0..MAX_BODY) return respond(output, 413, JSON, """{"ok":false,"error":"too_large"}""")
                     val body = readBytes(input, length).toString(Charsets.UTF_8)
@@ -162,6 +177,7 @@ class PhoneCompanion @Inject constructor(
                 secrets.put(name, value)
                 PhoneMessage.KeySaved(name)
             }
+            "party" -> PhoneMessage.JoinParty(field("code").ifEmpty { return 400 to BAD }.take(8))
             "skin" -> {
                 val raw = form["skin"].orEmpty().trim().take(MAX_SKIN).ifEmpty { return 400 to BAD }
                 val skin = skins.importSkin(raw) ?: return 400 to """{"ok":false,"error":"not_a_skin"}"""
@@ -235,17 +251,18 @@ class PhoneCompanion @Inject constructor(
             ?.hostAddress
     }.getOrNull()
 
-    private companion object {
+    companion object {
+        /** Fixed ports first so a party code can name the port in two bits; 0 = any free port. */
         val PORTS = listOf(8765, 8766, 8767, 0)
-        const val WORKERS = 2
-        const val SOCKET_TIMEOUT_MS = 10_000
-        const val MAX_BODY = 16 * 1024
-        const val MAX_LINE = 8 * 1024
-        const val MAX_FIELD = 2_048
-        const val MAX_SKIN = 8_192
-        const val MAX_FAILURES = 5
-        const val LOCK_MS = 60_000L
-        const val JSON = "application/json"
-        const val BAD = """{"ok":false,"error":"missing"}"""
+        private const val WORKERS = 2
+        private const val SOCKET_TIMEOUT_MS = 10_000
+        private const val MAX_BODY = 16 * 1024
+        private const val MAX_LINE = 8 * 1024
+        private const val MAX_FIELD = 2_048
+        private const val MAX_SKIN = 8_192
+        private const val MAX_FAILURES = 5
+        private const val LOCK_MS = 60_000L
+        private const val JSON = "application/json"
+        private const val BAD = """{"ok":false,"error":"missing"}"""
     }
 }

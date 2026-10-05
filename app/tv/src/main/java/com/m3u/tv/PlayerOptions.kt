@@ -306,6 +306,17 @@ fun PlayerOptionsPanel(
     onUpdatePreferences: ((DialPreferences) -> DialPreferences) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    statsVisible: Boolean = false,
+    onToggleStats: () -> Unit = {},
+    skipMarkers: SkipMarkers = SkipMarkers(),
+    onUpdateSkipMarkers: (((SkipMarkers) -> SkipMarkers) -> Unit)? = null,
+    positionMs: () -> Long = { 0L },
+    durationMs: () -> Long = { 0L },
+    partyHosting: HostedParty? = null,
+    partyGuest: GuestState = GuestState.Idle,
+    onStartParty: (() -> Unit)? = null,
+    onStopParty: () -> Unit = {},
+    onLeaveParty: () -> Unit = {},
     viewModel: PlayerOptionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.tracks.collectAsStateWithLifecycle()
@@ -469,6 +480,130 @@ fun PlayerOptionsPanel(
                     },
                 )
             }
+            item(key = "subtitle-colour") {
+                OptionRow(
+                    label = stringResource(R.string.dial_subtitle_colour),
+                    value = stringResource(preferences.subtitleColour.label),
+                    onClick = {
+                        onUpdatePreferences { it.copy(subtitleColour = SubtitleColour.entries.nextAfter(it.subtitleColour)) }
+                    },
+                )
+            }
+            item(key = "subtitle-backdrop") {
+                OptionRow(
+                    label = stringResource(R.string.dial_subtitle_backdrop),
+                    value = stringResource(preferences.subtitleBackdrop.label),
+                    onClick = {
+                        onUpdatePreferences { it.copy(subtitleBackdrop = SubtitleBackdrop.entries.nextAfter(it.subtitleBackdrop)) }
+                    },
+                )
+            }
+            item(key = "subtitle-raise") {
+                OptionRow(
+                    label = stringResource(R.string.dial_subtitle_raise),
+                    value = stringResource(R.string.dial_value_percent, preferences.subtitleRaisePercent),
+                    onClick = {
+                        onUpdatePreferences {
+                            it.copy(subtitleRaisePercent = DialPreferences.SUBTITLE_RAISE_OPTIONS.nextAfter(it.subtitleRaisePercent))
+                        }
+                    },
+                )
+            }
+            item(key = "stats") {
+                OptionRow(
+                    label = stringResource(R.string.dial_stats_title),
+                    value = stringResource(if (statsVisible) R.string.dial_value_on else R.string.dial_value_off),
+                    onClick = onToggleStats,
+                )
+            }
+
+            // Intro and credits markers, for the series playing.
+            if (!live && onUpdateSkipMarkers != null) {
+                item { OptionsHeader(stringResource(R.string.dial_skip_section)) }
+                item(key = "skip-intro-start") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_skip_mark_intro_start),
+                        value = skipMarkers.introStartMs.takeIf { it >= 0L }?.let(::formatClock),
+                        onClick = {
+                            val at = positionMs()
+                            onUpdateSkipMarkers { markers ->
+                                markers.copy(
+                                    introStartMs = at,
+                                    introEndMs = if (markers.introEndMs <= at) -1L else markers.introEndMs,
+                                )
+                            }
+                        },
+                    )
+                }
+                item(key = "skip-intro-end") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_skip_mark_intro_end),
+                        value = skipMarkers.introEndMs.takeIf { it > 0L }?.let(::formatClock),
+                        onClick = {
+                            val at = positionMs()
+                            onUpdateSkipMarkers { markers ->
+                                markers.copy(
+                                    introStartMs = if (markers.introStartMs < 0L || markers.introStartMs >= at) 0L else markers.introStartMs,
+                                    introEndMs = at,
+                                )
+                            }
+                        },
+                    )
+                }
+                item(key = "skip-credits") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_skip_mark_credits),
+                        value = skipMarkers.creditsFromEndMs.takeIf { it > 0L }
+                            ?.let { stringResource(R.string.dial_skip_before_end, formatClock(it)) },
+                        onClick = {
+                            val fromEnd = durationMs() - positionMs()
+                            if (fromEnd > 0L) onUpdateSkipMarkers { it.copy(creditsFromEndMs = fromEnd) }
+                        },
+                    )
+                }
+                item(key = "skip-auto") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_setting_auto_skip),
+                        value = stringResource(if (preferences.autoSkip) R.string.dial_value_on else R.string.dial_value_off),
+                        onClick = { onUpdatePreferences { it.copy(autoSkip = !it.autoSkip) } },
+                    )
+                }
+                if (!skipMarkers.isEmpty) {
+                    item(key = "skip-clear") {
+                        OptionRow(
+                            label = stringResource(R.string.dial_skip_clear),
+                            onClick = { onUpdateSkipMarkers { SkipMarkers() } },
+                        )
+                    }
+                }
+            }
+
+            // Watch party.
+            item { OptionsHeader(stringResource(R.string.dial_party_title)) }
+            when {
+                partyHosting != null -> item(key = "party-end") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_party_end),
+                        value = partyHosting.code,
+                        hint = stringResource(R.string.dial_party_guests, partyHosting.guests),
+                        onClick = onStopParty,
+                    )
+                }
+                partyGuest !is GuestState.Idle -> item(key = "party-leave") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_party_leave),
+                        value = (partyGuest as? GuestState.InParty)?.code,
+                        onClick = onLeaveParty,
+                    )
+                }
+                onStartParty != null -> item(key = "party-start") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_party_start),
+                        hint = stringResource(R.string.dial_party_start_hint),
+                        onClick = onStartParty,
+                    )
+                }
+            }
         }
     }
 }
@@ -540,6 +675,29 @@ private fun LazyListScope.subtitleSearchItems(
         }
     }
 }
+
+private fun formatClock(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
+}
+
+internal val SubtitleColour.label: Int
+    get() = when (this) {
+        SubtitleColour.White -> R.string.dial_subtitle_colour_white
+        SubtitleColour.Yellow -> R.string.dial_subtitle_colour_yellow
+        SubtitleColour.Cyan -> R.string.dial_subtitle_colour_cyan
+    }
+
+internal val SubtitleBackdrop.label: Int
+    get() = when (this) {
+        SubtitleBackdrop.Outline -> R.string.dial_subtitle_backdrop_outline
+        SubtitleBackdrop.Shadow -> R.string.dial_subtitle_backdrop_shadow
+        SubtitleBackdrop.Box -> R.string.dial_subtitle_backdrop_box
+        SubtitleBackdrop.None -> R.string.dial_subtitle_backdrop_none
+    }
 
 @Composable
 private fun OptionsHeader(title: String) {
@@ -619,6 +777,9 @@ fun SubtitleLayer(
     player: Player,
     sizePercent: Int,
     modifier: Modifier = Modifier,
+    colour: SubtitleColour = SubtitleColour.White,
+    backdrop: SubtitleBackdrop = SubtitleBackdrop.Outline,
+    raisePercent: Int = 8,
 ) {
     var view by remember { mutableStateOf<SubtitleView?>(null) }
     AndroidView(
@@ -626,23 +787,38 @@ fun SubtitleLayer(
             SubtitleView(context).apply {
                 setApplyEmbeddedStyles(true)
                 setApplyEmbeddedFontSizes(false)
-                setBottomPaddingFraction(0.08f)
-                setStyle(
-                    CaptionStyleCompat(
-                        AndroidColor.WHITE,
-                        AndroidColor.TRANSPARENT,
-                        AndroidColor.TRANSPARENT,
-                        CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                        AndroidColor.BLACK,
-                        null,
-                    )
-                )
                 view = this
             }
         },
         update = { subtitleView ->
             subtitleView.setFractionalTextSize(
                 SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * sizePercent / 100f
+            )
+            subtitleView.setBottomPaddingFraction(raisePercent / 100f)
+            val foreground = when (colour) {
+                SubtitleColour.White -> AndroidColor.WHITE
+                SubtitleColour.Yellow -> AndroidColor.rgb(255, 221, 0)
+                SubtitleColour.Cyan -> AndroidColor.rgb(0, 229, 255)
+            }
+            subtitleView.setStyle(
+                when (backdrop) {
+                    SubtitleBackdrop.Outline -> CaptionStyleCompat(
+                        foreground, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_OUTLINE, AndroidColor.BLACK, null,
+                    )
+                    SubtitleBackdrop.Shadow -> CaptionStyleCompat(
+                        foreground, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, AndroidColor.BLACK, null,
+                    )
+                    SubtitleBackdrop.Box -> CaptionStyleCompat(
+                        foreground, AndroidColor.argb(170, 0, 0, 0), AndroidColor.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_NONE, AndroidColor.TRANSPARENT, null,
+                    )
+                    SubtitleBackdrop.None -> CaptionStyleCompat(
+                        foreground, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_NONE, AndroidColor.TRANSPARENT, null,
+                    )
+                }
             )
         },
         modifier = modifier,

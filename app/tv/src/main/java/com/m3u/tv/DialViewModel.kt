@@ -104,6 +104,17 @@ class DialViewModel @Inject constructor(
     private val _nowPlaying = MutableStateFlow<OnDemandPlayback?>(null)
     val nowPlaying: StateFlow<OnDemandPlayback?> = _nowPlaying.asStateFlow()
 
+    /** Intro and credits markers for the series playing now (empty for films and live TV). */
+    private val _skipMarkers = MutableStateFlow(SkipMarkers())
+    val skipMarkers: StateFlow<SkipMarkers> = _skipMarkers.asStateFlow()
+
+    fun updateSkipMarkers(transform: (SkipMarkers) -> SkipMarkers) {
+        val series = _nowPlaying.value?.series ?: return
+        val next = transform(_skipMarkers.value)
+        _skipMarkers.value = next
+        store.saveSkipMarkers(series.id, next)
+    }
+
     private var detailsJob: Job? = null
     private var scheduleJob: Job? = null
     private val nowNextCache = mutableMapOf<Int, TimedListing>()
@@ -324,6 +335,7 @@ class DialViewModel @Inject constructor(
                     tmdbId = film?.tmdbId,
                 ),
             )
+            _skipMarkers.value = SkipMarkers()
             playerManager.play(MediaCommand.Common(channel.id), applyContinueWatching = resume)
         }
     }
@@ -368,6 +380,7 @@ class DialViewModel @Inject constructor(
                 series = series,
                 episode = episode,
             )
+            _skipMarkers.value = store.skipMarkers(series.id)
             playerManager.play(MediaCommand.XtreamEpisode(series.id, info), applyContinueWatching = resume)
         }
     }
@@ -537,6 +550,7 @@ class DialViewModel @Inject constructor(
     /** Live TV and catch-up aren't films or episodes. */
     fun clearNowPlaying() {
         _nowPlaying.value = null
+        _skipMarkers.value = SkipMarkers()
     }
 
     /**
@@ -557,6 +571,7 @@ class DialViewModel @Inject constructor(
 
     fun playCatchUp(channel: Channel, programme: GuideProgramme, external: Boolean = false) {
         _nowPlaying.value = null
+        _skipMarkers.value = SkipMarkers()
         viewModelScope.launch {
             val credentials = credentialsFor(channel.playlistUrl) ?: return@launch
             val streamId = XtreamCatalog.idFromUrl(channel.url) ?: return@launch

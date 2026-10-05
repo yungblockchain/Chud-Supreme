@@ -108,6 +108,15 @@
       <small>The current skin is at <a href="/skin.json" download="chud-skin.json">skin.json</a>: download it, change the colours or the font, and paste it back here, or send it to a friend.</small>
     </form>
   </details>
+
+  <details>
+    <summary>Watch party</summary>
+    <form data-action="party">
+      <label>Party code<input name="code" required maxlength="6" autocapitalize="characters" autocomplete="off" placeholder="K7PQ2X"></label>
+      <button>Join on this TV</button><div class="status"></div>
+      <small>The host starts a party from the player's options and reads out the code. Both TVs must be on the same Wi‑Fi.</small>
+    </form>
+  </details>
 </main>
 <script>
   const pin = document.getElementById('pin');

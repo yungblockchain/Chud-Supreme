@@ -62,13 +62,85 @@ data class DialPreferences(
     val autoSendReports: Boolean = false,
     /** Back in the player shrinks the video into a corner instead of closing it. */
     val backToMini: Boolean = true,
+    /** Where the mini player sits while browsing. */
+    val miniCorner: MiniCorner = MiniCorner.BottomRight,
+    val miniSize: MiniSize = MiniSize.Medium,
+    /** The player's buttons, in order; buttons left out are hidden. */
+    val playerButtons: List<PlayerButton> = PlayerButton.entries,
+    /** A picture of the film at the cursor while moving along the progress bar. */
+    val seekPreviews: Boolean = true,
+    /** Jump past a marked intro or into the next episode without asking. */
+    val autoSkip: Boolean = false,
+    /** Hours of a film or series left playing untouched before "Still watching?"; 0 = never. */
+    val stillWatchingHours: Int = 4,
+    val subtitleColour: SubtitleColour = SubtitleColour.White,
+    val subtitleBackdrop: SubtitleBackdrop = SubtitleBackdrop.Outline,
+    /** How far up from the bottom edge subtitles sit, as a percentage of the picture height. */
+    val subtitleRaisePercent: Int = 8,
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
+        val SUBTITLE_RAISE_OPTIONS = listOf(4, 8, 14, 22)
         val CONTROLS_TIMEOUT_OPTIONS = listOf(3, 5, 8, 12)
         val SKIP_BACK_OPTIONS = listOf(1, 5, 10, 30, 60, 120)
         val SKIP_AHEAD_OPTIONS = listOf(1, 5, 10, 30, 60, 120)
+        val STILL_WATCHING_OPTIONS = listOf(0, 2, 4, 6)
     }
+}
+
+enum class MiniCorner { BottomRight, BottomLeft, TopRight, TopLeft }
+
+enum class MiniSize { Small, Medium, Large }
+
+enum class SubtitleColour { White, Yellow, Cyan }
+
+enum class SubtitleBackdrop { Outline, Shadow, Box, None }
+
+/**
+ * The buttons along the bottom of the player. Settings lets each be hidden and moved; play/pause
+ * and close always stay. Some only show when they apply (channel keys on live TV, say).
+ */
+enum class PlayerButton(val id: String, val required: Boolean = false) {
+    PlayPause("play", required = true),
+    ChannelUp("up"),
+    ChannelDown("down"),
+    Rewind("rewind"),
+    FastForward("forward"),
+    StartOver("restart"),
+    Favourite("favourite"),
+    Mini("mini"),
+    Multiview("multiview"),
+    Options("options"),
+    Stats("stats"),
+    Party("party"),
+    Sleep("sleep"),
+    Close("close", required = true);
+
+    companion object {
+        fun parse(raw: String?): List<PlayerButton> {
+            if (raw == null) return entries
+            val chosen = raw.split(',').mapNotNull { id -> entries.firstOrNull { it.id == id.trim() } }
+            // Required buttons can't be dropped; new buttons appear at the end.
+            val result = chosen.toMutableList()
+            entries.filter { it.required && it !in result }.forEach { result += it }
+            return result.distinct()
+        }
+    }
+}
+
+/**
+ * Where a series' intro and credits sit, marked once by the viewer and applied to every episode:
+ * the intro by its start and end, the credits by how long before the end they begin.
+ */
+@Immutable
+data class SkipMarkers(
+    val introStartMs: Long = -1L,
+    val introEndMs: Long = -1L,
+    val creditsFromEndMs: Long = -1L,
+) {
+    val hasIntro: Boolean get() = introEndMs > 0L && introStartMs >= 0L && introEndMs > introStartMs
+    val hasCredits: Boolean get() = creditsFromEndMs > 0L
+    val isEmpty: Boolean get() = !hasIntro && !hasCredits
 }
 
 /** A named list of favourite channels ("Sports", "Kids"), in the order they were added. */
@@ -292,7 +364,37 @@ class DialSettingsStore @Inject constructor(
             .putBoolean(KEY_LIVE_120, next.live120)
             .putBoolean(KEY_AUTO_SEND_REPORTS, next.autoSendReports)
             .putBoolean(KEY_BACK_TO_MINI, next.backToMini)
+            .putString(KEY_MINI_CORNER, next.miniCorner.name)
+            .putString(KEY_MINI_SIZE, next.miniSize.name)
+            .putString(KEY_PLAYER_BUTTONS, next.playerButtons.joinToString(",") { it.id })
+            .putBoolean(KEY_SEEK_PREVIEWS, next.seekPreviews)
+            .putBoolean(KEY_AUTO_SKIP, next.autoSkip)
+            .putInt(KEY_STILL_WATCHING, next.stillWatchingHours)
+            .putString(KEY_SUBTITLE_COLOUR, next.subtitleColour.name)
+            .putString(KEY_SUBTITLE_BACKDROP, next.subtitleBackdrop.name)
+            .putInt(KEY_SUBTITLE_RAISE, next.subtitleRaisePercent)
             .apply()
+    }
+
+    /** Intro and credits markers for a series (by its channel id). */
+    fun skipMarkers(seriesChannelId: Int): SkipMarkers {
+        val raw = prefs.getString("$KEY_SKIP_PREFIX$seriesChannelId", null) ?: return SkipMarkers()
+        val parts = raw.split(',').map { it.toLongOrNull() ?: -1L }
+        if (parts.size < 3) return SkipMarkers()
+        return SkipMarkers(introStartMs = parts[0], introEndMs = parts[1], creditsFromEndMs = parts[2])
+    }
+
+    fun saveSkipMarkers(seriesChannelId: Int, markers: SkipMarkers) {
+        val editor = prefs.edit()
+        if (markers.isEmpty) {
+            editor.remove("$KEY_SKIP_PREFIX$seriesChannelId")
+        } else {
+            editor.putString(
+                "$KEY_SKIP_PREFIX$seriesChannelId",
+                "${markers.introStartMs},${markers.introEndMs},${markers.creditsFromEndMs}",
+            )
+        }
+        editor.apply()
     }
 
     var lastChannelId: Int?
@@ -383,6 +485,23 @@ class DialSettingsStore @Inject constructor(
             live120 = prefs.getBoolean(KEY_LIVE_120, defaults.live120),
             autoSendReports = prefs.getBoolean(KEY_AUTO_SEND_REPORTS, defaults.autoSendReports),
             backToMini = prefs.getBoolean(KEY_BACK_TO_MINI, defaults.backToMini),
+            miniCorner = prefs.getString(KEY_MINI_CORNER, null)
+                ?.let { name -> MiniCorner.entries.firstOrNull { it.name == name } }
+                ?: defaults.miniCorner,
+            miniSize = prefs.getString(KEY_MINI_SIZE, null)
+                ?.let { name -> MiniSize.entries.firstOrNull { it.name == name } }
+                ?: defaults.miniSize,
+            playerButtons = PlayerButton.parse(prefs.getString(KEY_PLAYER_BUTTONS, null)),
+            seekPreviews = prefs.getBoolean(KEY_SEEK_PREVIEWS, defaults.seekPreviews),
+            autoSkip = prefs.getBoolean(KEY_AUTO_SKIP, defaults.autoSkip),
+            stillWatchingHours = prefs.getInt(KEY_STILL_WATCHING, defaults.stillWatchingHours),
+            subtitleColour = prefs.getString(KEY_SUBTITLE_COLOUR, null)
+                ?.let { name -> SubtitleColour.entries.firstOrNull { it.name == name } }
+                ?: defaults.subtitleColour,
+            subtitleBackdrop = prefs.getString(KEY_SUBTITLE_BACKDROP, null)
+                ?.let { name -> SubtitleBackdrop.entries.firstOrNull { it.name == name } }
+                ?: defaults.subtitleBackdrop,
+            subtitleRaisePercent = prefs.getInt(KEY_SUBTITLE_RAISE, defaults.subtitleRaisePercent),
         )
     }
 
@@ -413,6 +532,16 @@ class DialSettingsStore @Inject constructor(
         const val KEY_LIVE_120 = "live_120"
         const val KEY_AUTO_SEND_REPORTS = "auto_send_reports"
         const val KEY_BACK_TO_MINI = "back_to_mini"
+        const val KEY_MINI_CORNER = "mini_corner"
+        const val KEY_MINI_SIZE = "mini_size"
+        const val KEY_PLAYER_BUTTONS = "player_buttons"
+        const val KEY_SEEK_PREVIEWS = "seek_previews"
+        const val KEY_AUTO_SKIP = "auto_skip"
+        const val KEY_STILL_WATCHING = "still_watching_hours"
+        const val KEY_SUBTITLE_COLOUR = "subtitle_colour"
+        const val KEY_SUBTITLE_BACKDROP = "subtitle_backdrop"
+        const val KEY_SUBTITLE_RAISE = "subtitle_raise"
+        const val KEY_SKIP_PREFIX = "skip_markers_"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"
         const val KEY_FAVOURITE_GROUPS = "favourite_groups"
