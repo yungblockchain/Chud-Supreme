@@ -929,7 +929,6 @@ private fun OptionsHeader(title: String) {
     )
 }
 
-@Composable
 private const val PICTURE_NORMAL = "normal"
 private val PICTURE_ORDER = listOf("normal", "cinema", "bright", "soft")
 
@@ -948,6 +947,7 @@ private fun picturePresetLabel(preset: String): Int = when (preset) {
     else -> R.string.dial_picture_normal
 }
 
+@Composable
 private fun OptionRow(
     label: String,
     onClick: () -> Unit,
