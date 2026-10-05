@@ -295,3 +295,7 @@
 -dontwarn java.beans.**
 -dontwarn javax.script.**
 -dontwarn org.mozilla.javascript.engine.**
+-dontwarn jdk.dynalink.**
+-dontwarn java.lang.invoke.**
+-dontwarn javax.lang.model.**
+-dontwarn sun.misc.**
