@@ -140,6 +140,10 @@ if check "launch"; then
     press $BACK; sleep 2
     press $RIGHT $OK; sleep 2; press $OK; sleep 3; shot 11-sky-hop
     press $BACK; sleep 1
+    # Stage 7: quiz night (the sixth game): topics, then a question from the Open Trivia DB.
+    press $RIGHT $RIGHT $RIGHT $OK; sleep 2; shot 11a-quiz-topics
+    press $OK; sleep 8; shot 11b-quiz-question
+    press $BACK; sleep 1
     check "games"
 
     open_tab settings 8;  shot 12-settings

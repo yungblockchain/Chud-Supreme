@@ -141,11 +141,33 @@ class TvHomeViewModel @Inject constructor(
     private val profiles: ProfileStore,
     private val programmes: ProgrammeRepository,
     private val edits: ChannelEditStore,
+    private val logos: ChannelLogos,
     tvRepository: TvRepository,
     dPadReactionService: DPadReactionService
 ) : ViewModel() {
     private val _state = MutableStateFlow(TvUiState())
-    val state: StateFlow<TvUiState> = _state.asStateFlow()
+
+    /** The UI state, with logos from the tv-logos collection for live channels that have none. */
+    val state: StateFlow<TvUiState> = combine(_state, logos.index) { current, index ->
+        if (index.isEmpty()) current else withLogos(current)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, TvUiState())
+
+    private fun withLogos(current: TvUiState): TvUiState {
+        val live = current.playlists.filter { !it.isVod && !it.isSeries }.map { it.url }.toSet()
+        fun Channel.wantsLogo() = cover.isNullOrBlank() && playlistUrl in live
+        fun fill(channels: List<Channel>): List<Channel> {
+            if (channels.none { it.wantsLogo() }) return channels
+            return channels.map { channel ->
+                if (!channel.wantsLogo()) channel else logos.logoFor(channel.title)?.let { channel.copy(cover = it) } ?: channel
+            }
+        }
+        return current.copy(
+            channels = fill(current.channels),
+            favorites = fill(current.favorites),
+            recentlyPlayed = fill(current.recentlyPlayed),
+            searchResults = fill(current.searchResults),
+        )
+    }
 
     // Where each tab (Live TV, Films, Series) was left: its source, and each source's category.
     // Written from the main thread and from the loader's IO thread, hence synchronized (and a
@@ -385,7 +407,7 @@ class TvHomeViewModel @Inject constructor(
     }
 
     fun refreshSelectedPlaylist() {
-        val playlist = state.value.selectedPlaylist ?: return
+        val playlist = _state.value.selectedPlaylist ?: return
         viewModelScope.launch {
             playlistRepository.refresh(playlist.url)
             loadChannels(playlist.url)
@@ -410,7 +432,7 @@ class TvHomeViewModel @Inject constructor(
     }
 
     fun playRecent() {
-        state.value.recent?.let(::play)
+        _state.value.recent?.let(::play)
     }
 
     /** Hides a channel from lists (Settings > Sources lists hidden ones to bring back). */
@@ -553,7 +575,7 @@ class TvHomeViewModel @Inject constructor(
 
     private fun closeExtensionSettingsIfActive(extensionId: String) {
         if (
-            state.value.extensionSettings?.extensionId?.value == extensionId ||
+            _state.value.extensionSettings?.extensionId?.value == extensionId ||
             extensionSettingsRequestedId?.value == extensionId
         ) {
             closeExtensionSettings()
@@ -609,7 +631,7 @@ class TvHomeViewModel @Inject constructor(
         rawValue: String?,
         localeTag: String?,
     ) {
-        val extensionId = state.value.extensionSettings?.extensionId ?: return
+        val extensionId = _state.value.extensionSettings?.extensionId ?: return
         val generation = extensionSettingsGeneration
         val updateGeneration = ++extensionSettingsUpdateGeneration
         extensionSettingsOperationQueue.launchUpdate(extensionId.value) update@{
@@ -633,7 +655,7 @@ class TvHomeViewModel @Inject constructor(
             if (
                 generation != extensionSettingsGeneration ||
                 updateGeneration != extensionSettingsUpdateGeneration ||
-                state.value.extensionSettings?.extensionId != extensionId
+                _state.value.extensionSettings?.extensionId != extensionId
             ) {
                 return@update
             }
@@ -684,8 +706,8 @@ class TvHomeViewModel @Inject constructor(
     private suspend fun loadSubscriptionProviders(
         localeTag: String?,
     ): List<DiscoveredSubscriptionProvider>? {
-        val previousDiscoveryState = state.value.providerDiscoveryState
-        val previousProviderUnavailable = state.value.providerSubscriptionUnavailable
+        val previousDiscoveryState = _state.value.providerDiscoveryState
+        val previousProviderUnavailable = _state.value.providerSubscriptionUnavailable
         _state.update { current ->
             current.copy(
                 providerDiscoveryState = ProviderDiscoveryState.Loading,
@@ -771,7 +793,7 @@ class TvHomeViewModel @Inject constructor(
     }
 
     fun reauthenticateProviderAccount(playlistUrl: String) {
-        val account = state.value.providerAccounts.firstOrNull { summary ->
+        val account = _state.value.providerAccounts.firstOrNull { summary ->
             summary.playlistUrl == playlistUrl && summary.requiresReauthentication
         } ?: return
         providerReauthenticationJob?.cancel()
@@ -804,7 +826,7 @@ class TvHomeViewModel @Inject constructor(
     }
 
     fun closeProviderSubscription() {
-        if (state.value.providerSubscriptionInProgress) return
+        if (_state.value.providerSubscriptionInProgress) return
         _state.update { current ->
             current.copy(
                 providerSubscriptionForm = null,
@@ -823,7 +845,7 @@ class TvHomeViewModel @Inject constructor(
     }
 
     fun selectProviderKind(kindValue: String) {
-        val currentState = state.value
+        val currentState = _state.value
         if (currentState.providerSubscriptionUnavailable) return
         val form = currentState.providerSubscriptionForm ?: return
         val descriptor = currentState.providerSubscriptionDescriptor
@@ -853,7 +875,7 @@ class TvHomeViewModel @Inject constructor(
 
     fun submitProviderSubscription() {
         if (providerSubscriptionJob?.isActive == true) return
-        val current = state.value
+        val current = _state.value
         val form = current.providerSubscriptionForm ?: return
         if (
             current.providerSubscriptionUnavailable ||
@@ -958,7 +980,7 @@ class TvHomeViewModel @Inject constructor(
     }
 
     private fun currentProviders(): List<DiscoveredSubscriptionProvider> =
-        (state.value.providerDiscoveryState as? ProviderDiscoveryState.Ready)
+        (_state.value.providerDiscoveryState as? ProviderDiscoveryState.Ready)
             ?.providers
             .orEmpty()
 

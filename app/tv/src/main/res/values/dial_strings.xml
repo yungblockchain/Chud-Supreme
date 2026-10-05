@@ -1238,4 +1238,24 @@
     <string name="dial_backup_github_saved">Saved to your GitHub gist. On another TV, choose Restore from GitHub.</string>
     <string name="dial_backup_github_no_token">GitHub needs a token with the gist permission: add it in Settings › Services or on the phone page.</string>
     <string name="dial_backup_github_none">There\'s no Chud Supreme backup on that GitHub account yet.</string>
+    <!-- Stage 7: quiz, AniSkip, network shares -->
+    <string name="dial_game_quiz">Quiz night</string>
+    <string name="dial_game_quiz_blurb">Ten questions on films, TV, music or sport, from the Open Trivia Database.</string>
+    <string name="dial_quiz_topic_mixed">Mixed</string>
+    <string name="dial_quiz_topic_film">Film</string>
+    <string name="dial_quiz_topic_tv">TV</string>
+    <string name="dial_quiz_topic_music">Music</string>
+    <string name="dial_quiz_topic_sport">Sport</string>
+    <string name="dial_quiz_topic_general">General knowledge</string>
+    <string name="dial_quiz_pick_topic">Pick a topic. Up and Down choose an answer, OK locks it in; answers in a row score more.</string>
+    <string name="dial_quiz_score">Score %1$d</string>
+    <string name="dial_quiz_loading">Getting the questions…</string>
+    <string name="dial_quiz_failed">The questions couldn\'t be fetched (the quiz service allows one set every few seconds). Try again in a moment.</string>
+    <string name="dial_quiz_retry">Try again</string>
+    <string name="dial_quiz_done">%1$d of %2$d right · %3$d points</string>
+    <string name="dial_quiz_again">Play again</string>
+    <string name="dial_quiz_other_topic">Another topic</string>
+    <string name="dial_quiz_progress">Question %1$d of %2$d · %3$s</string>
+    <string name="dial_setting_aniskip">Anime intro and ending times (AniSkip)</string>
+    <string name="dial_files_found">Found on your network</string>
 </resources>

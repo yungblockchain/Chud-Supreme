@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,7 +57,7 @@ import kotlinx.coroutines.yield
  * an endless vertical jumper. Best scores are kept on the device.
  */
 
-enum class MiniGame { Snake, Blocks, SkyHop, Blackjack, Roulette }
+enum class MiniGame { Snake, Blocks, SkyHop, Blackjack, Roulette, Quiz }
 
 @HiltViewModel
 class GamesViewModel @Inject constructor(
@@ -97,6 +100,7 @@ fun GamesScreen(viewModel: GamesViewModel = hiltViewModel()) {
             MiniGame.SkyHop -> SkyHopGame(best = bestScore, onGameOver = onGameOver)
             MiniGame.Blackjack -> BlackjackGame(best = bestScore, onGameOver = onGameOver)
             MiniGame.Roulette -> RouletteGame(best = bestScore, onGameOver = onGameOver)
+            MiniGame.Quiz -> QuizGame(best = bestScore, onGameOver = onGameOver)
         }
     }
 }
@@ -131,17 +135,18 @@ private fun GamesMenu(
             fontFamily = TvFonts.Body,
             fontSize = 16.sp,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            MiniGame.entries.forEach { game ->
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            contentPadding = PaddingValues(vertical = 12.dp, horizontal = 4.dp),
+        ) {
+            items(MiniGame.entries) { game ->
                 FocusFrame(
                     onClick = { onPlay(game) },
                     focusRequester = requesters.getValue(game),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                     focusedScale = 1.05f,
                     semanticsLabel = stringResource(game.titleRes()),
-                    modifier = Modifier
-                        .weight(1f)
-                        .widthIn(max = 260.dp)
+                    modifier = Modifier.width(230.dp)
                 ) { focused ->
                     Column(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -291,6 +296,7 @@ private fun MiniGame.titleRes(): Int = when (this) {
     MiniGame.SkyHop -> R.string.dial_game_skyhop
     MiniGame.Blackjack -> R.string.dial_game_blackjack
     MiniGame.Roulette -> R.string.dial_game_roulette
+    MiniGame.Quiz -> R.string.dial_game_quiz
 }
 
 private fun MiniGame.blurbRes(): Int = when (this) {
@@ -299,6 +305,7 @@ private fun MiniGame.blurbRes(): Int = when (this) {
     MiniGame.SkyHop -> R.string.dial_game_skyhop_blurb
     MiniGame.Blackjack -> R.string.dial_game_blackjack_blurb
     MiniGame.Roulette -> R.string.dial_game_roulette_blurb
+    MiniGame.Quiz -> R.string.dial_game_quiz_blurb
 }
 
 /** Little neon previews on the menu cards. */
@@ -346,6 +353,16 @@ private fun DrawScope.drawGameIcon(game: MiniGame) {
         MiniGame.Blackjack, MiniGame.Roulette -> {
             drawCircle(TvColors.Focus, h * 0.28f, Offset(w / 2f, h / 2f), style = Stroke(width = 3.dp.toPx()))
             drawCircle(TvColors.Accent, h * 0.08f, Offset(w / 2f, h / 2f))
+        }
+        MiniGame.Quiz -> {
+            // Four answer bars, one lit.
+            repeat(4) { row ->
+                drawRect(
+                    color = if (row == 2) TvColors.Accent else TvColors.Focus.copy(alpha = 0.55f),
+                    topLeft = Offset(w * 0.2f, h * (0.18f + row * 0.18f)),
+                    size = Size(w * 0.6f, h * 0.11f),
+                )
+            }
         }
     }
     drawRect(TvColors.Focus.copy(alpha = 0.25f), style = Stroke(width = 1.dp.toPx()))

@@ -437,6 +437,13 @@ fun DialSettingsScreen(
         }
         item {
             SettingRow(
+                label = stringResource(R.string.dial_setting_aniskip),
+                value = onOff(preferences.aniSkip),
+                onClick = { onUpdate { it.copy(aniSkip = !it.aniSkip) } },
+            )
+        }
+        item {
+            SettingRow(
                 label = stringResource(R.string.dial_setting_skip_back),
                 value = stringResource(R.string.dial_value_seconds, preferences.skipBackSeconds),
                 onClick = {

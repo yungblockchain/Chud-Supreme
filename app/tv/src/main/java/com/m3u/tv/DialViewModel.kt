@@ -170,6 +170,7 @@ class DialViewModel @Inject constructor(
     }
 
     private var detailsJob: Job? = null
+    private var aniSkipJob: Job? = null
     private var scheduleJob: Job? = null
     private val nowNextCache = mutableMapOf<Int, TimedListing>()
     private val nowNextInFlight = mutableSetOf<Int>()
@@ -499,6 +500,19 @@ class DialViewModel @Inject constructor(
                 },
             )
             _skipMarkers.value = store.skipMarkers(series.id)
+            // An anime with no markers of its own: this episode's opening and ending from AniSkip.
+            aniSkipJob?.cancel()
+            val number = episode.episodeNum?.toIntOrNull()
+            if (_skipMarkers.value.isEmpty && number != null && preferences.value.aniSkip &&
+                AniSkip.looksLikeAnime(series.category, details?.genre)
+            ) {
+                val showTitle = details?.title ?: OpenSubtitles.cleanTitle(series.title)
+                aniSkipJob = viewModelScope.launch {
+                    val found = runCatching { AniSkip.markers(showTitle, episode.season.toIntOrNull() ?: 1, number) }.getOrNull()
+                        ?: return@launch
+                    if (_nowPlaying.value?.episode?.id == episode.id && _skipMarkers.value.isEmpty) _skipMarkers.value = found
+                }
+            }
             playerManager.play(MediaCommand.XtreamEpisode(series.id, info), applyContinueWatching = resume)
         }
     }

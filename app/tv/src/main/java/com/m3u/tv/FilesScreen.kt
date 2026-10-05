@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -271,6 +272,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
     var user by rememberSaveable { mutableStateOf("") }
     var domain by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val found by rememberFoundShares()
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -302,6 +304,32 @@ private fun AddShareForm(viewModel: FilesViewModel) {
                         onClick = { kind = option },
                         focusRequester = first.takeIf { index == 0 },
                     )
+                }
+            }
+        }
+        // Shares announcing themselves on the network: OK fills the address in.
+        val nearby = found.filter { it.kind == kind }
+        if (nearby.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(R.string.dial_files_found),
+                        color = TvColors.TextSecondary,
+                        fontFamily = TvFonts.Body,
+                        fontSize = 14.sp,
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(nearby, key = { "${it.kind}:${it.host}:${it.port}" }) { share ->
+                            TvActionButton(
+                                text = "${share.name} · ${share.host}",
+                                icon = if (share.kind == ShareKind.Smb) Icons.Rounded.Lan else Icons.Rounded.Storage,
+                                onClick = {
+                                    address = share.address
+                                    if (name.isBlank()) name = share.name
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
