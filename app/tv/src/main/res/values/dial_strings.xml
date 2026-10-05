@@ -1226,4 +1226,14 @@
     <string name="dial_remote_locked">Remote locked. Press Up, Up, Down, Down, Left, Right to unlock.</string>
     <string name="dial_remote_locked_badge">Remote locked</string>
     <string name="dial_remote_unlocked">Remote unlocked</string>
+    <!-- Stage 6d: score ticker, GitHub sync, Trakt friends -->
+    <string name="dial_ticker_live">LIVE</string>
+    <string name="dial_setting_score_ticker">Live scores on sports channels</string>
+    <string name="dial_trakt_row_friends">Friends on Trakt watched</string>
+    <string name="dial_backup_github_save">Save to GitHub (secret gist)</string>
+    <string name="dial_backup_github_value">Settings, skins and favourites; never keys</string>
+    <string name="dial_backup_github_restore">Restore from GitHub</string>
+    <string name="dial_backup_github_saved">Saved to your GitHub gist. On another TV, choose Restore from GitHub.</string>
+    <string name="dial_backup_github_no_token">GitHub needs a token with the gist permission: add it in Settings › Services or on the phone page.</string>
+    <string name="dial_backup_github_none">There\'s no Chud Supreme backup on that GitHub account yet.</string>
 </resources>

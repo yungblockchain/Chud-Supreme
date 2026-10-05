@@ -1445,6 +1445,7 @@ fun App(
                 nowTitles = nowTitles,
                 onOpenChannelList = { viewModel.loadNowTitles(zapChannels) },
                 onZapTo = { picked -> viewModel.play(picked) },
+                scoreTicker = preferences.scoreTicker && live && isSportsChannel(currentChannel),
                 onToggleFavourite = { currentChannel?.let(viewModel::toggleFavorite) },
                 onBack = if (preferences.backToMini) minimizePlayer else closePlayer,
                 onClose = closePlayer,

@@ -277,6 +277,8 @@ fun TvPlayerScreen(
     nowTitles: Map<Int, String> = emptyMap(),
     onOpenChannelList: () -> Unit = {},
     onZapTo: (Channel) -> Unit = {},
+    /** A sports channel with the score ticker on: live scores along the top. */
+    scoreTicker: Boolean = false,
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -916,6 +918,14 @@ fun TvPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 56.dp, bottom = 56.dp),
+            )
+        }
+        if (scoreTicker) {
+            ScoreTicker(
+                visible = !controlsVisible && !channelListOpen && !optionsOpen && !zapBannerVisible,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 24.dp),
             )
         }
         SceneAnswerCard(

@@ -329,6 +329,13 @@ fun DialSettingsScreen(
         }
         item {
             SettingRow(
+                label = stringResource(R.string.dial_setting_score_ticker),
+                value = onOff(preferences.scoreTicker),
+                onClick = { onUpdate { it.copy(scoreTicker = !it.scoreTicker) } },
+            )
+        }
+        item {
+            SettingRow(
                 label = stringResource(R.string.dial_setting_back_in_player),
                 value = stringResource(
                     if (preferences.backToMini) R.string.dial_value_mini_player else R.string.dial_value_close_player

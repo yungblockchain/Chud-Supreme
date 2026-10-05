@@ -70,7 +70,7 @@ sealed interface TraktItem {
 data class TraktAccount(val username: String)
 
 /** The built-in Trakt rows; a custom list is [Custom] with its own name. */
-enum class TraktRowKind { Playback, Watchlist, UpNext, RecommendedFilms, RecommendedSeries, Custom }
+enum class TraktRowKind { Playback, Watchlist, UpNext, RecommendedFilms, RecommendedSeries, Friends, Custom }
 
 /** A Trakt list ready for a Home row; the titles carry TMDB ids and Trakt's own artwork. */
 @Immutable
@@ -327,6 +327,30 @@ class TraktService @Inject constructor(
         add("recommended-shows", TraktRowKind.RecommendedSeries) {
             getArray("/recommendations/shows?extended=full,images&limit=20").mapNotNull { titleOf(it as? JsonObject, MediaKind.Tv) }
         }
+        // What the people you follow on Trakt watched lately (their history, where it's public).
+        add("friends", TraktRowKind.Friends) {
+            val people = getArray("/users/me/following").mapNotNull { element ->
+                val user = (element as? JsonObject)?.get("user") as? JsonObject ?: return@mapNotNull null
+                val slug = (user["ids"] as? JsonObject)?.text("slug") ?: return@mapNotNull null
+                slug to (user.text("name")?.takeIf { it.isNotBlank() } ?: user.text("username") ?: slug)
+            }.take(MAX_FRIENDS)
+            people.flatMap { (slug, name) ->
+                runCatching { getArray("/users/$slug/history?extended=full,images&limit=$FRIEND_HISTORY") }
+                    .getOrDefault(JsonArray(emptyList()))
+                    .mapNotNull { element ->
+                        val row = element as? JsonObject ?: return@mapNotNull null
+                        val title = titleOf(row) ?: return@mapNotNull null
+                        val episode = row["episode"] as? JsonObject
+                        val label = episode?.let { "S${it.int("season")}E${it.int("number")}" }
+                        val at = row.text("watched_at").orEmpty()
+                        at to title.copy(overview = listOfNotNull("@$name", label).joinToString(" · "))
+                    }
+            }
+                .sortedByDescending { it.first }
+                .map { it.second }
+                .distinctBy { it.kind to it.id }
+                .take(MAX_FRIEND_TITLES)
+        }
         val lists = runCatching { getArray("/users/me/lists") }.getOrDefault(JsonArray(emptyList()))
         for (element in lists.take(MAX_LISTS)) {
             val list = element as? JsonObject ?: continue
@@ -521,5 +545,8 @@ class TraktService @Inject constructor(
     private companion object {
         const val BASE = "https://api.trakt.tv"
         const val MAX_LISTS = 6
+        const val MAX_FRIENDS = 10
+        const val FRIEND_HISTORY = 6
+        const val MAX_FRIEND_TITLES = 30
     }
 }

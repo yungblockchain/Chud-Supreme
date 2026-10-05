@@ -116,6 +116,7 @@ fun TraktRow.displayName(): String = listName ?: stringResource(
         TraktRowKind.UpNext -> R.string.dial_trakt_row_upnext
         TraktRowKind.RecommendedFilms -> R.string.dial_trakt_row_films
         TraktRowKind.RecommendedSeries -> R.string.dial_trakt_row_series
+        TraktRowKind.Friends -> R.string.dial_trakt_row_friends
         TraktRowKind.Custom -> R.string.dial_trakt_row_list
     }
 )

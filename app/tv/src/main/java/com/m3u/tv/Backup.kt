@@ -67,6 +67,12 @@ sealed interface BackupNotice {
     data class Restored(val summary: BackupSummary) : BackupNotice
     data object NotABackup : BackupNotice
     data object Failed : BackupNotice
+    /** Saved to the GitHub gist. */
+    data object Synced : BackupNotice
+    /** No GitHub token, or it can't reach gists. */
+    data object NoGitHub : BackupNotice
+    /** No backup gist on that GitHub account yet. */
+    data object NoGist : BackupNotice
 }
 
 @Singleton
@@ -88,6 +94,7 @@ class BackupService @Inject constructor(
     private val multiviewPresets: MultiviewPresetStore,
     private val smartHome: SmartHomeStore,
     private val files: FilesStore,
+    private val audioOutputs: AudioOutputMonitor,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -146,6 +153,7 @@ class BackupService @Inject constructor(
             smartHome.reload()
             files.reload()
             skins.reload()
+            audioOutputs.reload()
         }
         val skinList = (root["skins"] as? JsonArray).orEmpty()
         val chosenSkin = skins.current.value
@@ -254,6 +262,7 @@ class BackupService @Inject constructor(
         val PREF_FILES = listOf(
             "dial_settings", "appearance", "infinity_layout", "stremio_addons", "profiles",
             "media_server", "infinity_shelf", "youtube", "radio", "reminders", "channel_edits", "multiview_presets", "smart_home", "file_shares",
+            "audio_outputs",
         )
     }
 }
@@ -261,6 +270,7 @@ class BackupService @Inject constructor(
 @HiltViewModel
 class BackupViewModel @Inject constructor(
     private val backup: BackupService,
+    private val secrets: SecretStore,
 ) : ViewModel() {
     private val _notice = MutableStateFlow<BackupNotice?>(null)
     val notice: StateFlow<BackupNotice?> = _notice.asStateFlow()
@@ -305,6 +315,60 @@ class BackupViewModel @Inject constructor(
     fun clearNotice() {
         _notice.value = null
     }
+
+    /** The backup (never with keys) to the GitHub gist. */
+    fun saveToGitHub() {
+        val token = secrets.get(SecretName.GitHubToken)
+        if (token == null) {
+            _notice.value = BackupNotice.NoGitHub
+            return
+        }
+        _busy.value = true
+        viewModelScope.launch {
+            val text = runCatching { backup.create(includeKeys = false) }.getOrNull()
+            _notice.value = if (text == null) {
+                BackupNotice.Failed
+            } else {
+                when (GistSync.save(token, text)) {
+                    is GistSync.Result.Done -> BackupNotice.Synced
+                    GistSync.Result.NoAccess -> BackupNotice.NoGitHub
+                    GistSync.Result.NotFound, GistSync.Result.Failed -> BackupNotice.Failed
+                }
+            }
+            _kept.value = backup.summaryOfKept()
+            _busy.value = false
+        }
+    }
+
+    /** Finds the GitHub gist and puts its backup back. */
+    fun restoreFromGitHub() {
+        val token = secrets.get(SecretName.GitHubToken)
+        if (token == null) {
+            _notice.value = BackupNotice.NoGitHub
+            return
+        }
+        _busy.value = true
+        viewModelScope.launch {
+            when (val result = GistSync.load(token)) {
+                is GistSync.Result.Done -> {
+                    _busy.value = false
+                    restoreText(result.text.orEmpty())
+                }
+                GistSync.Result.NoAccess -> {
+                    _notice.value = BackupNotice.NoGitHub
+                    _busy.value = false
+                }
+                GistSync.Result.NotFound -> {
+                    _notice.value = BackupNotice.NoGist
+                    _busy.value = false
+                }
+                GistSync.Result.Failed -> {
+                    _notice.value = BackupNotice.Failed
+                    _busy.value = false
+                }
+            }
+        }
+    }
 }
 
 /** The Backup and restore rows in Settings. */
@@ -346,6 +410,16 @@ fun BackupRows() {
                 onClick = { if (!busy) viewModel.restoreKept() },
             )
         }
+        SettingRow(
+            label = stringResource(R.string.dial_backup_github_save),
+            value = stringResource(R.string.dial_backup_github_value),
+            onClick = { if (!busy) viewModel.saveToGitHub() },
+        )
+        SettingRow(
+            label = stringResource(R.string.dial_backup_github_restore),
+            value = "",
+            onClick = { if (!busy) viewModel.restoreFromGitHub() },
+        )
         notice?.let { current ->
             Text(
                 text = when (current) {
@@ -353,6 +427,9 @@ fun BackupRows() {
                     is BackupNotice.Restored -> stringResource(R.string.dial_backup_restored, current.summary.settings, current.summary.skins, current.summary.favourites)
                     BackupNotice.NotABackup -> stringResource(R.string.dial_backup_not_a_backup)
                     BackupNotice.Failed -> stringResource(R.string.dial_backup_failed)
+                    BackupNotice.Synced -> stringResource(R.string.dial_backup_github_saved)
+                    BackupNotice.NoGitHub -> stringResource(R.string.dial_backup_github_no_token)
+                    BackupNotice.NoGist -> stringResource(R.string.dial_backup_github_none)
                 },
                 color = TvColors.TextSecondary,
                 fontFamily = TvFonts.Body,

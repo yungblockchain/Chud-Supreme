@@ -156,6 +156,11 @@ class AudioOutputMonitor @Inject constructor(
         }
     }
 
+    /** Re-reads the profiles (after a restore wrote them directly). */
+    fun reload() {
+        _profiles.value = read()
+    }
+
     fun profileFor(output: AudioOutput): OutputProfile = _profiles.value[output.key] ?: defaultFor(output)
 
     /** Changes the profile of the device playing now. */

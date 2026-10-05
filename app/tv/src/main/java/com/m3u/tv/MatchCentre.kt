@@ -808,6 +808,24 @@ private fun rememberPaperSlips(): PaperSlips {
     return PaperSlips(lines, add)
 }
 
+/** A match being played now, for the player's score ticker. */
+@Immutable
+data class LiveScore(val league: String, val home: String, val away: String, val homeScore: String, val awayScore: String, val clock: String)
+
+/** The matches being played now (the Match Centre's own feed, cached for two minutes). */
+suspend fun liveScores(): List<LiveScore> = runCatching { MatchFeed.loadAll() }.getOrDefault(emptyList())
+    .filter { it.state == "in" }
+    .map { fixture ->
+        LiveScore(
+            league = fixture.league,
+            home = fixture.home.name,
+            away = fixture.away.name,
+            homeScore = fixture.home.score ?: "0",
+            awayScore = fixture.away.score ?: "0",
+            clock = fixture.detail,
+        )
+    }
+
 private object MatchFeed {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private var cached: List<Fixture> = emptyList()
