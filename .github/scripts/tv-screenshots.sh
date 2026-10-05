@@ -174,21 +174,27 @@ if check "launch"; then
         # Media server sign-in page, and a search that also looks beyond the playlists.
         open_tab server 8; shot 42-media-server
         # Profiles tab (last settings tab) and the backup/weather rows at the end of the first tab.
-        open_tab settings 8; for _ in 1 2 3 4 5 6 7 8; do press $RIGHT; done; press $OK; sleep 2; shot 44-settings-profiles
+        open_tab settings 8; for _ in 1 2 3 4 5 6 7; do press $RIGHT; done; press $OK; sleep 2; shot 44-settings-profiles
         press $DOWN $OK; sleep 2; shot 45-settings-profiles-add
         # The channel editor (the tab before Profiles): the first category's channels, then a rename box.
-        open_tab settings 8; for _ in 1 2 3 4 5 6 7; do press $RIGHT; done; press $OK; sleep 4; shot 47-settings-channels
+        open_tab settings 8; for _ in 1 2 3 4 5 6; do press $RIGHT; done; press $OK; sleep 4; shot 47-settings-channels
         press $DOWN $DOWN; sleep 1; press $OK; sleep 2; shot 47a-settings-channels-rename
         hide_keyboard; press $BACK; sleep 1
-        # YouTube: what's live (from YouTube itself), trending, and a video playing in the app.
+        # YouTube: what's live (from YouTube itself) with a live stream playing in the app, then
+        # trending with a video playing (the DASH path).
         open_tab youtube 16; shot 48-youtube-live
-        press $DOWN $OK; sleep 12; shot 48a-youtube-trending
-        press $RIGHT; sleep 1; press $OK; sleep 25; shot 48b-youtube-playing
-        check "youtube playback"
+        press $RIGHT; sleep 1; press $OK; sleep 25; shot 48b-youtube-live-playing
+        check "youtube live playback"
         press $BACK; sleep 2; press $BACK; sleep 2
-        # Radio: popular stations, one playing (artwork in the player), and the podcast charts.
+        open_tab youtube 10; press $DOWN $OK; sleep 12; shot 48a-youtube-trending
+        press $RIGHT; sleep 1; press $OK; sleep 25; shot 48c-youtube-video-playing
+        check "youtube video playback"
+        press $BACK; sleep 2; press $BACK; sleep 2
+        # Radio: the voted-for stations, a search with a station playing (artwork in the player),
+        # and the podcast charts.
         open_tab radio 14; shot 49-radio-popular
-        press $RIGHT; sleep 1; press $OK; sleep 15; shot 49a-radio-playing
+        press $DOWN $DOWN $DOWN; sleep 1; press $OK; sleep 1; type_text "BBC%sRadio%s2"; sleep 8; shot 49d-radio-search
+        press $DOWN; sleep 1; press $OK; sleep 15; shot 49a-radio-playing
         check "radio playback"
         press $BACK; sleep 2; press $BACK; sleep 2
         open_tab radio 10; for _ in 1 2 3 4 5; do press $DOWN; done; press $OK; sleep 10; shot 49b-radio-podcasts

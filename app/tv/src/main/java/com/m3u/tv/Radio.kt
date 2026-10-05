@@ -202,8 +202,9 @@ object RadioBrowser {
     private val hosts = listOf("de1.api.radio-browser.info", "at1.api.radio-browser.info", "nl1.api.radio-browser.info")
     @Volatile private var preferred: String? = null
 
+    /** The most-voted-for stations (clicks are easy to inflate; votes come from real listeners). */
     suspend fun popular(limit: Int = 80): List<RadioStation> =
-        stations("/json/stations/topclick/$limit?hidebroken=true")
+        stations("/json/stations/topvote/$limit?hidebroken=true")
 
     suspend fun byCountry(countryCode: String, limit: Int = 80): List<RadioStation> =
         stations("/json/stations/bycountrycodeexact/${countryCode.uppercase(Locale.US)}?order=clickcount&reverse=true&hidebroken=true&limit=$limit")

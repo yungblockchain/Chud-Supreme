@@ -630,7 +630,7 @@ fun SearchScreen(
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Bottom,
                     modifier = Modifier.widthIn(max = 800.dp),
                 ) {
                     Box(Modifier.weight(1f)) {
@@ -647,7 +647,7 @@ fun SearchScreen(
                         )
                     }
                     // Say it: the TV's own listener where there is one, else the phone page's.
-                    VoiceSearchButton(onWords = onSearch)
+                    VoiceSearchButton(onWords = onSearch, modifier = Modifier.padding(bottom = 18.dp))
                 }
             }
         }

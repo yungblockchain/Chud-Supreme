@@ -653,7 +653,12 @@ fun TvPlayerScreen(
 
         // Radio and podcasts: the artwork where the picture would be.
         if (artwork != null) {
-            AudioArtwork(artwork = artwork, title = channel?.title.orEmpty(), modifier = Modifier.align(Alignment.Center))
+            AudioArtwork(
+                artwork = artwork,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = (-72).dp),
+            )
         }
         segmentSkipped?.let { category ->
             Text(
@@ -1126,37 +1131,22 @@ private fun ChannelNumber(number: Int, fontSize: Int) {
     )
 }
 
-/** A square of artwork with the title under it, for streams that have sound but no picture. */
+/** A square of artwork, for streams that have sound but no picture (the name is in the bar). */
 @Composable
-private fun AudioArtwork(artwork: String, title: String, modifier: Modifier = Modifier) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier,
+private fun AudioArtwork(artwork: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .requiredSize(300.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(TvColors.Surface),
     ) {
-        Box(
+        AsyncImage(
+            model = artwork,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
             modifier = Modifier
-                .requiredSize(320.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(TvColors.Surface),
-        ) {
-            AsyncImage(
-                model = artwork,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-            )
-        }
-        Text(
-            text = title,
-            color = TvColors.TextPrimary,
-            fontFamily = TvFonts.Body,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 22.sp,
-            maxLines = 2,
-            modifier = Modifier.widthIn(max = 720.dp),
+                .fillMaxSize()
+                .padding(16.dp),
         )
     }
 }

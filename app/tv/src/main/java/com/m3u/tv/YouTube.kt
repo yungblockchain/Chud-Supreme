@@ -26,6 +26,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -297,6 +298,47 @@ object YouTubeClient {
             val extractor = service.kioskList.getExtractorById(id, null)
             extractor.fetchPage()
             extractor.initialPage.items.mapNotNull { it.toVideo() }.distinctBy { it.id }
+        }
+    }
+
+    /**
+     * Trending, from YouTube's Data API (the kiosk YouTube used to have was taken down in 2025).
+     * One request a few times a day costs next to nothing of the daily quota.
+     */
+    suspend fun trending(key: String, region: String, maxAgeMs: Long = KIOSK_TTL_MS): List<YouTubeVideo> = withContext(Dispatchers.IO) {
+        cached("trending-$region", maxAgeMs) {
+            val url = "https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular" +
+                "&regionCode=${URLEncoder.encode(region, "UTF-8")}&maxResults=48&key=${URLEncoder.encode(key, "UTF-8")}"
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 10_000
+                    readTimeout = 15_000
+                    setRequestProperty("Accept", "application/json")
+                }
+                if (connection.responseCode !in 200..299) error("YouTube Data API ${connection.responseCode}")
+                val root = Json.parseToJsonElement(connection.inputStream.bufferedReader().use { it.readText() }).jsonObject
+                root["items"]?.jsonArray.orEmpty().mapNotNull { element ->
+                    val item = element as? JsonObject ?: return@mapNotNull null
+                    val id = item["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val snippet = item["snippet"] as? JsonObject ?: return@mapNotNull null
+                    val thumbs = snippet["thumbnails"] as? JsonObject
+                    val duration = (item["contentDetails"] as? JsonObject)?.get("duration")?.jsonPrimitive?.contentOrNull
+                        ?.let { runCatching { Duration.parse(it).seconds }.getOrNull() } ?: 0L
+                    YouTubeVideo(
+                        id = id,
+                        title = snippet["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                        channel = snippet["channelTitle"]?.jsonPrimitive?.contentOrNull,
+                        channelUrl = snippet["channelId"]?.jsonPrimitive?.contentOrNull?.let { "https://www.youtube.com/channel/$it" },
+                        thumbnail = ((thumbs?.get("high") ?: thumbs?.get("medium")) as? JsonObject)?.get("url")?.jsonPrimitive?.contentOrNull,
+                        durationSec = duration,
+                        live = snippet["liveBroadcastContent"]?.jsonPrimitive?.contentOrNull == "live",
+                        views = (item["statistics"] as? JsonObject)?.get("viewCount")?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: -1L,
+                    )
+                }
+            } finally {
+                connection?.disconnect()
+            }
         }
     }
 
@@ -662,6 +704,7 @@ sealed interface YouTubeEvent {
 class YouTubeViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val store: YouTubeStore,
+    private val secrets: SecretStore,
     private val local: LocalMediaServer,
     private val playerManager: PlayerManager,
     private val channelDao: ChannelDao,
@@ -711,7 +754,9 @@ class YouTubeViewModel @Inject constructor(
                 val items = runCatching {
                     when (section) {
                         YtSection.Live -> YouTubeClient.kiosk("live", if (force) 0L else LIVE_TTL_MS)
-                        YtSection.Trending -> YouTubeClient.kiosk("Trending", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
+                        YtSection.Trending -> secrets.get(SecretName.YouTube)
+                            ?.let { key -> YouTubeClient.trending(key, Locale.getDefault().country.ifBlank { "GB" }, if (force) 0L else YouTubeClient.KIOSK_TTL_MS) }
+                            ?: YouTubeClient.kiosk("Trending", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
                         YtSection.Music -> YouTubeClient.kiosk("trending_music", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
                         YtSection.Gaming -> YouTubeClient.kiosk("trending_gaming", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)
                         YtSection.Trailers -> YouTubeClient.kiosk("trending_movies_and_shows", if (force) 0L else YouTubeClient.KIOSK_TTL_MS)

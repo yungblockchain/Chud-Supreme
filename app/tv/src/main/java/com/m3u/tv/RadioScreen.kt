@@ -37,6 +37,8 @@ import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -315,11 +317,13 @@ private fun ArtworkCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(TvColors.Surface),
             ) {
-                if (artwork != null) {
+                var failed by remember(artwork) { mutableStateOf(false) }
+                if (artwork != null && !failed) {
                     AsyncImage(
                         model = artwork,
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
+                        onError = { failed = true },
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(10.dp),
