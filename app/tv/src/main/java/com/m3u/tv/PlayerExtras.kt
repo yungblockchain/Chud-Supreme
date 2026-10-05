@@ -1,12 +1,16 @@
 package com.m3u.tv
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -103,7 +107,7 @@ class SeekPreviews(private val uri: Uri) {
         runCatching {
             executor.execute {
                 if (closed || wanted.get() != bucket) return@execute
-                val frame = grab(bucket) ?: return@execute
+                val frame = trickplay(bucket) ?: grab(bucket) ?: return@execute
                 cache.put(bucket, frame)
                 main.post { if (!closed) onReady(bucket, frame) }
             }
@@ -120,6 +124,33 @@ class SeekPreviews(private val uri: Uri) {
             executor.shutdown()
         }
         cache.evictAll()
+    }
+
+    /** Jellyfin or Emby trickplay, when the address is one of their videos. A miss falls through. */
+    private fun trickplay(bucket: Long): Bitmap? {
+        val path = uri.path ?: return null
+        val id = Regex("""/Videos/([^/?]+)""").find(path)?.groupValues?.get(1) ?: return null
+        val index = bucket / PREVIEW_BUCKET_MS
+        val token = uri.getQueryParameter("api_key") ?: uri.getQueryParameter("AccessToken")
+        val address = buildString {
+            append(uri.scheme).append("://").append(uri.authority)
+            append("/Videos/").append(id).append("/Trickplay/320/").append(index).append(".jpg")
+            if (!token.isNullOrBlank()) append("?api_key=").append(URLEncoder.encode(token, Charsets.UTF_8.name()))
+        }
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL(address).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4_000
+                readTimeout = 4_000
+                setRequestProperty("User-Agent", USER_AGENT)
+            }
+            if (connection.responseCode !in 200..299) null
+            else connection.inputStream.use { BitmapFactory.decodeStream(it) }
+        } catch (_: Exception) {
+            null
+        } finally {
+            connection?.disconnect()
+        }
     }
 
     private fun grab(bucket: Long): Bitmap? = runCatching {

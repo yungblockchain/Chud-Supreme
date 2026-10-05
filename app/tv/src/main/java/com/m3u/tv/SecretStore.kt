@@ -28,6 +28,8 @@ enum class SecretName(val key: String) {
     TraktClientSecret("trakt_client_secret"),
     TraktAccess("trakt_access_token"),
     TraktRefresh("trakt_refresh_token"),
+    SimklClientId("simkl_client_id"),
+    SimklAccess("simkl_access_token"),
     GitHubToken("github_token"),
     GitHubRepo("github_repo"),
     TelegramBotToken("telegram_bot_token"),

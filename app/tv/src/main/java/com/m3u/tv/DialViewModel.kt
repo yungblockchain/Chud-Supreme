@@ -610,7 +610,7 @@ class DialViewModel @Inject constructor(
                         xmltvProgrammes(channel, now, now + FUTURE_WINDOW_MS).orEmpty().take(3)
                     } else {
                         XtreamCatalog.shortEpg(credentials, streamId)
-                    }
+                    }.ifEmpty { epgPwProgrammes(channel, now, now + FUTURE_WINDOW_MS).take(3) }
                 }
                 val current = listings.filterNot { it.hasEndedBy(System.currentTimeMillis()) }
                 nowNextCache[channel.id] = TimedListing(System.currentTimeMillis(), current)
@@ -639,6 +639,9 @@ class DialViewModel @Inject constructor(
                         xmltvProgrammes(channel, start - GRID_PAST_MS, start + GRID_FUTURE_MS).orEmpty()
                     } else {
                         XtreamCatalog.fullEpg(credentials, streamId)
+                    }.ifEmpty {
+                        val start = System.currentTimeMillis()
+                        epgPwProgrammes(channel, start - GRID_PAST_MS, start + GRID_FUTURE_MS)
                     }
                 }
                 val now = System.currentTimeMillis()
@@ -672,8 +675,11 @@ class DialViewModel @Inject constructor(
             val streamId = XtreamCatalog.idFromUrl(channel.url)
             val now = System.currentTimeMillis()
             if (credentials == null || streamId == null) {
-                // M3U playlists: their XMLTV guide, if one is attached.
-                val programmes = xmltvProgrammes(channel, now, now + FUTURE_WINDOW_MS)
+                // M3U playlists: their XMLTV guide, if one is attached, else epg.pw on an exact name.
+                val own = xmltvProgrammes(channel, now, now + FUTURE_WINDOW_MS)
+                val programmes = own?.takeIf { it.isNotEmpty() }
+                    ?: epgPwProgrammes(channel, now, now + FUTURE_WINDOW_MS).takeIf { it.isNotEmpty() }
+                    ?: own
                 _schedule.value = if (programmes == null) {
                     GuideSchedule(channel.id, loading = false, supported = false)
                 } else {
@@ -685,6 +691,7 @@ class DialViewModel @Inject constructor(
                 .filter { it.endMillis > now - ARCHIVE_WINDOW_MS && it.startMillis < now + FUTURE_WINDOW_MS }
                 // Past programmes are only useful if they can be replayed.
                 .filter { !it.hasEndedBy(now) || it.hasArchive }
+                .ifEmpty { epgPwProgrammes(channel, now - ARCHIVE_WINDOW_MS, now + FUTURE_WINDOW_MS) }
             _schedule.value = GuideSchedule(channel.id, loading = false, programmes = programmes)
         }
     }
@@ -854,6 +861,14 @@ class DialViewModel @Inject constructor(
                     hasArchive = false,
                 )
             }
+    }
+
+    /** epg.pw only when this channel's own guide came back empty, and only if the toggle is on. */
+    private suspend fun epgPwProgrammes(channel: Channel, from: Long, to: Long): List<GuideProgramme> {
+        if (!preferences.value.epgPw) return emptyList()
+        return runCatching { EpgPw.programmes(channel.title, from, to) }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrDefault(emptyList())
     }
 
     private suspend fun credentialsFor(playlistUrl: String): XtreamCredentials? {

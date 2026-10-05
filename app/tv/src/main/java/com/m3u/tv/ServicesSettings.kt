@@ -64,15 +64,22 @@ class ServicesSettingsViewModel @Inject constructor(
     private val store: DialSettingsStore,
     private val addons: StremioAddonStore,
     private val trakt: TraktService,
+    private val simkl: SimklService,
 ) : ViewModel() {
     val saved: StateFlow<Set<SecretName>> = secrets.saved
     val traktAccount: StateFlow<TraktAccount?> = trakt.account
     val traktSignIn: StateFlow<TraktSignIn> = trakt.signIn
+    val simklSignIn: StateFlow<SimklSignIn> = simkl.signIn
+    val simklWatchlist: StateFlow<List<String>> = simkl.watchlist
 
     fun traktSignIn() = trakt.startSignIn()
     fun traktCancel() = trakt.cancelSignIn()
     fun traktSignOut() = trakt.signOut()
     fun toggleScrobble() = store.update { it.copy(traktScrobble = !it.traktScrobble) }
+    fun simklSignIn() = simkl.startSignIn()
+    fun simklCancel() = simkl.cancelSignIn()
+    fun simklSignOut() = simkl.signOut()
+    fun toggleSimklScrobble() = store.update { it.copy(simklScrobble = !it.simklScrobble) }
     fun toggleExtraSubtitles() = store.update { it.copy(extraSubtitleSources = !it.extraSubtitleSources) }
     val phonePage: StateFlow<CompanionInfo?> = companion.info
     val phoneMessages: SharedFlow<PhoneMessage> = companion.messages
@@ -157,6 +164,8 @@ fun ServicesSettingsScreen(
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
     val traktAccount by viewModel.traktAccount.collectAsStateWithLifecycle()
     val traktSignIn by viewModel.traktSignIn.collectAsStateWithLifecycle()
+    val simklSignIn by viewModel.simklSignIn.collectAsStateWithLifecycle()
+    val simklWatchlist by viewModel.simklWatchlist.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf<SecretName?>(null) }
     var showReports by rememberSaveable { mutableStateOf(false) }
 
@@ -243,6 +252,55 @@ fun ServicesSettingsScreen(
                 value = stringResource(if (preferences.traktScrobble) R.string.dial_value_on else R.string.dial_value_off),
                 onClick = viewModel::toggleScrobble,
             )
+        }
+        item { KeyRow(SecretName.SimklClientId, R.string.dial_services_simkl, R.string.dial_services_simkl_hint) }
+        item {
+            val signIn = simklSignIn
+            val signedIn = SecretName.SimklAccess in saved
+            SettingRow(
+                label = when {
+                    signIn is SimklSignIn.Code -> stringResource(R.string.dial_simkl_enter_code, signIn.url, signIn.userCode)
+                    signedIn -> stringResource(R.string.dial_simkl_signed_in)
+                    signIn is SimklSignIn.Failed -> stringResource(
+                        when (signIn.reason) {
+                            "needs_key" -> R.string.dial_simkl_needs_key
+                            "expired" -> R.string.dial_simkl_expired
+                            else -> R.string.dial_simkl_failed
+                        }
+                    )
+                    else -> stringResource(R.string.dial_simkl_sign_in)
+                },
+                value = when {
+                    signedIn -> stringResource(R.string.dial_trakt_sign_out)
+                    signIn is SimklSignIn.Code -> stringResource(R.string.dial_action_cancel)
+                    else -> stringResource(R.string.dial_simkl_sign_in_value)
+                },
+                onClick = {
+                    when {
+                        signedIn -> viewModel.simklSignOut()
+                        signIn is SimklSignIn.Code -> viewModel.simklCancel()
+                        else -> viewModel.simklSignIn()
+                    }
+                },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_simkl_scrobble),
+                value = stringResource(if (preferences.simklScrobble) R.string.dial_value_on else R.string.dial_value_off),
+                onClick = viewModel::toggleSimklScrobble,
+            )
+        }
+        if (simklWatchlist.isNotEmpty()) {
+            item {
+                Text(
+                    text = stringResource(R.string.dial_simkl_watchlist, simklWatchlist.joinToString(", ")),
+                    color = TvColors.TextSecondary,
+                    fontFamily = TvFonts.Body,
+                    fontSize = 14.sp,
+                    modifier = Modifier.widthIn(max = 820.dp),
+                )
+            }
         }
         item { SettingsSection(stringResource(R.string.dial_services_section_smart_home)) }
         item { SmartHomeRows() }

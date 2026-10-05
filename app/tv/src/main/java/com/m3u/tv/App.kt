@@ -1332,7 +1332,22 @@ fun App(
                                     onPlaying = { surface = TvSurface.Player },
                                 )
                             }
-                            else -> Toast.makeText(context, noTrailer, Toast.LENGTH_SHORT).show()
+                            else -> {
+                                val tmdbId = detailsExtras
+                                    ?.takeIf { it.channelId == current.channel.id }
+                                    ?.extras
+                                    ?.tmdbId
+                                val kinocheck = tmdbId?.let { KinoCheck.youtubeId(it) }
+                                if (kinocheck != null) {
+                                    dial.clearNowPlaying()
+                                    youtube.play(
+                                        YouTubeVideo(id = kinocheck, title = name, channel = null, thumbnail = null),
+                                        onPlaying = { surface = TvSurface.Player },
+                                    )
+                                } else {
+                                    Toast.makeText(context, noTrailer, Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                     }
                 },

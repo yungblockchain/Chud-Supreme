@@ -122,6 +122,10 @@ data class DialPreferences(
     val aniSkip: Boolean = true,
     /** Radio shows the words of the song playing (LRCLIB). */
     val radioLyrics: Boolean = true,
+    /** Channels with no guide of their own can use epg.pw, and only on an exact name match. */
+    val epgPw: Boolean = true,
+    /** Tell Simkl what's playing when that account is signed in. */
+    val simklScrobble: Boolean = true,
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -480,6 +484,8 @@ class DialSettingsStore @Inject constructor(
             .putBoolean(KEY_SCORE_TICKER, next.scoreTicker)
             .putBoolean(KEY_ANISKIP, next.aniSkip)
             .putBoolean(KEY_RADIO_LYRICS, next.radioLyrics)
+            .putBoolean(KEY_EPG_PW, next.epgPw)
+            .putBoolean(KEY_SIMKL_SCROBBLE, next.simklScrobble)
             .apply()
     }
 
@@ -684,6 +690,8 @@ class DialSettingsStore @Inject constructor(
             scoreTicker = prefs.getBoolean(KEY_SCORE_TICKER, defaults.scoreTicker),
             aniSkip = prefs.getBoolean(KEY_ANISKIP, defaults.aniSkip),
             radioLyrics = prefs.getBoolean(KEY_RADIO_LYRICS, defaults.radioLyrics),
+            epgPw = prefs.getBoolean(KEY_EPG_PW, defaults.epgPw),
+            simklScrobble = prefs.getBoolean(KEY_SIMKL_SCROBBLE, defaults.simklScrobble),
         )
     }
 
@@ -751,6 +759,8 @@ class DialSettingsStore @Inject constructor(
         const val KEY_SCORE_TICKER = "score_ticker"
         const val KEY_ANISKIP = "aniskip"
         const val KEY_RADIO_LYRICS = "radio_lyrics"
+        const val KEY_EPG_PW = "epg_pw"
+        const val KEY_SIMKL_SCROBBLE = "simkl_scrobble"
         const val KEY_WATCHED_PREFIX = "watched_"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"

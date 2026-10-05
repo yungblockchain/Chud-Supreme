@@ -312,6 +312,13 @@ fun DialSettingsScreen(
                 },
             )
         }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_epg_pw),
+                value = onOff(preferences.epgPw),
+                onClick = { onUpdate { it.copy(epgPw = !it.epgPw) } },
+            )
+        }
 
         item { SettingsSection(stringResource(R.string.dial_settings_section_player)) }
         item {
@@ -585,11 +592,18 @@ fun DialSettingsScreen(
             val guest = party.guest
             when {
                 hosting != null -> item {
-                    SettingRow(
-                        label = stringResource(R.string.dial_party_end),
-                        value = stringResource(R.string.dial_party_code_guests, hosting.code, hosting.guests),
-                        onClick = party.onStopHosting,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SettingRow(
+                            label = stringResource(R.string.dial_party_end),
+                            value = stringResource(R.string.dial_party_code_guests, hosting.code, hosting.guests),
+                            onClick = party.onStopHosting,
+                        )
+                        QrCode(
+                            text = hosting.code,
+                            contentDescription = hosting.code,
+                            size = 180.dp,
+                        )
+                    }
                 }
                 guest is GuestState.InParty -> item {
                     SettingRow(

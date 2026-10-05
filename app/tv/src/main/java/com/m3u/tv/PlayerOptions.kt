@@ -752,13 +752,23 @@ fun PlayerOptionsPanel(
             // Watch party.
             item { OptionsHeader(stringResource(R.string.dial_party_title)) }
             when {
-                partyHosting != null -> item(key = "party-end") {
-                    OptionRow(
-                        label = stringResource(R.string.dial_party_end),
-                        value = partyHosting.code,
-                        hint = stringResource(R.string.dial_party_guests, partyHosting.guests),
-                        onClick = onStopParty,
-                    )
+                partyHosting != null -> {
+                    item(key = "party-end") {
+                        OptionRow(
+                            label = stringResource(R.string.dial_party_end),
+                            value = partyHosting.code,
+                            hint = stringResource(R.string.dial_party_guests, partyHosting.guests),
+                            onClick = onStopParty,
+                        )
+                    }
+                    item(key = "party-qr") {
+                        QrCode(
+                            text = partyHosting.code,
+                            contentDescription = partyHosting.code,
+                            size = 160.dp,
+                            modifier = Modifier.padding(start = 8.dp, top = 8.dp),
+                        )
+                    }
                 }
                 partyGuest !is GuestState.Idle -> item(key = "party-leave") {
                     OptionRow(

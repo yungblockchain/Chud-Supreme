@@ -109,6 +109,7 @@ object RatingsClient {
 @Singleton
 class TraktScrobbler @Inject constructor(
     private val trakt: TraktService,
+    private val simkl: SimklService,
     private val store: DialSettingsStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -130,18 +131,23 @@ class TraktScrobbler @Inject constructor(
         current = item
         playing = isPlaying && item != null
         progress = percent
-        if (!enabled) return
+        val simklOn = store.preferences.value.simklScrobble && simkl.signedIn
+        if (!enabled && !simklOn) return
         scope.launch {
             order.withLock {
                 if (item != previous) {
-                    if (previous != null) trakt.scrobble(TraktService.ScrobbleAction.Stop, previous, previousProgress)
-                    if (item != null && isPlaying) trakt.scrobble(TraktService.ScrobbleAction.Start, item, percent)
+                    if (previous != null) {
+                        if (enabled) trakt.scrobble(TraktService.ScrobbleAction.Stop, previous, previousProgress)
+                        mirrorSimkl("stop", previous, previousProgress)
+                    }
+                    if (item != null && isPlaying) {
+                        if (enabled) trakt.scrobble(TraktService.ScrobbleAction.Start, item, percent)
+                        mirrorSimkl("start", item, percent)
+                    }
                 } else if (item != null && isPlaying != wasPlaying) {
-                    trakt.scrobble(
-                        if (isPlaying) TraktService.ScrobbleAction.Start else TraktService.ScrobbleAction.Pause,
-                        item,
-                        percent,
-                    )
+                    val action = if (isPlaying) TraktService.ScrobbleAction.Start else TraktService.ScrobbleAction.Pause
+                    if (enabled) trakt.scrobble(action, item, percent)
+                    mirrorSimkl(if (isPlaying) "start" else "pause", item, percent)
                 }
             }
         }
@@ -157,7 +163,18 @@ class TraktScrobbler @Inject constructor(
         current = null
         playing = false
         progress = 0f
-        if (!enabled || !wasCurrent) return
-        scope.launch { order.withLock { trakt.scrobble(TraktService.ScrobbleAction.Stop, item, 100f) } }
+        val simklOn = store.preferences.value.simklScrobble && simkl.signedIn
+        if ((!enabled && !simklOn) || !wasCurrent) return
+        scope.launch {
+            order.withLock {
+                if (enabled) trakt.scrobble(TraktService.ScrobbleAction.Stop, item, 100f)
+                mirrorSimkl("stop", item, 100f)
+            }
+        }
+    }
+
+    private suspend fun mirrorSimkl(action: String, item: TraktItem, progress: Float) {
+        if (!store.preferences.value.simklScrobble) return
+        simkl.scrobble(action, item, progress)
     }
 }

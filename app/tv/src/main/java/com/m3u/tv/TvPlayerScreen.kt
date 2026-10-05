@@ -688,6 +688,7 @@ fun TvPlayerScreen(
     val streamTitle = if (radioStation) rememberStreamTitle(player, channel?.title) else null
     var lyrics by remember(streamTitle) { mutableStateOf<String?>(null) }
     var lyricsLoading by remember(streamTitle) { mutableStateOf(false) }
+    var radioCredit by remember(streamTitle) { mutableStateOf<RadioArt.RadioCredit?>(null) }
     LaunchedEffect(streamTitle, preferences.radioLyrics) {
         val song = streamTitle ?: return@LaunchedEffect
         if (!preferences.radioLyrics) return@LaunchedEffect
@@ -695,6 +696,7 @@ fun TvPlayerScreen(
         try {
             delay(LYRICS_SETTLE_MS)
             lyrics = LrcLib.lyrics(song)
+            radioCredit = RadioArt.lookup(song)
         } finally {
             lyricsLoading = false
         }
@@ -864,9 +866,9 @@ fun TvPlayerScreen(
         // now (while the controls are away) and its words beside it.
         val showLyrics = radioStation && preferences.radioLyrics && streamTitle != null
         val shift = if (showLyrics) (-220).dp else 0.dp
-        if (artwork != null) {
+        if (artwork != null || radioCredit?.artUrl != null) {
             AudioArtwork(
-                artwork = artwork,
+                artwork = radioCredit?.artUrl ?: artwork.orEmpty(),
                 modifier = Modifier
                     .align(Alignment.Center)
                     .offset(x = shift, y = (-72).dp),
@@ -891,6 +893,17 @@ fun TvPlayerScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.widthIn(max = 420.dp),
                 )
+                radioCredit?.line?.let { line ->
+                    Text(
+                        text = line,
+                        color = TvColors.TextSecondary,
+                        fontFamily = TvFonts.Body,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 420.dp).padding(top = 4.dp),
+                    )
+                }
             }
             if (showLyrics) {
                 LyricsPanel(

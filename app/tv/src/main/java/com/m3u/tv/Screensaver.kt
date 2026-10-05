@@ -41,6 +41,7 @@ data class AmbientSlide(val image: String, val title: String, val line: String?)
 fun AmbientScreensaver(slides: List<AmbientSlide>, modifier: Modifier = Modifier) {
     var index by remember { mutableIntStateOf(0) }
     var clock by remember { mutableStateOf(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())) }
+    var holiday by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(slides.size) {
         while (true) {
             delay(SLIDE_MS)
@@ -50,6 +51,7 @@ fun AmbientScreensaver(slides: List<AmbientSlide>, modifier: Modifier = Modifier
     LaunchedEffect(Unit) {
         while (true) {
             clock = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
+            holiday = runCatching { PublicHolidays.today() }.getOrNull()
             delay(15_000L)
         }
     }
@@ -86,6 +88,14 @@ fun AmbientScreensaver(slides: List<AmbientSlide>, modifier: Modifier = Modifier
                 fontWeight = FontWeight.Bold,
                 fontSize = 64.sp,
             )
+            holiday?.let { name ->
+                Text(
+                    text = name,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontFamily = TvFonts.Body,
+                    fontSize = 18.sp,
+                )
+            }
             slide?.let {
                 Text(
                     text = it.title,

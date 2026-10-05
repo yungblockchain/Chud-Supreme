@@ -167,14 +167,14 @@ object AniList {
 }
 
 /** One GET that answers JSON, or null. */
-internal fun getJson(json: Json, url: String): JsonElement? {
+internal fun getJson(json: Json, url: String, userAgent: String = "ChudSupreme/1.0 (Android TV)"): JsonElement? {
     var connection: HttpURLConnection? = null
     return try {
         connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 8_000
             readTimeout = 12_000
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "ChudSupreme/1.0 (Android TV)")
+            setRequestProperty("User-Agent", userAgent)
         }
         if (connection.responseCode != 200) null
         else json.parseToJsonElement(connection.inputStream.bufferedReader().use { it.readText() })
