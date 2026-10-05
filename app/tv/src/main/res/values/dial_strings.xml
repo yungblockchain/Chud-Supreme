@@ -1050,7 +1050,6 @@
     <string name="dial_settings_section_home">Home screen</string>
     <string name="dial_setting_home_rows_hint">OK shows or hides a row; Left and Right move it up and down.</string>
     <string name="dial_value_shown">Shown</string>
-    <string name="dial_value_hidden">Hidden</string>
     <string name="dial_home_row_last_watched">Last watched</string>
     <string name="dial_home_row_trending">Trending this week</string>
     <string name="dial_home_row_trakt">Trakt rows</string>
