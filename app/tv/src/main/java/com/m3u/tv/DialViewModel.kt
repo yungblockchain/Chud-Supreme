@@ -652,7 +652,7 @@ class DialViewModel @Inject constructor(
             val window = tonightWindow(now)
             val found = mutableListOf<MissedProgramme>()
             val evening = mutableListOf<TonightProgramme>()
-            for (channel in favourites.take(MISSED_CHANNELS)) {
+            for ((position, channel) in favourites.take(TONIGHT_CHANNELS).withIndex()) {
                 val credentials = credentialsFor(channel.playlistUrl)
                 val programmes = if (credentials != null) {
                     val streamId = XtreamCatalog.idFromUrl(channel.url) ?: continue
@@ -662,7 +662,7 @@ class DialViewModel @Inject constructor(
                 } else {
                     xmltvProgrammes(channel, now - MISSED_WINDOW_MS, window.last) ?: continue
                 }
-                programmes
+                if (position < MISSED_CHANNELS) programmes
                     .filter { it.hasArchive && it.hasEndedBy(now) && it.endMillis > now - MISSED_WINDOW_MS }
                     .sortedByDescending { it.endMillis }
                     .take(MISSED_PER_CHANNEL)
@@ -762,6 +762,7 @@ class DialViewModel @Inject constructor(
         const val MISSED_PER_CHANNEL = 2
         const val MISSED_MAX = 20
         const val TONIGHT_PER_CHANNEL = 3
+        const val TONIGHT_CHANNELS = 20
         const val TONIGHT_MAX = 24
         const val FUTURE_WINDOW_MS = 24 * 60 * 60_000L
         const val LISTING_TTL_MS = 30 * 60_000L

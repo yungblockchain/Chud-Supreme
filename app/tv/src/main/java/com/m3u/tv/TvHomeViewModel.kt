@@ -63,6 +63,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -274,17 +275,16 @@ class TvHomeViewModel @Inject constructor(
                 _state.value.searchQuery.takeIf { it.isNotBlank() }?.let(::search)
             }
         }
-        // A channel renamed or moved in the editor: every list shows it that way.
+        // A channel renamed or moved in the editor: every list is read again, so a name put
+        // back to the provider's shows that way too.
         viewModelScope.launch {
             edits.version.drop(1).collect {
                 _state.value.selectedPlaylist?.url?.let { url -> loadChannels(url) }
-                _state.update { state ->
-                    state.copy(
-                        favorites = edits.applyNames(state.favorites),
-                        recentlyPlayed = edits.applyNames(state.recentlyPlayed),
-                        searchResults = edits.applyNames(state.searchResults),
-                    )
-                }
+                refreshRecentlyPlayed()
+                _state.value.searchQuery.takeIf { it.isNotBlank() }?.let(::search)
+                val favorites = runCatching { channelRepository.observeAllFavorite().first() }.getOrNull() ?: return@collect
+                val shown = edits.applyNames(if (profiles.kidsActive) favorites.filterNot { isAdultCategory(it.category) } else favorites)
+                _state.update { it.copy(favorites = shown) }
             }
         }
     }
@@ -960,8 +960,7 @@ class TvHomeViewModel @Inject constructor(
                     val state = _state.value
                     val playlists = counts.keys
                         .filterNot { it.source == DataSource.EPG }
-                        .filterNot { it.url == StremioIds.PLAYLIST_URL }
-            .filterNot { it.url == MediaServerViewModel.PLAYLIST_URL }
+                        .filterNot { it.url in STAND_IN_PLAYLISTS }
                         .sortedWith(
                             localeAwareComparator(
                                 primarySelector = Playlist::title,
@@ -1096,7 +1095,8 @@ class TvHomeViewModel @Inject constructor(
             val byTitle = playlist != null && (playlist.isVod || playlist.isSeries)
             val channels = channelRepository.getUnhidden(url, category, byTitle)
                 .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.category) } else all }
-                .let { all -> if (byTitle) edits.applyNames(all) else edits.arrange(url, all) }
+                // Custom orders apply within a category; the "All" list keeps the provider's order.
+                .let { all -> if (byTitle || category == null) edits.applyNames(all) else edits.arrange(url, all) }
             _state.update { state ->
                 if (state.selectedPlaylist?.url == url) {
                     state.copy(
@@ -1116,8 +1116,13 @@ class TvHomeViewModel @Inject constructor(
     private fun Map<Playlist, Int>.countFor(url: String): Int? =
         entries.firstOrNull { it.key.url == url }?.value
 
-    private companion object {
-        const val TV_SETTINGS_SURFACE = "tv"
+    companion object {
+        /** Playlists that stand in for other sources; never shown as sources themselves. */
+        val STAND_IN_PLAYLISTS: Set<String> = setOf(
+            StremioIds.PLAYLIST_URL, MediaServerViewModel.PLAYLIST_URL,
+            YouTubeViewModel.PLAYLIST_URL, RadioViewModel.STATIONS_URL, RadioViewModel.PODCASTS_URL,
+        )
+        private const val TV_SETTINGS_SURFACE = "tv"
         const val SEARCH_MIN_LENGTH = 2
         const val SEARCH_DEBOUNCE_MS = 350L
         const val SEARCH_LIMIT = 300

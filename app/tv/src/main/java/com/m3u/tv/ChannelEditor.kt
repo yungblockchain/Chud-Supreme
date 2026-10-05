@@ -242,7 +242,7 @@ class ChannelEditorViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             playlistRepository.observeAll().collect { all ->
-                val live = all.filter { !it.isVod && !it.isSeries && it.url !in STAND_INS }
+                val live = all.filter { !it.isVod && !it.isSeries && it.url !in TvHomeViewModel.STAND_IN_PLAYLISTS }
                 _state.update { it.copy(playlists = live) }
                 if (_state.value.playlist == null) live.firstOrNull()?.let(::selectPlaylist)
             }
@@ -337,10 +337,6 @@ class ChannelEditorViewModel @Inject constructor(
     fun resetEverything() {
         store.resetAll()
         _state.value.category?.let(::selectCategory)
-    }
-
-    private companion object {
-        val STAND_INS = setOf(MediaServerViewModel.PLAYLIST_URL, YouTubeViewModel.PLAYLIST_URL, RadioViewModel.STATIONS_URL, RadioViewModel.PODCASTS_URL)
     }
 }
 

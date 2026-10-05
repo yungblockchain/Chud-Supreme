@@ -291,3 +291,7 @@
 -dontwarn org.mozilla.javascript.tools.**
 -dontwarn javax.annotation.**
 -keep class org.schabi.newpipe.extractor.** { *; }
+# Rhino's optional JSON/script-engine bridges reference desktop-Java classes Android lacks.
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn org.mozilla.javascript.engine.**

@@ -296,14 +296,14 @@ object YouTubeClient {
         cached("kiosk-$id", maxAgeMs) {
             val extractor = service.kioskList.getExtractorById(id, null)
             extractor.fetchPage()
-            extractor.initialPage.items.mapNotNull { it.toVideo() }
+            extractor.initialPage.items.mapNotNull { it.toVideo() }.distinctBy { it.id }
         }
     }
 
     suspend fun search(query: String): List<YouTubeVideo> = withContext(Dispatchers.IO) {
         val extractor = service.getSearchExtractor(query, listOf(YoutubeSearchQueryHandlerFactory.VIDEOS), "")
         extractor.fetchPage()
-        extractor.initialPage.items.mapNotNull { it.toVideo() }
+        extractor.initialPage.items.mapNotNull { it.toVideo() }.distinctBy { it.id }
     }
 
     suspend fun searchChannels(query: String): List<YouTubeChannel> = withContext(Dispatchers.IO) {
@@ -313,15 +313,15 @@ object YouTubeClient {
             val channel = item as? ChannelInfoItem ?: return@mapNotNull null
             val id = runCatching { service.channelLHFactory.fromUrl(channel.url).id }.getOrNull() ?: return@mapNotNull null
             YouTubeChannel(id = id, name = channel.name, avatar = channel.thumbnails.bestUrl())
-        }
+        }.distinctBy { it.id }
     }
 
     /** A channel's newest videos (cached for a while: the person opens the same channels often). */
-    suspend fun channelVideos(channel: YouTubeChannel): List<YouTubeVideo> = withContext(Dispatchers.IO) {
-        cached("channel-${channel.id}", CHANNEL_TTL_MS) {
+    suspend fun channelVideos(channel: YouTubeChannel, maxAgeMs: Long = CHANNEL_TTL_MS): List<YouTubeVideo> = withContext(Dispatchers.IO) {
+        cached("channel-${channel.id}", maxAgeMs) {
             val extractor = service.getChannelTabExtractorFromId(channel.id, ChannelTabs.VIDEOS)
             extractor.fetchPage()
-            extractor.initialPage.items.mapNotNull { it.toVideo() }
+            extractor.initialPage.items.mapNotNull { it.toVideo() }.distinctBy { it.id }
         }
     }
 
@@ -366,7 +366,7 @@ object YouTubeClient {
     }
 
     private suspend fun cached(name: String, maxAgeMs: Long, fetch: suspend () -> List<YouTubeVideo>): List<YouTubeVideo> {
-        val file = cacheDir?.let { File(it, "$name.json") }
+        val file = cacheDir?.let { File(it, name.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json") }
         if (file != null && file.isFile && System.currentTimeMillis() - file.lastModified() < maxAgeMs) {
             runCatching {
                 Json.parseToJsonElement(file.readText()).jsonArray.mapNotNull { it.jsonObject.toVideo() }
@@ -401,8 +401,8 @@ object YouTubeClient {
     private fun List<Image>.bestUrl(): String? =
         sortedByDescending { it.width }.firstOrNull { it.width in 240..1300 }?.url ?: firstOrNull()?.url
 
-    private const val KIOSK_TTL_MS = 3 * 60 * 60_000L
-    private const val CHANNEL_TTL_MS = 60 * 60_000L
+    const val KIOSK_TTL_MS = 3 * 60 * 60_000L
+    const val CHANNEL_TTL_MS = 60 * 60_000L
     const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
 }
 
@@ -461,7 +461,7 @@ object DashManifests {
 
     fun plan(info: StreamInfo, maxHeight: Int): Plan? {
         val video = pickVideo(info.videoOnlyStreams, maxHeight) ?: return null
-        val audio = pickAudio(info.audioStreams) ?: return null
+        val audio = pickAudio(info.audioStreams, clientOf(video.content)) ?: return null
         val durationSec = info.duration.coerceAtLeast(1L)
         val manifest = buildString {
             append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
@@ -486,26 +486,31 @@ object DashManifests {
         return Plan(manifest, video.content)
     }
 
-    /** H.264 first (every Fire TV decodes it in hardware), the tallest picture under the cap. */
+    /**
+     * H.264 first (every Fire TV decodes it in hardware), the tallest picture under the cap, and
+     * audio from the same YouTube client as the picture: each client's files want their own
+     * headers, so a pair from one client is the pair that plays.
+     */
     private fun pickVideo(streams: List<VideoStream>, maxHeight: Int): VideoStream? {
-        val usable = streams.filter { it.isUrl && it.hasRanges() && it.height in 1..maxHeight && it.isAndroidClient() }
-            .ifEmpty { streams.filter { it.isUrl && it.hasRanges() && it.height in 1..maxHeight } }
-        return usable.filter { it.codec?.startsWith("avc1") == true }.maxByOrNull { it.height * 1000 + it.fps }
-            ?: usable.maxByOrNull { it.height * 1000 + it.fps }
+        val usable = streams.filter { it.isUrl && it.hasRanges() && it.height in 1..maxHeight }
+        val preferred = usable.filter { it.isAndroidClient() }.ifEmpty { usable }
+        return preferred.filter { it.codec?.startsWith("avc1") == true }.maxByOrNull { it.height * 1000 + it.fps }
+            ?: preferred.maxByOrNull { it.height * 1000 + it.fps }
     }
 
     /** AAC first, the best bitrate; Opus (WebM) if that's all there is. */
-    private fun pickAudio(streams: List<AudioStream>): AudioStream? {
-        val usable = streams.filter { it.isUrl && it.hasRanges() && it.isAndroidClient() }
-            .ifEmpty { streams.filter { it.isUrl && it.hasRanges() } }
+    private fun pickAudio(streams: List<AudioStream>, client: String?): AudioStream? {
+        val usable = streams.filter { it.isUrl && it.hasRanges() && clientOf(it.content) == client }
         return usable.filter { it.codec?.startsWith("mp4a") == true }.maxByOrNull { it.averageBitrate }
             ?: usable.maxByOrNull { it.averageBitrate }
     }
 
+    /** The "c=" parameter of a stream address: which YouTube client it was given to. */
+    fun clientOf(url: String): String? = Regex("[?&]c=([A-Za-z0-9_]+)").find(url)?.groupValues?.get(1)?.uppercase()
+
     private fun VideoStream.hasRanges() = initEnd > 0 && indexEnd > 0 && indexEnd >= indexStart
     private fun AudioStream.hasRanges() = initEnd > 0 && indexEnd > 0 && indexEnd >= indexStart
-    private fun VideoStream.isAndroidClient() = content.contains("c=ANDROID", ignoreCase = true)
-    private fun AudioStream.isAndroidClient() = content.contains("c=ANDROID", ignoreCase = true)
+    private fun VideoStream.isAndroidClient() = clientOf(content) == "ANDROID"
 
     private fun escape(text: String): String = text
         .replace("&", "&amp;")
@@ -692,10 +697,11 @@ class YouTubeViewModel @Inject constructor(
         }
     }
 
-    fun open(section: YtSection) {
-        if (_state.value.section == section && (_state.value.items.isNotEmpty() || _state.value.loading)) return
-        _state.update { it.copy(section = section, items = emptyList(), failed = false, loading = section !in STATIC_SECTIONS, channelResults = emptyList()) }
+    fun open(section: YtSection, force: Boolean = false) {
+        if (!force && _state.value.section == section && (_state.value.items.isNotEmpty() || _state.value.loading)) return
+        searchJob?.cancel()
         loadJob?.cancel()
+        _state.update { it.copy(section = section, items = emptyList(), failed = false, loading = section !in STATIC_SECTIONS, channelResults = emptyList()) }
         when (section) {
             YtSection.History -> _state.update { it.copy(items = store.history.value) }
             YtSection.Search -> _state.update { it.copy(items = emptyList()) }
@@ -704,13 +710,13 @@ class YouTubeViewModel @Inject constructor(
                 waitUntilReady()
                 val items = runCatching {
                     when (section) {
-                        YtSection.Live -> YouTubeClient.kiosk("live", LIVE_TTL_MS)
-                        YtSection.Trending -> YouTubeClient.kiosk("Trending")
-                        YtSection.Music -> YouTubeClient.kiosk("trending_music")
-                        YtSection.Gaming -> YouTubeClient.kiosk("trending_gaming")
-                        YtSection.Trailers -> YouTubeClient.kiosk("trending_movies_and_shows")
-                        YtSection.Podcasts -> YouTubeClient.kiosk("trending_podcasts_episodes")
-                        is YtSection.Followed -> YouTubeClient.channelVideos(section.channel)
+                        YtSection.Live -> YouTubeClient.kiosk("live", if (force) 0L else LIVE_TTL_MS)
+                        YtSection.Trending -> YouTubeClient.kiosk("Trending", if (force) 0L else KIOSK_TTL_MS)
+                        YtSection.Music -> YouTubeClient.kiosk("trending_music", if (force) 0L else KIOSK_TTL_MS)
+                        YtSection.Gaming -> YouTubeClient.kiosk("trending_gaming", if (force) 0L else KIOSK_TTL_MS)
+                        YtSection.Trailers -> YouTubeClient.kiosk("trending_movies_and_shows", if (force) 0L else KIOSK_TTL_MS)
+                        YtSection.Podcasts -> YouTubeClient.kiosk("trending_podcasts_episodes", if (force) 0L else KIOSK_TTL_MS)
+                        is YtSection.Followed -> YouTubeClient.channelVideos(section.channel, if (force) 0L else CHANNEL_TTL_MS)
                         else -> emptyList()
                     }
                 }.onFailure { if (it is CancellationException) throw it }
@@ -728,8 +734,7 @@ class YouTubeViewModel @Inject constructor(
             _state.update { it.copy(items = store.history.value) }
             return
         }
-        _state.update { it.copy(items = emptyList()) }
-        open(section)
+        open(section, force = true)
     }
 
     fun setQuery(query: String) {
@@ -742,12 +747,12 @@ class YouTubeViewModel @Inject constructor(
         }
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             delay(SEARCH_DEBOUNCE_MS)
-            _state.update { it.copy(loading = true, failed = false) }
+            _state.update { if (it.section == YtSection.Search) it.copy(loading = true, failed = false) else it }
             waitUntilReady()
             val videos = runCatching { YouTubeClient.search(trimmed) }.onFailure { if (it is CancellationException) throw it }
             val channels = runCatching { YouTubeClient.searchChannels(trimmed) }.getOrDefault(emptyList())
             _state.update {
-                if (it.query.trim() == trimmed) it.copy(
+                if (it.section == YtSection.Search && it.query.trim() == trimmed) it.copy(
                     items = videos.getOrDefault(emptyList()),
                     channelResults = channels.take(MAX_CHANNEL_RESULTS),
                     loading = false,
@@ -802,7 +807,7 @@ class YouTubeViewModel @Inject constructor(
                     .onFailure { if (it is CancellationException) throw it }
                     .getOrNull()
                 val url = resolved?.let { r ->
-                    r.manifest?.let { local.publish(it, "application/dash+xml", "mpd") } ?: r.hlsUrl ?: r.muxedUrl
+                    r.manifest?.let { withContext(Dispatchers.IO) { local.publish(it, "application/dash+xml", "mpd") } } ?: r.hlsUrl ?: r.muxedUrl
                 }
                 if (resolved == null || url == null) {
                     store.addToHistory(video)
@@ -827,13 +832,28 @@ class YouTubeViewModel @Inject constructor(
         }
     }
 
-    /** Called when the player shows another channel, so stale segments never apply to it. */
+    /**
+     * Called as the player's channel changes, so stale segments never apply to another stream.
+     * A null (the player clearing between two streams) is left alone: the next id decides.
+     */
     fun onPlayingChannel(channelId: Int?) {
-        if (channelId != playingChannelId) {
-            playing = null
-            playingChannelId = null
-            _segments.value = emptyList()
-        }
+        if (channelId != null && channelId != playingChannelId) stopped()
+    }
+
+    /** The player closed. */
+    fun stopped() {
+        playing = null
+        playingChannelId = null
+        _segments.value = emptyList()
+    }
+
+    /**
+     * A YouTube row from a list (favourites, recently played): the saved address was a one-off
+     * manifest, so the video is looked up afresh and played by its id.
+     */
+    fun playSaved(channel: Channel, onPlaying: () -> Unit) {
+        val id = channel.relationId?.removePrefix("yt:")?.takeIf { it.isNotBlank() } ?: return
+        play(YouTubeVideo(id = id, title = channel.title, channel = channel.category, thumbnail = channel.cover), onPlaying)
     }
 
     /** The playlist stand-in and a channel row per video (the row keeps its id across plays). */

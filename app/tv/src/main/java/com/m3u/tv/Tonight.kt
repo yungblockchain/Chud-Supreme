@@ -182,8 +182,9 @@ fun TonightRow(
     reminderKeys: Set<String>,
     onOpen: (TonightProgramme) -> Unit,
 ) {
-    if (items.isEmpty()) return
     val now = System.currentTimeMillis()
+    val shown = items.filter { !it.programme.hasEndedBy(now) }
+    if (shown.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle(
             title = stringResource(R.string.dial_tonight_title),
@@ -195,7 +196,7 @@ fun TonightRow(
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             modifier = Modifier.focusGroup(),
         ) {
-            items(items, key = { "${it.channel.id}-${it.programme.startMillis}" }) { item ->
+            items(shown, key = { "${it.channel.id}-${it.programme.startMillis}" }) { item ->
                 val onNow = item.programme.isOnAt(now)
                 val reminded = reminderKey(item.channel.id, item.programme.startMillis) in reminderKeys
                 val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(item.programme.startMillis))

@@ -200,6 +200,8 @@ fun App(
     var surface by remember { mutableStateOf(TvSurface.Browse) }
     val closePlayer = {
         viewModel.releasePlayer()
+        youtube.stopped()
+        radio.stopped()
         surface = TvSurface.Browse
     }
     val minimizePlayer = {
@@ -254,7 +256,10 @@ fun App(
     // built-in player or in VLC / another app if that's the choice in Settings.
     val openOrPlay: (Channel) -> Unit = { channel ->
         val playlist = state.playlists.firstOrNull { it.url == channel.playlistUrl }
-        if (playlist != null && (playlist.isVod || playlist.isSeries)) {
+        if (channel.playlistUrl == YouTubeViewModel.PLAYLIST_URL) {
+            // A saved YouTube row: its streams are looked up again (the old address was a one-off).
+            youtube.playSaved(channel) { surface = TvSurface.Player }
+        } else if (playlist != null && (playlist.isVod || playlist.isSeries)) {
             dial.openDetails(channel, playlist)
         } else if (dial.playsExternally(channel)) {
             dial.playLiveExternally(channel)
@@ -480,6 +485,7 @@ fun App(
     }
     var youTubeFallbackFor by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(playbackFailed, playingId) {
+        if (playingId != null && playingId != youTubeFallbackFor) youTubeFallbackFor = null
         if (!playbackFailed || playingId == null || youTubeFallbackFor == playingId) return@LaunchedEffect
         val video = youtube.playing?.takeIf { currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL } ?: return@LaunchedEffect
         youTubeFallbackFor = playingId
@@ -535,7 +541,7 @@ fun App(
     val reminderCleared = stringResource(R.string.dial_reminder_cleared)
     val reminderGone = stringResource(R.string.dial_reminder_gone)
     val onOpenTonight: (TonightProgramme) -> Unit = { item ->
-        if (item.programme.isOnAt(System.currentTimeMillis())) {
+        if (item.programme.startMillis <= System.currentTimeMillis()) {
             openOrPlay(item.channel)
         } else {
             val set = dial.toggleReminder(item.channel, item.programme)

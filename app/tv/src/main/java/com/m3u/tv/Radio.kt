@@ -209,7 +209,7 @@ object RadioBrowser {
         stations("/json/stations/bycountrycodeexact/${countryCode.uppercase(Locale.US)}?order=clickcount&reverse=true&hidebroken=true&limit=$limit")
 
     suspend fun byTag(tag: String, limit: Int = 80): List<RadioStation> =
-        stations("/json/stations/bytagexact/${URLEncoder.encode(tag, "UTF-8")}?order=clickcount&reverse=true&hidebroken=true&limit=$limit")
+        stations("/json/stations/bytagexact/${URLEncoder.encode(tag, "UTF-8").replace("+", "%20")}?order=clickcount&reverse=true&hidebroken=true&limit=$limit")
 
     suspend fun search(query: String, limit: Int = 60): List<RadioStation> =
         stations("/json/stations/search?name=${URLEncoder.encode(query, "UTF-8")}&order=clickcount&reverse=true&hidebroken=true&limit=$limit")
@@ -217,7 +217,7 @@ object RadioBrowser {
     /** The most-used tags (genres and languages), most stations first. */
     suspend fun tags(limit: Int = 40): List<String> = withContext(Dispatchers.IO) {
         val root = get("/json/tags?order=stationcount&reverse=true&hidebroken=true&limit=$limit") as? JsonArray ?: return@withContext emptyList()
-        root.mapNotNull { (it as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { tag -> tag.isNotEmpty() } }
+        root.mapNotNull { (it as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { tag -> tag.isNotEmpty() } }.distinct()
     }
 
     /** Tells the directory the station was played (it ranks stations by this). */
@@ -394,6 +394,7 @@ class RadioViewModel @Inject constructor(
     fun open(section: RadioSection) {
         if (_state.value.section == section && (_state.value.stations.isNotEmpty() || _state.value.podcasts.isNotEmpty() || _state.value.loading)) return
         loadJob?.cancel()
+        searchJob?.cancel()
         _state.update {
             it.copy(section = section, stations = emptyList(), podcasts = emptyList(), failed = false, loading = false, openPodcast = null, episodes = emptyList())
         }
@@ -458,13 +459,13 @@ class RadioViewModel @Inject constructor(
         }
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             delay(SEARCH_DEBOUNCE_MS)
-            _state.update { it.copy(loading = true, failed = false) }
+            _state.update { if (it.section == section) it.copy(loading = true, failed = false) else it }
             if (section == RadioSection.SearchPodcasts) {
                 val podcasts = runCatching { PodcastDirectory.search(trimmed, country) }.getOrDefault(emptyList())
-                _state.update { if (it.query.trim() == trimmed) it.copy(podcasts = podcasts, loading = false) else it }
+                _state.update { if (it.section == section && it.query.trim() == trimmed) it.copy(podcasts = podcasts, loading = false) else it }
             } else {
                 val stations = runCatching { RadioBrowser.search(trimmed) }.getOrDefault(emptyList())
-                _state.update { if (it.query.trim() == trimmed) it.copy(stations = stations, loading = false) else it }
+                _state.update { if (it.section == section && it.query.trim() == trimmed) it.copy(stations = stations, loading = false) else it }
             }
         }
     }
@@ -526,12 +527,14 @@ class RadioViewModel @Inject constructor(
         }
     }
 
-    /** Called when the player shows another channel, so the artwork never outlives its stream. */
+    /** Called as the player's channel changes, so the artwork never outlives its stream. */
     fun onPlayingChannel(channelId: Int?) {
-        if (channelId != playingChannelId) {
-            playingArtwork = null
-            playingChannelId = null
-        }
+        if (channelId != null && channelId != playingChannelId) stopped()
+    }
+
+    fun stopped() {
+        playingArtwork = null
+        playingChannelId = null
     }
 
     private suspend fun rememberChannel(
