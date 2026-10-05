@@ -196,19 +196,6 @@ fun XtreamSignInScreen(
                     imeAction = ImeAction.Next,
                     readOnly = form.busy,
                 )
-                // Free-to-air channels from iptv-org's public list, for the country the TV is set to.
-                TvActionButton(
-                    text = stringResource(R.string.dial_signin_free_channels),
-                    icon = Icons.Rounded.Link,
-                    supportingText = stringResource(R.string.dial_signin_free_channels_hint),
-                    onClick = {
-                        // iptv-org names the United Kingdom "uk", not its ISO code.
-                        val country = Locale.getDefault().country.ifBlank { "GB" }.lowercase(Locale.ROOT)
-                            .let { if (it == "gb") "uk" else it }
-                        viewModel.updatePlaylistUrl("https://iptv-org.github.io/iptv/countries/$country.m3u")
-                        viewModel.updateEpgUrl("")
-                    },
-                )
             } else {
             DialTextField(
                 label = stringResource(R.string.dial_field_server),
@@ -281,6 +268,22 @@ fun XtreamSignInScreen(
                         onClick = onCancel,
                     )
                 }
+            }
+            if (m3u) {
+                // Free-to-air channels from iptv-org's public list, for the country the TV is set
+                // to (below the form, so Down from the fields still goes straight to Add playlist).
+                TvActionButton(
+                    text = stringResource(R.string.dial_signin_free_channels),
+                    icon = Icons.Rounded.Link,
+                    supportingText = stringResource(R.string.dial_signin_free_channels_hint),
+                    onClick = {
+                        // iptv-org names the United Kingdom "uk", not its ISO code.
+                        val country = Locale.getDefault().country.ifBlank { "GB" }.lowercase(Locale.ROOT)
+                            .let { if (it == "gb") "uk" else it }
+                        viewModel.updatePlaylistUrl("https://iptv-org.github.io/iptv/countries/$country.m3u")
+                        viewModel.updateEpgUrl("")
+                    },
+                )
             }
             phonePage?.let { PhonePageCard(it) }
             SignInMessage(form.phase, m3u)
