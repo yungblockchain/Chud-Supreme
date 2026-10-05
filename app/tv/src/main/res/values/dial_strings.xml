@@ -299,6 +299,8 @@
     <!-- Settings > Playback -->
     <string name="dial_playback_section_picture">Picture</string>
     <string name="dial_playback_tunneling">Tunneled playback</string>
+    <string name="dial_playback_anime4k">Anime4K</string>
+    <string name="dial_playback_anime4k_hint">Sharpens drawn lines. Leave it off for the direct picture, including HDR. On uses the GPU and starts with the next video. Turn it off if the picture stutters.</string>
     <string name="dial_playback_dolby_vision">Dolby Vision</string>
     <string name="dial_value_dv_native">Dolby Vision</string>
     <string name="dial_value_dv_as_hdr10">Play as HDR10</string>

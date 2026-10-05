@@ -66,6 +66,7 @@ data class PlaybackSettingsState(
     val bufferProfile: Int = BufferProfile.BALANCED,
     val subtitleMode: Int = SubtitleMode.FORCED_ONLY,
     val styledSubtitles: Boolean = true,
+    val anime4k: Boolean = false,
     val audioDelayMs: Int = 0,
     val subtitleDelayMs: Int = 0,
 )
@@ -121,6 +122,7 @@ private fun Preferences.toPlaybackSettings(): PlaybackSettingsState {
         bufferProfile = this[PreferencesKeys.BUFFER_PROFILE] ?: defaults.bufferProfile,
         subtitleMode = this[PreferencesKeys.SUBTITLE_MODE] ?: defaults.subtitleMode,
         styledSubtitles = this[PreferencesKeys.STYLED_SUBTITLES] ?: defaults.styledSubtitles,
+        anime4k = this[PreferencesKeys.ANIME4K] ?: defaults.anime4k,
         audioDelayMs = this[PreferencesKeys.AUDIO_DELAY_MS] ?: defaults.audioDelayMs,
         subtitleDelayMs = this[PreferencesKeys.SUBTITLE_DELAY_MS] ?: defaults.subtitleDelayMs,
     )
@@ -173,6 +175,22 @@ fun PlaybackSettingsScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         item { SettingsSection(stringResource(R.string.dial_playback_section_picture)) }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_playback_anime4k),
+                value = onOff(state.anime4k),
+                onClick = { viewModel.set(PreferencesKeys.ANIME4K, !state.anime4k) },
+            )
+        }
+        item {
+            Text(
+                text = stringResource(R.string.dial_playback_anime4k_hint),
+                color = TvColors.TextSecondary,
+                fontFamily = TvFonts.Body,
+                fontSize = 14.sp,
+                modifier = Modifier.widthIn(max = 820.dp),
+            )
+        }
         item {
             SettingRow(
                 label = stringResource(R.string.dial_playback_tunneling),

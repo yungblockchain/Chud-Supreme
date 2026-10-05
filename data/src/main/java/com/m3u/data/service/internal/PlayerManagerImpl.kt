@@ -216,6 +216,7 @@ class PlayerManagerImpl @Inject constructor(
     // Audio/subtitle sync, changed from the player while something plays.
     private val playbackSync = PlaybackSync()
     private var activeAssHandler: AssHandler? = null
+    private var activeAnime4k = false
     private var activeMediaItem: MediaItem? = null
     private var activeSourceBuilder: ((MediaItem) -> MediaSource)? = null
 
@@ -397,6 +398,19 @@ class PlayerManagerImpl @Inject constructor(
         if (!providerSessionState.isCurrent(generation)) return
         val rtmp: Boolean = Url(url).protocol.name == "rtmp"
         val options = readPlaybackOptions()
+        if (player.value != null && activeAnime4k != options.anime4k) {
+            // The shader is part of the player. A change means the next video gets a new one.
+            synchronized(playerLifecycleLock) {
+                player.value?.let { existing ->
+                    activePlayerListener?.let(existing::removeListener)
+                    existing.stop()
+                    existing.release()
+                }
+                player.value = null
+                activeAssHandler = null
+                activePlayerListener = null
+            }
+        }
         if (!providerSessionState.isCurrent(generation)) return
 
         val mimeType = when (val chain = chain) {
@@ -781,6 +795,7 @@ class PlayerManagerImpl @Inject constructor(
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                 .build()
             setAudioAttributes(attributes, true)
+            if (options.anime4k) setVideoEffects(listOf(Anime4KEffect()))
             playWhenReady = true
             addListener(listener)
         }
@@ -806,6 +821,7 @@ class PlayerManagerImpl @Inject constructor(
                     ).also { createdPlayer ->
                         timber.d("player instance updated")
                         activeAssHandler = assHandler
+                        activeAnime4k = options.anime4k
                         activePlayerListener = listener
                         activePlayerGeneration = generation
                         player.value = createdPlayer
@@ -850,7 +866,7 @@ class PlayerManagerImpl @Inject constructor(
             setParameters(
                 buildUponParameters()
                     .setForceHighestSupportedBitrate(true)
-                    .setTunnelingEnabled(options.tunneling)
+                    .setTunnelingEnabled(options.tunneling && !options.anime4k)
                     .applySubtitleMode(options.subtitleMode)
                     .build()
             )
@@ -865,6 +881,7 @@ class PlayerManagerImpl @Inject constructor(
         bufferProfile = settings[PreferencesKeys.BUFFER_PROFILE],
         subtitleMode = settings[PreferencesKeys.SUBTITLE_MODE],
         styledSubtitles = settings[PreferencesKeys.STYLED_SUBTITLES],
+        anime4k = settings[PreferencesKeys.ANIME4K],
     )
 
     override fun addSubtitle(uri: Uri, mimeType: String, language: String?, label: String) {

@@ -40,6 +40,8 @@ internal data class PlaybackOptions(
     val bufferProfile: Int = BufferProfile.BALANCED,
     val subtitleMode: Int = SubtitleMode.FORCED_ONLY,
     val styledSubtitles: Boolean = true,
+    /** Anime4K line shader. Off leaves the picture on the direct, HDR-capable path. */
+    val anime4k: Boolean = false,
 )
 
 /** Sync offsets, read by the renderers on the playback thread on every frame. */

@@ -192,6 +192,7 @@ private val PREFERENCES: Map<Preferences.Key<*>, Any> = buildMap {
     put(PreferencesKeys.BUFFER_PROFILE, BufferProfile.BALANCED)
     put(PreferencesKeys.SUBTITLE_MODE, SubtitleMode.FORCED_ONLY)
     put(PreferencesKeys.STYLED_SUBTITLES, true)
+    put(PreferencesKeys.ANIME4K, false)
     put(PreferencesKeys.AUDIO_DELAY_MS, 0)
     put(PreferencesKeys.SUBTITLE_DELAY_MS, 0)
 }
@@ -266,6 +267,8 @@ object PreferencesKeys {
     val SUBTITLE_MODE = intPreferencesKey("subtitle-mode")
     /** Render ASS/SSA subtitles with libass (styles, fonts and positions). */
     val STYLED_SUBTITLES = booleanPreferencesKey("styled-subtitles")
+    /** Anime4K line shader. Off keeps the direct picture, including HDR. */
+    val ANIME4K = booleanPreferencesKey("anime4k")
     /** Positive: sound later than the picture. */
     val AUDIO_DELAY_MS = intPreferencesKey("audio-delay-ms")
     /** Positive: subtitles later than the picture. */
