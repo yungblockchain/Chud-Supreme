@@ -143,11 +143,15 @@ class AudioOutputMonitor @Inject constructor(
     init {
         runCatching { audio?.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper())) }
         scope.launch {
-            // The device in use the first time keeps the delay that was already set.
             val output = _current.value
-            if (output.key !in _profiles.value) {
+            val saved = _profiles.value[output.key]
+            if (saved != null) {
+                // The app may have closed while other headphones were in use: this device's own delay.
+                runCatching { settings[PreferencesKeys.AUDIO_DELAY_MS] = saved.delayMs }
+            } else {
+                // The device in use the first time keeps the delay that was already set.
                 val delay = runCatching { settings[PreferencesKeys.AUDIO_DELAY_MS] }.getOrDefault(0)
-                save(output.key, defaultFor(output).copy(delayMs = delay))
+                if (output.key !in _profiles.value) save(output.key, defaultFor(output).copy(delayMs = delay))
             }
         }
     }
@@ -166,7 +170,10 @@ class AudioOutputMonitor @Inject constructor(
     private fun refresh() {
         val next = detect()
         if (next == _current.value) return
+        val moved = next.key != _current.value.key
         _current.value = next
+        // Same device with a new name (an HDMI receiver renegotiating): nothing else changes.
+        if (!moved) return
         val delay = profileFor(next).delayMs
         scope.launch { runCatching { settings[PreferencesKeys.AUDIO_DELAY_MS] = delay } }
         _changes.tryEmit(next)
@@ -179,6 +186,7 @@ class AudioOutputMonitor @Inject constructor(
         fun AudioDeviceInfo.label(): String = productName?.toString()?.trim().orEmpty()
         val bluetooth = buildSet {
             add(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) add(AudioDeviceInfo.TYPE_HEARING_AID)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 add(AudioDeviceInfo.TYPE_BLE_HEADSET)
                 add(AudioDeviceInfo.TYPE_BLE_SPEAKER)

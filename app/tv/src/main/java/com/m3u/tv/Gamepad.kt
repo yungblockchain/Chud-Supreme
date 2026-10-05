@@ -37,6 +37,10 @@ object Gamepad {
     @Volatile
     var swapAB: Boolean = false
 
+    /** The button tester has focus: controller buttons are shown there, not acted on. */
+    @Volatile
+    var testing: Boolean = false
+
     private val _lastPress = MutableStateFlow<GamepadPress?>(null)
     val lastPress: StateFlow<GamepadPress?> = _lastPress.asStateFlow()
 

@@ -142,10 +142,11 @@ class AudioEnhancer(private val player: ExoPlayer) {
     private fun buildVirtualizer(session: Int): Virtualizer {
         val effect = Virtualizer(0, session)
         try {
-            // Headphone virtualisation, so 5.1 and 7.1 tracks come from around the listener.
-            runCatching { effect.forceVirtualizationMode(Virtualizer.VIRTUALIZATION_MODE_BINAURAL) }
             if (effect.strengthSupported) effect.setStrength(1000)
             effect.enabled = true
+            // Headphone virtualisation, so 5.1 and 7.1 tracks come from around the listener
+            // (the mode only takes once the effect is on).
+            runCatching { effect.forceVirtualizationMode(Virtualizer.VIRTUALIZATION_MODE_BINAURAL) }
             return effect
         } catch (e: RuntimeException) {
             effect.release()

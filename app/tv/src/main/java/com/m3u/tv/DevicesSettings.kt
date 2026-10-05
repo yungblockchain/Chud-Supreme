@@ -5,6 +5,7 @@ import android.hardware.input.InputManager
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
@@ -12,12 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -222,6 +225,7 @@ fun DevicesSettingsScreen(
         }
 
         item { SettingsSection(stringResource(R.string.dial_devices_section_controllers)) }
+        item { Hint(stringResource(R.string.dial_controller_map_hint)) }
         if (controllers.isEmpty()) {
             item { Hint(stringResource(R.string.dial_controllers_none)) }
         }
@@ -232,18 +236,23 @@ fun DevicesSettingsScreen(
                 value = when {
                     rumbleResult?.first == pad.id && rumbleResult?.second == true -> stringResource(R.string.dial_controller_rumbled)
                     rumbleResult?.first == pad.id -> stringResource(R.string.dial_controller_no_rumble)
+                    !pad.canRumble -> stringResource(R.string.dial_controller_value_plain, pad.layout.label(), ids)
                     else -> stringResource(R.string.dial_controller_value, pad.layout.label(), ids)
                 },
-                onClick = { rumbleResult = pad.id to pads.rumble(pad.id) },
+                onClick = { if (pad.canRumble) rumbleResult = pad.id to pads.rumble(pad.id) },
             )
         }
         item {
-            SettingRow(
-                label = stringResource(R.string.dial_controller_last),
-                value = lastPress?.let { press -> "${press.button} → ${remoteKeyName(press.target)}" }
-                    ?: stringResource(R.string.dial_controller_press),
-                onClick = {},
-            )
+            // While this row has focus, controller buttons only show here (Up and Down leave).
+            DisposableEffect(Unit) { onDispose { Gamepad.testing = false } }
+            Box(Modifier.onFocusChanged { Gamepad.testing = it.hasFocus }) {
+                SettingRow(
+                    label = stringResource(R.string.dial_controller_last),
+                    value = lastPress?.let { press -> "${press.button} → ${remoteKeyName(press.target)}" }
+                        ?: stringResource(R.string.dial_controller_press),
+                    onClick = {},
+                )
+            }
         }
         item {
             SettingRow(
@@ -259,7 +268,6 @@ fun DevicesSettingsScreen(
                 onClick = { onUpdate { it.copy(controllerRumble = !it.controllerRumble) } },
             )
         }
-        item { Hint(stringResource(R.string.dial_controller_map_hint)) }
     }
 }
 

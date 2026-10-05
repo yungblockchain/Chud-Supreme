@@ -36,6 +36,8 @@ class MainActivity : ComponentActivity() {
         // A translated button is used up either way, so the system's own fallback for that
         // controller button (some fall back to OK) never fires as well.
         if (translated != null) {
+            // Settings › Devices' button tester only shows what a button does (the D-pad still moves).
+            if (Gamepad.testing) return true
             super.dispatchKeyEvent(translated)
             return true
         }

@@ -1193,10 +1193,11 @@
     <string name="dial_controller_layout_firetv">Fire TV</string>
     <string name="dial_controller_layout_standard">Controller</string>
     <string name="dial_controller_value">%1$s · %2$s · OK to test rumble</string>
+    <string name="dial_controller_value_plain">%1$s · %2$s</string>
     <string name="dial_controller_rumbled">It rumbled</string>
     <string name="dial_controller_no_rumble">This controller can\'t rumble here</string>
-    <string name="dial_controller_last">Last button</string>
-    <string name="dial_controller_press">Press any button on a controller</string>
+    <string name="dial_controller_last">Button tester</string>
+    <string name="dial_controller_press">Press any controller button here</string>
     <string name="dial_controller_swap">Swap A and B</string>
     <string name="dial_controller_rumble_reminders">Rumble for reminders</string>
     <string name="dial_controller_map_hint">A or Cross: OK · B or Circle: Back · X or Square: play or pause · Y, Triangle or Start: menu (hold for quick settings) · L1 and R1: rewind and fast forward · L2 and R2: channel down and up. The sticks and D-pad move around.</string>
