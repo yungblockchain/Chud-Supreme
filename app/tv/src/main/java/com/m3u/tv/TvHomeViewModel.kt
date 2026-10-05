@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -256,6 +257,18 @@ class TvHomeViewModel @Inject constructor(
         observeExternalExtensions()
         observeProviderAccounts()
         refreshSubscriptionProviders()
+        observeProfile()
+    }
+
+    /** A kids profile picked (or left): the lists are read again with the right filter. */
+    private fun observeProfile() {
+        viewModelScope.launch {
+            profiles.active.map { it?.kids == true }.distinctUntilChanged().drop(1).collect {
+                _state.value.selectedPlaylist?.url?.let { url -> loadChannels(url) }
+                _state.update { it.copy(searchResults = emptyList()) }
+                _state.value.searchQuery.takeIf { it.isNotBlank() }?.let(::search)
+            }
+        }
     }
 
     fun selectPlaylist(playlist: Playlist) {
@@ -962,7 +975,8 @@ class TvHomeViewModel @Inject constructor(
     private fun observeFavorites() {
         viewModelScope.launch {
             channelRepository.observeAllFavorite().distinctUntilChanged().collect { favorites ->
-                _state.update { it.copy(favorites = favorites) }
+                val shown = if (profiles.kidsActive) favorites.filterNot { isAdultCategory(it.category) } else favorites
+                _state.update { it.copy(favorites = shown) }
             }
         }
     }

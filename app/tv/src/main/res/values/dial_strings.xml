@@ -921,4 +921,7 @@
     <string name="dial_notice_trakt_upnext">%1$d new on Trakt this week</string>
     <string name="dial_notice_missed">%1$d to catch up</string>
     <string name="dial_notice_party">Party %1$s running</string>
+    <string name="dial_profiles_kids_only">This is a kids profile. A grown-up can switch profiles from here; everything else is in their profile.</string>
+    <string name="dial_profiles_gate">Profile settings are kept behind a grown-up’s PIN.</string>
+    <string name="dial_profiles_gate_pin">A grown-up’s PIN</string>
 </resources>

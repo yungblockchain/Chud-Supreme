@@ -96,6 +96,11 @@ class InfinityLayoutStore @Inject constructor(
 
     fun reset() = update { InfinityLayout() }
 
+    /** Re-reads the saved layout (after a restore wrote the file directly). */
+    fun reload() {
+        _layout.value = read()
+    }
+
     private fun read(): InfinityLayout = runCatching {
         val raw = prefs.getString(KEY, null) ?: return InfinityLayout()
         val root = Json.parseToJsonElement(raw).jsonObject

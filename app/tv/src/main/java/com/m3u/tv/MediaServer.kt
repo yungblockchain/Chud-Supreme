@@ -117,6 +117,11 @@ class MediaServerStore @Inject constructor(
         _session.value = session
     }
 
+    /** Re-reads the saved sign-in (after a restore wrote the file directly). */
+    fun reload() {
+        _session.value = read()
+    }
+
     fun clear() {
         prefs.edit().remove(KEY_KIND).remove(KEY_URL).remove(KEY_USER_ID).remove(KEY_USERNAME).remove(KEY_SERVER_NAME).apply()
         secrets.remove(SecretName.MediaServerToken)

@@ -25,6 +25,11 @@ class StremioAddonStore @Inject constructor(
     private val _addons = MutableStateFlow(readAddons())
     val addons: StateFlow<List<InstalledAddon>> = _addons.asStateFlow()
 
+    /** Re-reads the saved addons (after a restore wrote the file directly). */
+    fun reload() {
+        _addons.value = readAddons()
+    }
+
     var p2pEnabled: Boolean
         get() = prefs.getBoolean(KEY_P2P, true)
         set(value) { prefs.edit().putBoolean(KEY_P2P, value).apply() }

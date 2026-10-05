@@ -5,6 +5,8 @@ import androidx.compose.runtime.Immutable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -170,15 +172,34 @@ class ProfileStore @Inject constructor(
         return parsed.ifEmpty { listOf(Profile(id = "main", name = defaultName, face = PROFILE_FACES.first())) }
     }
 
+    /** PBKDF2 over the PIN with a per-device salt: a leaked file doesn't give the PINs away in a blink. */
     private fun hash(pin: String): String {
         val salt = prefs.getString(KEY_SALT, null) ?: ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
             .also { prefs.edit().putString(KEY_SALT, it).apply() }
-        val digest = MessageDigest.getInstance("SHA-256").digest((salt + pin).toByteArray())
-        return digest.joinToString("") { "%02x".format(it) }
+        val spec = PBEKeySpec(pin.toCharArray(), salt.toByteArray(), PBKDF2_ROUNDS, 256)
+        val key = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        return key.joinToString("") { "%02x".format(it) }
+    }
+
+    /** True when [pin] belongs to a grown-up profile (one that isn't a kids profile and has a PIN). */
+    fun verifyAdultPin(pin: String): Boolean {
+        val hashed = hash(pin)
+        return _profiles.value.any { !it.kids && it.pinHash != null && MessageDigest.isEqual(it.pinHash.toByteArray(), hashed.toByteArray()) }
+    }
+
+    /** Whether edits should ask for a grown-up's PIN: one exists and the profile in use has none. */
+    val editsNeedPin: Boolean
+        get() = _profiles.value.any { !it.kids && it.hasPin } && _active.value?.hasPin != true
+
+    /** Re-reads the profiles (after a restore wrote the file directly). */
+    fun reload() {
+        _profiles.value = read()
+        _active.value = _active.value?.let { current -> _profiles.value.firstOrNull { it.id == current.id } }
     }
 
     companion object {
         val PIN_LENGTH = 4..8
+        private const val PBKDF2_ROUNDS = 10_000
         const val MAX_KIDS_MINUTES = 600
         private const val MAX_NAME = 24
         private const val KEY_PROFILES = "profiles"

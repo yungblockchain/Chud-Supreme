@@ -23,6 +23,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.m3u.data.database.dao.ChannelDao
 import com.m3u.data.repository.channel.ChannelRepository
+import com.m3u.tv.stremio.InfinityLayoutStore
+import com.m3u.tv.stremio.StremioAddonStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -75,6 +77,10 @@ class BackupService @Inject constructor(
     private val channelDao: ChannelDao,
     private val settings: DialSettingsStore,
     private val skins: SkinStore,
+    private val profiles: ProfileStore,
+    private val addons: StremioAddonStore,
+    private val layout: InfinityLayoutStore,
+    private val mediaServer: MediaServerStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -96,19 +102,16 @@ class BackupService @Inject constructor(
                 SecretName.entries.mapNotNull { name -> secrets.get(name)?.let { name.key to JsonPrimitive(it) } }.toMap()
             )
         } else null
-        val root = JsonObject(
-            buildMap {
-                put("format", JsonPrimitive(FORMAT))
-                put("takenAt", JsonPrimitive(System.currentTimeMillis()))
-                put("prefs", prefs)
-                put("skins", skinFiles)
-                put("favourites", favourites)
-                keys?.let { put("keys", it) }
-            }
-        )
-        val text = root.toString()
-        runCatching { keptFile.writeText(text) }
-        text
+        val base = buildMap {
+            put("format", JsonPrimitive(FORMAT))
+            put("takenAt", JsonPrimitive(System.currentTimeMillis()))
+            put("prefs", prefs)
+            put("skins", skinFiles)
+            put("favourites", favourites)
+        }
+        // The copy kept on the stick never holds keys; only the download the person asked for does.
+        runCatching { keptFile.writeText(JsonObject(base).toString()) }
+        JsonObject(if (keys != null) base + ("keys" to keys) else base).toString()
     }
 
     /** Puts a backup back; null when the text isn't one of ours. */
@@ -116,12 +119,25 @@ class BackupService @Inject constructor(
         val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return@withContext null
         if (root["format"]?.jsonPrimitive?.contentOrNull != FORMAT) return@withContext null
         var settingsCount = 0
-        (root["prefs"] as? JsonObject).orEmpty().forEach { (name, values) ->
-            if (name !in PREF_FILES) return@forEach
-            settingsCount += jsonToPrefs(name, values as? JsonObject ?: return@forEach)
+        try {
+            (root["prefs"] as? JsonObject).orEmpty().forEach { (name, values) ->
+                if (name !in PREF_FILES) return@forEach
+                settingsCount += jsonToPrefs(name, values as? JsonObject ?: return@forEach)
+            }
+        } finally {
+            // Every store re-reads its file, whether or not all of it landed.
+            settings.reload()
+            profiles.reload()
+            addons.reload()
+            layout.reload()
+            mediaServer.reload()
+            skins.reload()
         }
         val skinList = (root["skins"] as? JsonArray).orEmpty()
+        val chosenSkin = skins.current.value
         skinList.forEach { element -> runCatching { skins.importSkin(element.toString()) } }
+        // Importing selects each skin in turn; the restored choice is the one that stands.
+        skins.all.firstOrNull { it.id == chosenSkin.id }?.let(skins::select)
         val favourites = (root["favourites"] as? JsonArray).orEmpty()
         var restoredFavourites = 0
         favourites.forEach { element ->
@@ -142,8 +158,6 @@ class BackupService @Inject constructor(
             secrets.put(name, text)
             keyCount++
         }
-        // Settings read at start-up go live on the next launch; what has a store refreshes now.
-        settings.reload()
         BackupSummary(
             settings = settingsCount,
             skins = skinList.size,
@@ -169,8 +183,10 @@ class BackupService @Inject constructor(
         val all = context.getSharedPreferences(name, Context.MODE_PRIVATE).all
         return JsonObject(
             all.mapNotNull { (key, value) ->
+                // PIN hashes and their salt stay on the device: a restored profile comes back unlocked.
+                if (name == "profiles" && key == "salt") return@mapNotNull null
                 val encoded: JsonObject = when (value) {
-                    is String -> typed("s", JsonPrimitive(value))
+                    is String -> typed("s", JsonPrimitive(if (name == "profiles" && key == "profiles") stripPins(value) else value))
                     is Int -> typed("i", JsonPrimitive(value))
                     is Long -> typed("l", JsonPrimitive(value))
                     is Boolean -> typed("b", JsonPrimitive(value))
@@ -185,22 +201,33 @@ class BackupService @Inject constructor(
 
     private fun typed(type: String, value: JsonElement) = JsonObject(mapOf("t" to JsonPrimitive(type), "v" to value))
 
+    private fun stripPins(profilesJson: String): String = runCatching {
+        JsonArray(
+            json.parseToJsonElement(profilesJson).jsonArray.map { element ->
+                JsonObject(element.jsonObject.filterKeys { it != "pin" })
+            }
+        ).toString()
+    }.getOrDefault(profilesJson)
+
     private fun jsonToPrefs(name: String, values: JsonObject): Int {
         val editor = context.getSharedPreferences(name, Context.MODE_PRIVATE).edit()
         var count = 0
         values.forEach { (key, element) ->
             val item = element as? JsonObject ?: return@forEach
             val value = item["v"] ?: return@forEach
-            when (item["t"]?.jsonPrimitive?.contentOrNull) {
-                "s" -> value.jsonPrimitive.contentOrNull?.let { editor.putString(key, it) }
-                "i" -> value.jsonPrimitive.intOrNull?.let { editor.putInt(key, it) }
-                "l" -> value.jsonPrimitive.longOrNull?.let { editor.putLong(key, it) }
-                "b" -> value.jsonPrimitive.booleanOrNull?.let { editor.putBoolean(key, it) }
-                "f" -> value.jsonPrimitive.floatOrNull?.let { editor.putFloat(key, it) }
-                "set" -> editor.putStringSet(key, (value as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet())
-                else -> return@forEach
-            }
-            count++
+            // A value of the wrong shape is skipped, never a reason to stop the restore.
+            val written = runCatching {
+                when (item["t"]?.jsonPrimitive?.contentOrNull) {
+                    "s" -> value.jsonPrimitive.contentOrNull?.let { editor.putString(key, it) }
+                    "i" -> value.jsonPrimitive.intOrNull?.let { editor.putInt(key, it) }
+                    "l" -> value.jsonPrimitive.longOrNull?.let { editor.putLong(key, it) }
+                    "b" -> value.jsonPrimitive.booleanOrNull?.let { editor.putBoolean(key, it) }
+                    "f" -> value.jsonPrimitive.floatOrNull?.let { editor.putFloat(key, it) }
+                    "set" -> (value as? JsonArray)?.let { array -> editor.putStringSet(key, array.mapNotNull { it.jsonPrimitive.contentOrNull }.toSet()) }
+                    else -> null
+                }
+            }.getOrNull()
+            if (written != null) count++
         }
         editor.commit()
         return count
@@ -212,7 +239,7 @@ class BackupService @Inject constructor(
         private const val KEPT_NAME = "last-backup.json"
         val PREF_FILES = listOf(
             "dial_settings", "appearance", "infinity_layout", "stremio_addons", "profiles",
-            "media_server", "infinity_shelf", "playback_settings",
+            "media_server", "infinity_shelf",
         )
     }
 }

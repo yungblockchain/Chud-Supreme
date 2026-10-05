@@ -289,6 +289,12 @@ class SkinStore @Inject constructor(
 
     val all: List<Skin> get() = Skins.builtIn + _custom.value
 
+    /** Re-reads the skin files and the chosen skin (after a restore wrote them directly). */
+    fun reload() {
+        _custom.value = readCustom()
+        select(readCurrent())
+    }
+
     fun select(skin: Skin) {
         _current.value = skin
         prefs.edit().putString(KEY_CURRENT, skin.id).apply()

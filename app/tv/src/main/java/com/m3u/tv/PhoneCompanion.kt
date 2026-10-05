@@ -135,8 +135,9 @@ class PhoneCompanion @Inject constructor(
                 // The backup file, for the phone to keep (the PIN guards it: it can hold keys).
                 method == "GET" && path == "/backup.json" -> {
                     val form = parseForm(query)
-                    if (!pinMatches(form["pin"].orEmpty())) {
-                        respond(output, 403, JSON, """{"ok":false,"error":"pin"}""")
+                    val refused = checkPin(form)
+                    if (refused != null) {
+                        respond(output, refused.first, JSON, refused.second)
                     } else {
                         val text = runBlocking { backup.create(includeKeys = form["keys"] == "1") }
                         respond(output, 200, JSON, text, download = "chud-supreme-backup.json")
@@ -181,7 +182,8 @@ class PhoneCompanion @Inject constructor(
         }
     }
 
-    private fun api(action: String, form: Map<String, String>): Pair<Int, String> {
+    /** The PIN check every protected request goes through: null when it may proceed. */
+    private fun checkPin(form: Map<String, String>): Pair<Int, String>? {
         val now = System.currentTimeMillis()
         if (now < lockedUntil) return 429 to """{"ok":false,"error":"locked"}"""
         if (!pinMatches(form["pin"].orEmpty())) {
@@ -193,6 +195,11 @@ class PhoneCompanion @Inject constructor(
             return 403 to """{"ok":false,"error":"pin"}"""
         }
         failures = 0
+        return null
+    }
+
+    private fun api(action: String, form: Map<String, String>): Pair<Int, String> {
+        checkPin(form)?.let { return it }
         fun field(name: String) = form[name].orEmpty().trim().take(MAX_FIELD)
         val message: PhoneMessage = when (action) {
             "search" -> PhoneMessage.Search(field("text").ifEmpty { return 400 to BAD })

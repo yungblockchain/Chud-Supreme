@@ -35,7 +35,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
+import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
@@ -255,10 +255,11 @@ class WeatherViewModel @Inject constructor(
 fun ClockWeatherStrip(now: WeatherNow?, fahrenheit: Boolean, modifier: Modifier = Modifier) {
     var time by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
-        val format = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val format = DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
         while (true) {
             time = format.format(Date())
-            delay(CLOCK_TICK_MS)
+            // Wake on the minute, so the clock never lags.
+            delay(60_000L - System.currentTimeMillis() % 60_000L)
         }
     }
     Row(
@@ -301,7 +302,6 @@ fun ClockWeatherStrip(now: WeatherNow?, fahrenheit: Boolean, modifier: Modifier 
 private fun degrees(celsius: Double, fahrenheit: Boolean): Int =
     if (fahrenheit) Math.round(celsius * 9 / 5 + 32).toInt() else Math.round(celsius).toInt()
 
-private const val CLOCK_TICK_MS = 15_000L
 
 /** The weather rows in Settings: on/off, units, the town. */
 @Composable

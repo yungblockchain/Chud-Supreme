@@ -34,6 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -74,6 +79,8 @@ class ProfilesViewModel @Inject constructor(
     fun setMinutes(id: String, minutes: Int) = store.update(id) { it.copy(kidsMinutes = minutes.coerceIn(0, ProfileStore.MAX_KIDS_MINUTES)) }
     fun setPin(id: String, pin: String?) = store.setPin(id, pin)
     fun remove(id: String) = store.remove(id)
+    fun verifyAdultPin(pin: String): Boolean = store.verifyAdultPin(pin)
+    val editsNeedPin: Boolean get() = store.editsNeedPin
 }
 
 /** Full screen: faces in a row, OK picks; a PIN box appears for a locked profile. */
@@ -82,6 +89,7 @@ fun ProfilePickerScreen(
     profiles: List<Profile>,
     lastUsedId: String?,
     onPick: (Profile, String?) -> Boolean,
+    modifier: Modifier = Modifier,
 ) {
     var asking by remember { mutableStateOf<Profile?>(null) }
     var pin by remember { mutableStateOf("") }
@@ -104,9 +112,14 @@ fun ProfilePickerScreen(
     }
     val preferred = profiles.firstOrNull { it.id == lastUsedId } ?: profiles.firstOrNull()
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(TvColors.Background),
+            .background(TvColors.Background)
+            // Up and Down have nowhere to go but the app underneath: keep them here.
+            .onPreviewKeyEvent { event ->
+                event.type == KeyEventType.KeyDown && asking == null &&
+                    (event.key == Key.DirectionUp || event.key == Key.DirectionDown || event.key == Key.Menu)
+            },
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -238,6 +251,61 @@ fun ProfilesSettingsScreen(
 ) {
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
     val active by viewModel.active.collectAsStateWithLifecycle()
+    // A kids profile only gets the way out. Edits ask for a grown-up's PIN when one exists and
+    // the profile in use has none.
+    val kids = active?.kids == true
+    var unlocked by rememberSaveable { mutableStateOf(false) }
+    var gatePin by rememberSaveable { mutableStateOf("") }
+    var gateWrong by rememberSaveable { mutableStateOf(false) }
+    val gated = !kids && viewModel.editsNeedPin && !unlocked
+    if (kids || gated) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(start = 48.dp, top = 24.dp, end = 64.dp, bottom = 48.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item {
+                Text(
+                    text = stringResource(if (kids) R.string.dial_profiles_kids_only else R.string.dial_profiles_gate),
+                    color = TvColors.TextSecondary,
+                    fontFamily = TvFonts.Body,
+                    fontSize = 15.sp,
+                    modifier = Modifier.widthIn(max = 820.dp),
+                )
+            }
+            if (gated) {
+                item {
+                    Box(Modifier.width(360.dp)) {
+                        DialTextField(
+                            label = stringResource(R.string.dial_profiles_gate_pin),
+                            value = gatePin,
+                            onValueChange = { gatePin = it.filter { c -> c.isDigit() }.take(8) },
+                            keyboardType = KeyboardType.NumberPassword,
+                            imeAction = ImeAction.Done,
+                            readOnly = false,
+                            secret = true,
+                            onDone = {
+                                unlocked = viewModel.verifyAdultPin(gatePin)
+                                gateWrong = !unlocked
+                                gatePin = ""
+                            },
+                        )
+                    }
+                }
+                if (gateWrong) {
+                    item { Text(text = stringResource(R.string.dial_profiles_wrong_pin), color = TvColors.Danger, fontFamily = TvFonts.Body, fontSize = 15.sp) }
+                }
+            }
+            item {
+                TvActionButton(
+                    text = stringResource(R.string.dial_profiles_switch),
+                    icon = Icons.Rounded.SwitchAccount,
+                    onClick = onSwitchProfile,
+                )
+            }
+        }
+        return
+    }
     var adding by rememberSaveable { mutableStateOf(false) }
     var newName by rememberSaveable { mutableStateOf("") }
     var newFace by rememberSaveable { mutableStateOf(PROFILE_FACES.first()) }

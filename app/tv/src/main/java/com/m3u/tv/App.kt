@@ -298,25 +298,46 @@ fun App(
         if (kidsProfile && destination !in destinations) destination = TvDestination.Home
     }
     var timeUp by remember { mutableStateOf(false) }
+    // The picker or the time's-up card on top: nothing behind them takes keys or focus.
+    val overlayUp = needsPicker || timeUp
     val kidsLimitMs = (activeProfile?.takeIf { it.kids }?.kidsMinutes ?: 0) * 60_000L
+    LaunchedEffect(activeProfile?.id) { timeUp = false }
     LaunchedEffect(activeProfile?.id, kidsLimitMs, isPlaying) {
         val profile = activeProfile ?: return@LaunchedEffect
-        if (kidsLimitMs <= 0L || !isPlaying) return@LaunchedEffect
-        while (true) {
-            delay(KIDS_TICK_MS)
-            val played = dial.addKidsPlayTime(profile.id, KIDS_TICK_MS)
-            if (played >= kidsLimitMs) {
-                viewModel.releasePlayer()
-                surface = TvSurface.Browse
-                timeUp = true
-                break
+        if (kidsLimitMs <= 0L) return@LaunchedEffect
+        fun stopForToday() {
+            viewModel.releasePlayer()
+            surface = TvSurface.Browse
+            timeUp = true
+        }
+        // Already over for today: the card, before anything plays.
+        if (dial.addKidsPlayTime(profile.id, 0L) >= kidsLimitMs) {
+            stopForToday()
+            return@LaunchedEffect
+        }
+        if (!isPlaying) return@LaunchedEffect
+        // Play time is counted by the clock, and the part-tick is written when playback pauses.
+        var lastTick = SystemClock.elapsedRealtime()
+        try {
+            while (true) {
+                delay(KIDS_TICK_MS)
+                val now = SystemClock.elapsedRealtime()
+                val played = dial.addKidsPlayTime(profile.id, now - lastTick)
+                lastTick = now
+                if (played >= kidsLimitMs) {
+                    stopForToday()
+                    break
+                }
             }
+        } finally {
+            dial.addKidsPlayTime(profile.id, SystemClock.elapsedRealtime() - lastTick)
         }
     }
 
     var startupHandled by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (startupHandled) return@LaunchedEffect
+    LaunchedEffect(needsPicker) {
+        // Nothing starts playing behind the profile picker.
+        if (startupHandled || needsPicker) return@LaunchedEffect
         startupHandled = true
         // A tab asked for by the launch intent wins over the startup setting.
         if (initialDestination != null) return@LaunchedEffect
@@ -737,7 +758,7 @@ fun App(
                 if (!remoteBusy.value) remoteBusy.value = true
                 // The Menu key opens the side menu while browsing (it may be hidden to a strip).
                 if (event.type == KeyEventType.KeyDown && event.key == Key.Menu &&
-                    surface == TvSurface.Browse && details == null && !showSplash &&
+                    surface == TvSurface.Browse && details == null && !showSplash && !overlayUp &&
                     menuChannel == null && menuCategory == null
                 ) {
                     runCatching { menuFocus.requestFocus() }
@@ -761,7 +782,7 @@ fun App(
         // Only what's playing (or was last played) sets the backdrop, so browsing categories
         // never swaps the picture behind the whole screen.
         TvBackdrop(channel = currentChannel ?: state.recent)
-        val browsing = onBrowse && details == null && !showSplash
+        val browsing = onBrowse && details == null && !showSplash && !overlayUp
         // Nothing focused after the launch animation, a tab change or an overlay closing (the
         // screen asked for focus while it couldn't take it): put focus in the screen, so the
         // first key press does something sensible.
@@ -1204,6 +1225,7 @@ fun App(
                 profiles = profileList,
                 lastUsedId = profilesVm.lastUsedId,
                 onPick = { profile, pin -> profilesVm.select(profile, pin) },
+                modifier = Modifier.focusGroup(),
             )
         }
         if (showSplash) {
