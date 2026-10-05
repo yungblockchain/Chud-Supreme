@@ -139,7 +139,10 @@ object YouTubeSearch {
                 val thumbs = snippet["thumbnails"] as? JsonObject
                 VideoResult(
                     id = id,
-                    title = snippet.text("title")?.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"")
+                    title = snippet.text("title")
+                        ?.replace("&amp;", "&")
+                        ?.replace("&#39;", "'")
+                        ?.replace("&quot;", "\"")
                         ?: return@mapNotNull null,
                     channel = snippet.text("channelTitle"),
                     thumbnail = ((thumbs?.get("medium") ?: thumbs?.get("default")) as? JsonObject)?.text("url"),
