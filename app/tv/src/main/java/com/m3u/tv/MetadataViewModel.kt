@@ -73,6 +73,15 @@ class MetadataViewModel @Inject constructor(
     private var traktRowsLoadedAt = 0L
     private var traktRowsJob: Job? = null
 
+    init {
+        // Signing in or out on the Services tab shows on a details page that's already open.
+        viewModelScope.launch {
+            trakt.account.collect { account ->
+                _extras.update { it?.copy(traktSignedIn = account != null) }
+            }
+        }
+    }
+
     private val _trending = MutableStateFlow<List<TrendingEntry>>(emptyList())
     val trending: StateFlow<List<TrendingEntry>> = _trending.asStateFlow()
 

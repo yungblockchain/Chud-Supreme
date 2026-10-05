@@ -149,4 +149,15 @@ class TraktScrobbler @Inject constructor(
 
     /** Playback is over (the player closed): a stop with the last known progress. */
     fun stop() = update(null, 0L, 0L, isPlaying = false)
+
+    /** The film or episode ran to the end: a stop at 100%, so Trakt counts it as watched. */
+    fun finish(item: TraktItem) {
+        val enabled = store.preferences.value.traktScrobble && trakt.signedIn
+        val wasCurrent = current == item
+        current = null
+        playing = false
+        progress = 0f
+        if (!enabled || !wasCurrent) return
+        scope.launch { order.withLock { trakt.scrobble(TraktService.ScrobbleAction.Stop, item, 100f) } }
+    }
 }

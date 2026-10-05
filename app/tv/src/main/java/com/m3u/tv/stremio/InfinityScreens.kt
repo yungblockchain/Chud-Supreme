@@ -62,6 +62,7 @@ import com.m3u.tv.TvColors
 import com.m3u.tv.TvFonts
 import com.m3u.tv.stepperKeys
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 
 /* -------------------------------------------------------------------------------------------------
  * Infinity, laid out like a streaming service: a hero that follows the focused title, then rows
@@ -86,6 +87,11 @@ internal fun InfinityBrowsePage(
     val layout = state.layout
     var focusedItem by remember { mutableStateOf<CatalogItem?>(null) }
     var heroItem by remember { mutableStateOf<CatalogItem?>(null) }
+    // Pages swap inside one tab, so each puts focus somewhere sensible when it appears.
+    LaunchedEffect(state.page) {
+        yield()
+        runCatching { first.requestFocus() }
+    }
     LaunchedEffect(focusedItem) {
         val next = focusedItem ?: return@LaunchedEffect
         delay(HERO_FOLLOW_MS)
@@ -492,6 +498,12 @@ internal fun InfinityRowsPage(state: StremioUiState, viewModel: StremioViewModel
     var draft by rememberSaveable { mutableStateOf("") }
     val on = stringResource(R.string.dial_value_on)
     val off = stringResource(R.string.dial_value_off)
+    val first = remember { FocusRequester() }
+    val renameFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        yield()
+        runCatching { first.requestFocus() }
+    }
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(start = 48.dp, top = 24.dp, end = 64.dp, bottom = 48.dp),
@@ -503,6 +515,7 @@ internal fun InfinityRowsPage(state: StremioUiState, viewModel: StremioViewModel
                 label = stringResource(R.string.dial_infinity_card_style),
                 value = stringResource(if (layout.cardStyle == CardStyle.Poster) R.string.dial_infinity_poster else R.string.dial_infinity_landscape),
                 onClick = { viewModel.setCardStyle(if (layout.cardStyle == CardStyle.Poster) CardStyle.Landscape else CardStyle.Poster) },
+                focusRequester = first,
             )
         }
         item {
@@ -547,6 +560,7 @@ internal fun InfinityRowsPage(state: StremioUiState, viewModel: StremioViewModel
                         text = stringResource(R.string.dial_infinity_rename),
                         icon = Icons.Rounded.Tune,
                         selected = renaming == row.key,
+                        focusRequester = renameFocus.takeIf { renaming == row.key },
                         onClick = {
                             if (renaming == row.key) {
                                 renaming = null
@@ -575,6 +589,8 @@ internal fun InfinityRowsPage(state: StremioUiState, viewModel: StremioViewModel
                             readOnly = false,
                             onDone = {
                                 viewModel.renameRow(row.key, draft)
+                                // Back onto the Rename button before the field goes away.
+                                runCatching { renameFocus.requestFocus() }
                                 renaming = null
                             },
                         )
@@ -608,6 +624,12 @@ private fun InfinityStatusPlain(text: String) {
 @Composable
 internal fun InfinityDetailsPage(state: StremioUiState, viewModel: StremioViewModel) {
     val details = state.details
+    val primary = remember { FocusRequester() }
+    LaunchedEffect(details?.id) {
+        if (details == null) return@LaunchedEffect
+        yield()
+        runCatching { primary.requestFocus() }
+    }
     Box(Modifier.fillMaxSize()) {
         AsyncImage(
             model = details?.background ?: details?.poster,
@@ -710,6 +732,7 @@ internal fun InfinityDetailsPage(state: StremioUiState, viewModel: StremioViewMo
                                     TvActionButton(
                                         text = stringResource(R.string.dial_addons_play),
                                         icon = Icons.Rounded.PlayArrow,
+                                        focusRequester = primary,
                                         onClick = { viewModel.loadStreams(details.type, details.id, details.name) },
                                     )
                                 }
@@ -717,6 +740,7 @@ internal fun InfinityDetailsPage(state: StremioUiState, viewModel: StremioViewMo
                                     text = stringResource(if (state.inLibrary) R.string.dial_infinity_in_library else R.string.dial_infinity_add_library),
                                     icon = Icons.Rounded.CheckCircle,
                                     selected = state.inLibrary,
+                                    focusRequester = primary.takeIf { details.videos.isNotEmpty() },
                                     onClick = viewModel::toggleLibrary,
                                 )
                             }

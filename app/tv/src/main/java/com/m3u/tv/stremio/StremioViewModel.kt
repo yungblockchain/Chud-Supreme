@@ -115,11 +115,18 @@ class StremioViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            var previous: TraktSignIn = TraktSignIn.Idle
             trakt.signIn.collect { step ->
+                val justFailed = step is TraktSignIn.Failed && previous !is TraktSignIn.Failed
+                previous = step
                 _state.update {
                     when (step) {
                         is TraktSignIn.Code -> it.copy(traktCode = step.userCode, traktUrl = step.url)
-                        is TraktSignIn.Failed -> it.copy(traktCode = null, traktUrl = null, message = "Trakt sign-in didn't finish. Try again.")
+                        is TraktSignIn.Failed -> it.copy(
+                            traktCode = null,
+                            traktUrl = null,
+                            message = if (justFailed) "Trakt sign-in didn't finish. Try again." else it.message,
+                        )
                         TraktSignIn.Idle -> it.copy(traktCode = null, traktUrl = null)
                     }
                 }
@@ -217,7 +224,11 @@ class StremioViewModel @Inject constructor(
 
     fun renameRow(key: String, name: String) = layoutStore.updateRow(key) { it.copy(name = name.trim().take(MAX_ROW_NAME).ifBlank { null }) }
 
-    fun moveRow(key: String, delta: Int) = layoutStore.move(_state.value.layout.arrange(_state.value.rows), key, delta)
+    fun moveRow(key: String, delta: Int) {
+        val layout = _state.value.layout
+        val rows = _state.value.rows
+        layoutStore.move(layout.arrange(rows), rows.filter { layout.of(it.key).hidden }, key, delta)
+    }
 
     fun setCardStyle(style: CardStyle) = layoutStore.update { it.copy(cardStyle = style) }
 

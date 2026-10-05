@@ -23,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.res.stringResource
@@ -532,10 +533,12 @@ internal fun SettingRow(
     value: String,
     onClick: () -> Unit,
     onKey: (KeyEvent) -> Boolean = { false },
+    focusRequester: FocusRequester? = null,
 ) {
     FocusFrame(
         onClick = onClick,
         onKey = onKey,
+        focusRequester = focusRequester,
         shape = RoundedCornerShape(12.dp),
         focusedScale = 1.02f,
         semanticsLabel = "$label: $value",

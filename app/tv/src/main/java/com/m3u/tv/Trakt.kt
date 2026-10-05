@@ -185,7 +185,7 @@ class TraktService @Inject constructor(
         secrets.remove(SecretName.TraktRefresh)
         _account.value = null
         _signIn.value = TraktSignIn.Idle
-        idCache.clear()
+        synchronized(idCache) { idCache.clear() }
     }
 
     private suspend fun username(): String? =
@@ -207,27 +207,61 @@ class TraktService @Inject constructor(
     /** Films and single episodes only: a whole show would mark every episode at once. */
     suspend fun markWatched(item: TraktItem): Boolean {
         if (item is TraktItem.Show) return false
-        val body = itemBody(item) ?: return false
-        val wrapped = buildJsonObject {
-            put(if (item is TraktItem.Movie) "movies" else "episodes", JsonArray(listOf(JsonObject(body))))
-        }
-        return runCatching { post("/sync/history", wrapped.toString()) }.isSuccess
+        val body = syncBody(item, rating = null) ?: return false
+        return runCatching { post("/sync/history", body.toString()) }.map { it.accepted() }.getOrDefault(false)
     }
 
     /* -------------------------------------------------------------------- ratings, comments */
 
     /** Rates 1..10; 0 removes the rating. */
     suspend fun rate(item: TraktItem, rating: Int): Boolean {
-        val body = itemBody(item) ?: return false
-        if (rating in 1..10) body.put("rating", JsonPrimitive(rating))
-        val listName = when (item) {
-            is TraktItem.Movie -> "movies"
-            is TraktItem.Show -> "shows"
-            is TraktItem.Episode -> "episodes"
+        val keep = rating in 1..10
+        val body = syncBody(item, rating = rating.takeIf { keep }) ?: return false
+        val path = if (keep) "/sync/ratings" else "/sync/ratings/remove"
+        return runCatching { post(path, body.toString()) }.map { it.accepted() }.getOrDefault(false)
+    }
+
+    /** A /sync/* reply counts as accepted when nothing landed in "not_found". */
+    private fun JsonObject.accepted(): Boolean {
+        val missing = this["not_found"] as? JsonObject ?: return true
+        return missing.values.all { (it as? JsonArray)?.isEmpty() ?: true }
+    }
+
+    /**
+     * The body /sync/ratings and /sync/history want: ids at the top of each entry, episodes
+     * nested under their show's seasons.
+     */
+    private suspend fun syncBody(item: TraktItem, rating: Int?): JsonObject? {
+        val ids = idsOf(item) ?: return null
+        fun entry(extra: (MutableMap<String, JsonElement>) -> Unit = {}) = JsonObject(
+            buildMap {
+                put("ids", ids)
+                rating?.let { put("rating", JsonPrimitive(it)) }
+                extra(this)
+            }
+        )
+        return when (item) {
+            is TraktItem.Movie -> JsonObject(mapOf("movies" to JsonArray(listOf(entry()))))
+            is TraktItem.Show -> JsonObject(mapOf("shows" to JsonArray(listOf(entry()))))
+            is TraktItem.Episode -> {
+                val episode = JsonObject(
+                    buildMap {
+                        put("number", JsonPrimitive(item.number))
+                        rating?.let { put("rating", JsonPrimitive(it)) }
+                    }
+                )
+                val season = JsonObject(mapOf("number" to JsonPrimitive(item.season), "episodes" to JsonArray(listOf(episode))))
+                val show = JsonObject(mapOf("ids" to ids, "seasons" to JsonArray(listOf(season))))
+                JsonObject(mapOf("shows" to JsonArray(listOf(show))))
+            }
         }
-        val wrapped = buildJsonObject { put(listName, JsonArray(listOf(JsonObject(body)))) }
-        val path = if (rating in 1..10) "/sync/ratings" else "/sync/ratings/remove"
-        return runCatching { post(path, wrapped.toString()) }.isSuccess
+    }
+
+    /** Trakt's ids for the film or the show behind an item. */
+    private suspend fun idsOf(item: TraktItem): JsonObject? = when (item) {
+        is TraktItem.Movie -> item.tmdbId?.let { lookup(MediaKind.Movie, it) } ?: search("movie", item.title, item.year)
+        is TraktItem.Show -> item.tmdbId?.let { lookup(MediaKind.Tv, it) } ?: search("show", item.title, item.year)
+        is TraktItem.Episode -> item.showTmdbId?.let { lookup(MediaKind.Tv, it) } ?: search("show", item.title, item.year)
     }
 
     /** The person's own rating for a film or show (by TMDB id), or null. */
@@ -275,7 +309,7 @@ class TraktService @Inject constructor(
             getArray("/sync/playback?extended=full,images").mapNotNull { titleOf(it as? JsonObject) }.distinctBy { it.kind to it.id }
         }
         add("watchlist", TraktRowKind.Watchlist) {
-            getArray("/sync/watchlist?extended=full,images").mapNotNull { titleOf(it as? JsonObject) }
+            getArray("/sync/watchlist?extended=full,images").mapNotNull { titleOf(it as? JsonObject) }.distinctBy { it.kind to it.id }
         }
         add("upnext", TraktRowKind.UpNext) {
             val start = LocalDate.now().toString()
@@ -301,6 +335,7 @@ class TraktService @Inject constructor(
             val id = ids.text("slug") ?: ids.int("trakt")?.toString() ?: continue
             add("list-$id", TraktRowKind.Custom, name) {
                 getArray("/users/me/lists/$id/items?extended=full,images&limit=30").mapNotNull { titleOf(it as? JsonObject) }
+                    .distinctBy { it.kind to it.id }
             }
         }
         return rows
@@ -447,7 +482,7 @@ class TraktService @Inject constructor(
         val clientId = secrets.get(SecretName.TraktClientId) ?: return false
         val secret = secrets.get(SecretName.TraktClientSecret) ?: return false
         val refresh = secrets.get(SecretName.TraktRefresh) ?: return false
-        val root = runCatching {
+        val root = try {
             post(
                 "/oauth/token",
                 buildJsonObject {
@@ -459,7 +494,19 @@ class TraktService @Inject constructor(
                 }.toString(),
                 auth = false,
             )
-        }.getOrNull() ?: return false
+        } catch (e: TraktException) {
+            // A refresh token Trakt no longer accepts: the person has to sign in again.
+            if (e.code != null && e.code in 400..499) {
+                secrets.remove(SecretName.TraktAccess)
+                secrets.remove(SecretName.TraktRefresh)
+                _account.value = null
+            }
+            return false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return false
+        }
         val access = root.text("access_token") ?: return false
         secrets.put(SecretName.TraktAccess, access)
         root.text("refresh_token")?.let { secrets.put(SecretName.TraktRefresh, it) }

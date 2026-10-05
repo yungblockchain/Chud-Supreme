@@ -430,6 +430,8 @@ private fun TraktPanel(
     onComment: (String, Boolean) -> Unit,
     onWatched: () -> Unit,
 ) {
+    val rateFocus = remember { FocusRequester() }
+    val commentFocus = remember { FocusRequester() }
     var ratingOpen by remember(state.channelId) { mutableStateOf(false) }
     var draftRating by remember(state.channelId, state.myRating) { mutableStateOf(state.myRating ?: 7) }
     var commentOpen by remember(state.channelId) { mutableStateOf(false) }
@@ -453,12 +455,14 @@ private fun TraktPanel(
                     ?: stringResource(R.string.dial_trakt_rate),
                 icon = Icons.Rounded.Star,
                 selected = ratingOpen,
+                focusRequester = rateFocus,
                 onClick = { ratingOpen = !ratingOpen },
             )
             TvActionButton(
                 text = stringResource(R.string.dial_trakt_comment),
                 icon = Icons.Rounded.ChatBubble,
                 selected = commentOpen,
+                focusRequester = commentFocus,
                 onClick = { commentOpen = !commentOpen },
             )
             if (isFilm) {
@@ -475,6 +479,7 @@ private fun TraktPanel(
                 FocusFrame(
                     onClick = {
                         onRate(draftRating)
+                        runCatching { rateFocus.requestFocus() }
                         ratingOpen = false
                     },
                     shape = RoundedCornerShape(12.dp),
@@ -496,6 +501,7 @@ private fun TraktPanel(
                         icon = Icons.Rounded.Close,
                         onClick = {
                             onRate(0)
+                            runCatching { rateFocus.requestFocus() }
                             ratingOpen = false
                         },
                     )
@@ -520,6 +526,7 @@ private fun TraktPanel(
                         enabled = !state.busy && comment.isNotBlank(),
                         onClick = {
                             onComment(comment, spoiler)
+                            runCatching { commentFocus.requestFocus() }
                             commentOpen = false
                             comment = ""
                         },

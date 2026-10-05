@@ -388,15 +388,22 @@ fun App(
     }
     // Scrobbling: Trakt hears when a film or episode starts, pauses and stops, and how far in.
     val scrobbler = metadata.scrobbler
+    DisposableEffect(scrobbler) {
+        onDispose { scrobbler.stop() }
+    }
     val scrobbleItem = if (surface == TvSurface.Player || surface == TvSurface.Mini) nowPlaying?.traktItem else null
     LaunchedEffect(scrobbleItem, isPlaying, playbackState == Player.STATE_ENDED) {
         val current = player
         val ended = playbackState == Player.STATE_ENDED
+        if (ended && scrobbleItem != null) {
+            scrobbler.finish(scrobbleItem)
+            return@LaunchedEffect
+        }
         scrobbler.update(
             item = scrobbleItem,
-            positionMs = if (ended) current?.duration ?: 0L else current?.currentPosition ?: 0L,
+            positionMs = current?.currentPosition ?: 0L,
             durationMs = current?.duration ?: 0L,
-            isPlaying = isPlaying && !ended,
+            isPlaying = isPlaying,
         )
         // While playing, keep the progress fresh so a close reports where it got to.
         while (scrobbleItem != null && isPlaying && !ended) {

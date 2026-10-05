@@ -41,12 +41,15 @@ data class InfinityLayout(
 ) {
     fun of(key: String): RowLayout = rows[key] ?: RowLayout()
 
-    /** [rows] in the saved order (unmoved ones keep their place), minus hidden ones. */
+    /** [rows] in the saved order (rows never moved keep their catalog place), minus hidden ones. */
     fun arrange(rows: List<CatalogRow>): List<CatalogRow> = rows
         .withIndex()
         .filterNot { of(it.value.key).hidden }
-        .sortedWith(compareBy({ of(it.value.key).order }, { it.index }))
+        .sortedWith(compareBy({ placeOf(it.value.key, it.index) }, { it.index }))
         .map { it.value }
+
+    /** A row's saved place, or its catalog position when it was never moved. */
+    private fun placeOf(key: String, index: Int): Int = rows[key]?.order?.takeIf { it != Int.MAX_VALUE } ?: index
 
     fun nameOf(row: CatalogRow): String = of(row.key).name?.takeIf { it.isNotBlank() } ?: row.name
 }
@@ -72,8 +75,11 @@ class InfinityLayoutStore @Inject constructor(
         layout.copy(rows = layout.rows + (key to transform(layout.of(key))))
     }
 
-    /** Moves the row at [from] in [shown] (the rows as displayed) by [delta] places. */
-    fun move(shown: List<CatalogRow>, key: String, delta: Int) {
+    /**
+     * Moves [key] by [delta] places among [shown] (the rows as displayed). Every row, hidden ones
+     * included, gets an explicit place, so un-hiding one later puts it back where it was.
+     */
+    fun move(shown: List<CatalogRow>, hidden: List<CatalogRow>, key: String, delta: Int) {
         val order = shown.map { it.key }.toMutableList()
         val from = order.indexOf(key)
         if (from < 0) return
@@ -81,7 +87,9 @@ class InfinityLayoutStore @Inject constructor(
         order.add(to, order.removeAt(from))
         update { layout ->
             val rows = layout.rows.toMutableMap()
-            order.forEachIndexed { index, rowKey -> rows[rowKey] = (rows[rowKey] ?: RowLayout()).copy(order = index) }
+            (order + hidden.map { it.key }).forEachIndexed { index, rowKey ->
+                rows[rowKey] = (rows[rowKey] ?: RowLayout()).copy(order = index)
+            }
             layout.copy(rows = rows)
         }
     }
