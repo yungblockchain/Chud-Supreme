@@ -1,6 +1,7 @@
 package com.m3u.tv
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +68,7 @@ data class PlaybackSettingsState(
     val subtitleMode: Int = SubtitleMode.FORCED_ONLY,
     val styledSubtitles: Boolean = true,
     val anime4k: Boolean = false,
+    val pictureControls: Boolean = false,
     val audioDelayMs: Int = 0,
     val subtitleDelayMs: Int = 0,
 )
@@ -123,6 +125,7 @@ private fun Preferences.toPlaybackSettings(): PlaybackSettingsState {
         subtitleMode = this[PreferencesKeys.SUBTITLE_MODE] ?: defaults.subtitleMode,
         styledSubtitles = this[PreferencesKeys.STYLED_SUBTITLES] ?: defaults.styledSubtitles,
         anime4k = this[PreferencesKeys.ANIME4K] ?: defaults.anime4k,
+        pictureControls = this[PreferencesKeys.PICTURE_CONTROLS] ?: defaults.pictureControls,
         audioDelayMs = this[PreferencesKeys.AUDIO_DELAY_MS] ?: defaults.audioDelayMs,
         subtitleDelayMs = this[PreferencesKeys.SUBTITLE_DELAY_MS] ?: defaults.subtitleDelayMs,
     )
@@ -166,6 +169,10 @@ fun PlaybackSettingsScreen(
     val off = stringResource(R.string.dial_value_off)
     fun onOff(value: Boolean) = if (value) on else off
     val view = LocalView.current
+    val anime4kSupported = remember(view) {
+        val manager = view.context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        (manager?.deviceConfigurationInfo?.reqGlEsVersion ?: 0) >= 0x20000
+    }
     val fastestHz = remember(view) { view.context.hostActivity()?.let(DisplayModes::fastestRefreshRate) }
     var editingKey by rememberSaveable { mutableStateOf<SecretName?>(null) }
 
@@ -177,19 +184,37 @@ fun PlaybackSettingsScreen(
         item { SettingsSection(stringResource(R.string.dial_playback_section_picture)) }
         item {
             SettingRow(
-                label = stringResource(R.string.dial_playback_anime4k),
-                value = onOff(state.anime4k),
-                onClick = { viewModel.set(PreferencesKeys.ANIME4K, !state.anime4k) },
+                label = stringResource(R.string.dial_playback_picture_controls),
+                value = onOff(state.pictureControls),
+                onClick = { viewModel.set(PreferencesKeys.PICTURE_CONTROLS, !state.pictureControls) },
             )
         }
         item {
             Text(
-                text = stringResource(R.string.dial_playback_anime4k_hint),
+                text = stringResource(R.string.dial_playback_picture_controls_hint),
                 color = TvColors.TextSecondary,
                 fontFamily = TvFonts.Body,
                 fontSize = 14.sp,
                 modifier = Modifier.widthIn(max = 820.dp),
             )
+        }
+        if (anime4kSupported) {
+            item {
+                SettingRow(
+                    label = stringResource(R.string.dial_playback_anime4k),
+                    value = onOff(state.anime4k),
+                    onClick = { viewModel.set(PreferencesKeys.ANIME4K, !state.anime4k) },
+                )
+            }
+            item {
+                Text(
+                    text = stringResource(R.string.dial_playback_anime4k_hint),
+                    color = TvColors.TextSecondary,
+                    fontFamily = TvFonts.Body,
+                    fontSize = 14.sp,
+                    modifier = Modifier.widthIn(max = 820.dp),
+                )
+            }
         }
         item {
             SettingRow(

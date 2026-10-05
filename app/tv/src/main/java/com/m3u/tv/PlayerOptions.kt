@@ -132,6 +132,25 @@ class PlayerOptionsViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), PlayerOptionsState())
 
+    val pictureControls: StateFlow<Boolean> = settings.data
+        .map { it[PreferencesKeys.PICTURE_CONTROLS] ?: false }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), false)
+
+    val picturePresets: StateFlow<Map<String, String>> = settings.data
+        .map { decodePicturePresets(it[PreferencesKeys.PICTURE_PRESETS].orEmpty()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyMap())
+
+    fun cyclePicture(group: String) {
+        val key = group.trim().take(80).ifBlank { "Ungrouped" }
+        val current = picturePresets.value[key] ?: PICTURE_NORMAL
+        val next = PICTURE_ORDER[(PICTURE_ORDER.indexOf(current).coerceAtLeast(0) + 1) % PICTURE_ORDER.size]
+        val updated = picturePresets.value.toMutableMap()
+        if (next == PICTURE_NORMAL) updated.remove(key) else updated[key] = next
+        viewModelScope.launch {
+            settings[PreferencesKeys.PICTURE_PRESETS] = updated.entries.joinToString("\n") { "${it.key}\t${it.value}" }
+        }
+    }
+
     val playback: StateFlow<PlaybackSettingsState> = settings.data
         .map { prefs ->
             PlaybackSettingsState(
@@ -439,6 +458,8 @@ fun PlayerOptionsPanel(
     onAddBookmark: ((Long) -> Unit)? = null,
     onClearBookmarks: () -> Unit = {},
     onSeekTo: (Long) -> Unit = {},
+    /** Channel group, so a picture preset can be saved for it. */
+    group: String? = null,
     /** Asks Claude what's going on in the scene (films and episodes). */
     onExplainScene: (() -> Unit)? = null,
     viewModel: PlayerOptionsViewModel = hiltViewModel(),
@@ -447,6 +468,8 @@ fun PlayerOptionsPanel(
     val sync by viewModel.playback.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
     val speed by viewModel.speed.collectAsStateWithLifecycle()
+    val pictureControls by viewModel.pictureControls.collectAsStateWithLifecycle()
+    val picturePresets by viewModel.picturePresets.collectAsStateWithLifecycle()
     val firstRow = remember { FocusRequester() }
 
     BackHandler {
@@ -481,6 +504,24 @@ fun PlayerOptionsPanel(
             if (search != SubtitleSearch.Idle && subtitleTarget != null) {
                 subtitleSearchItems(search, viewModel, firstRow)
                 return@LazyColumn
+            }
+
+            item { OptionsHeader(stringResource(R.string.dial_options_picture)) }
+            group?.let { name ->
+                val key = name.trim().take(80).ifBlank { "Ungrouped" }
+                val preset = picturePresets[key] ?: PICTURE_NORMAL
+                item(key = "picture-preset") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_picture_for_group, key),
+                        value = stringResource(picturePresetLabel(preset)),
+                        hint = if (pictureControls) {
+                            stringResource(R.string.dial_picture_next_channel)
+                        } else {
+                            stringResource(R.string.dial_picture_controls_off)
+                        },
+                        onClick = { viewModel.cyclePicture(key) },
+                    )
+                }
             }
 
             item { OptionsHeader(stringResource(R.string.dial_options_audio)) }
@@ -889,6 +930,24 @@ private fun OptionsHeader(title: String) {
 }
 
 @Composable
+private const val PICTURE_NORMAL = "normal"
+private val PICTURE_ORDER = listOf("normal", "cinema", "bright", "soft")
+
+private fun decodePicturePresets(raw: String): Map<String, String> = raw.lineSequence().mapNotNull { line ->
+    val tab = line.indexOf('\t')
+    if (tab <= 0) return@mapNotNull null
+    val name = line.substring(tab + 1)
+    if (name !in PICTURE_ORDER || name == PICTURE_NORMAL) return@mapNotNull null
+    line.substring(0, tab) to name
+}.toMap()
+
+private fun picturePresetLabel(preset: String): Int = when (preset) {
+    "cinema" -> R.string.dial_picture_cinema
+    "bright" -> R.string.dial_picture_bright
+    "soft" -> R.string.dial_picture_soft
+    else -> R.string.dial_picture_normal
+}
+
 private fun OptionRow(
     label: String,
     onClick: () -> Unit,

@@ -1342,6 +1342,7 @@ fun TvPlayerScreen(
                     restoreOptionsFocus = true
                     showControls()
                 },
+                group = channel?.category,
                 onExplainScene = if (!live && channel != null) {
                     {
                         optionsOpen = false

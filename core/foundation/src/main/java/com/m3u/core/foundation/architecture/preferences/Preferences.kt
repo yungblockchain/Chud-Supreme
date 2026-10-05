@@ -193,6 +193,8 @@ private val PREFERENCES: Map<Preferences.Key<*>, Any> = buildMap {
     put(PreferencesKeys.SUBTITLE_MODE, SubtitleMode.FORCED_ONLY)
     put(PreferencesKeys.STYLED_SUBTITLES, true)
     put(PreferencesKeys.ANIME4K, false)
+    put(PreferencesKeys.PICTURE_CONTROLS, false)
+    put(PreferencesKeys.PICTURE_PRESETS, "")
     put(PreferencesKeys.AUDIO_DELAY_MS, 0)
     put(PreferencesKeys.SUBTITLE_DELAY_MS, 0)
 }
@@ -269,6 +271,10 @@ object PreferencesKeys {
     val STYLED_SUBTITLES = booleanPreferencesKey("styled-subtitles")
     /** Anime4K line shader. Off keeps the direct picture, including HDR. */
     val ANIME4K = booleanPreferencesKey("anime4k")
+    /** Apply saved per-group picture presets. Off keeps the direct picture. */
+    val PICTURE_CONTROLS = booleanPreferencesKey("picture-controls")
+    /** Group name, tab, preset. See PicturePresets. */
+    val PICTURE_PRESETS = stringPreferencesKey("picture-presets")
     /** Positive: sound later than the picture. */
     val AUDIO_DELAY_MS = intPreferencesKey("audio-delay-ms")
     /** Positive: subtitles later than the picture. */

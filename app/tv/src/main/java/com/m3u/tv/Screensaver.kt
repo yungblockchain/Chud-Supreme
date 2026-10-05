@@ -51,7 +51,7 @@ fun AmbientScreensaver(slides: List<AmbientSlide>, modifier: Modifier = Modifier
     LaunchedEffect(Unit) {
         while (true) {
             clock = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
-            holiday = runCatching { PublicHolidays.today() }.getOrNull()
+            holiday = runCatching { holidayToday() }.getOrNull()
             delay(15_000L)
         }
     }

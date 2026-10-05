@@ -301,6 +301,15 @@
     <string name="dial_playback_tunneling">Tunneled playback</string>
     <string name="dial_playback_anime4k">Anime4K</string>
     <string name="dial_playback_anime4k_hint">Sharpens drawn lines. Leave it off for the direct picture, including HDR. On uses the GPU and starts with the next video. Turn it off if the picture stutters.</string>
+    <string name="dial_playback_picture_controls">Picture controls</string>
+    <string name="dial_playback_picture_controls_hint">Saves a look for each channel group. Set it from the player. Off leaves the picture alone, including HDR. On applies it from the next channel.</string>
+    <string name="dial_picture_for_group">Picture · %1$s</string>
+    <string name="dial_picture_normal">Normal</string>
+    <string name="dial_picture_cinema">Cinema</string>
+    <string name="dial_picture_bright">Bright</string>
+    <string name="dial_picture_soft">Soft</string>
+    <string name="dial_picture_next_channel">Applies from the next channel.</string>
+    <string name="dial_picture_controls_off">Turn on Picture controls in Playback to use this.</string>
     <string name="dial_playback_dolby_vision">Dolby Vision</string>
     <string name="dial_value_dv_native">Dolby Vision</string>
     <string name="dial_value_dv_as_hdr10">Play as HDR10</string>
@@ -347,6 +356,7 @@
     <!-- In-player options -->
     <string name="dial_options_title">Options</string>
     <string name="dial_options_audio">Audio</string>
+    <string name="dial_options_picture">Picture</string>
     <string name="dial_options_subtitles">Subtitles</string>
     <string name="dial_options_subtitles_off">Off</string>
     <string name="dial_options_none">None</string>

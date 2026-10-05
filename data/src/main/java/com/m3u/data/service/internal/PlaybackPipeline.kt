@@ -42,7 +42,17 @@ internal data class PlaybackOptions(
     val styledSubtitles: Boolean = true,
     /** Anime4K line shader. Off leaves the picture on the direct, HDR-capable path. */
     val anime4k: Boolean = false,
-)
+    /** Per-group brightness, contrast and colour. Off leaves the picture alone. */
+    val pictureControls: Boolean = false,
+    /** The preset for the channel group now playing. [PicturePresets.NORMAL] adds nothing. */
+    val picturePreset: String = PicturePresets.NORMAL,
+) {
+    /** True when this playback will run the picture through the GPU. */
+    val usesGpuPicture: Boolean
+        get() = anime4k || (pictureControls && picturePreset != PicturePresets.NORMAL)
+
+    fun effectsKey(): String = "$anime4k:$pictureControls:$picturePreset"
+}
 
 /** Sync offsets, read by the renderers on the playback thread on every frame. */
 internal class PlaybackSync {

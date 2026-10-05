@@ -337,3 +337,8 @@ fun WeatherRows(viewModel: WeatherViewModel = hiltViewModel()) {
         }
     }
 }
+
+/** Today's public holiday for the screensaver. The forecast above is unchanged. */
+suspend fun holidayToday(country: String = java.util.Locale.getDefault().country): String? =
+    PublicHolidays.today(country)
+
