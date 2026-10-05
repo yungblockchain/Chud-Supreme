@@ -59,7 +59,7 @@ class LocalMediaServer @Inject constructor() {
     fun publishStream(key: String, extension: String, contentType: String, length: Long, opener: RangeOpener): String? {
         val socket = ensureServer() ?: return null
         val path = "/f/${Integer.toHexString(key.hashCode())}${key.length.toString(16)}.$extension"
-        if (streams.size >= MAX_STREAMS && path !in streams) streams.clear()
+        if (streams.size >= MAX_STREAMS && !streams.containsKey(path)) streams.clear()
         streams[path] = Stream(contentType, length, opener)
         return "http://127.0.0.1:${socket.localPort}$path"
     }
