@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.MusicNote
@@ -122,8 +121,22 @@ fun YouTubeScreen(
                     text = section.label(),
                     icon = section.icon(),
                     onClick = { viewModel.open(section) },
+                    // Holding OK on a followed channel unfollows it; on the history, clears it.
+                    onLongClick = when (section) {
+                        is YtSection.Followed -> ({ viewModel.toggleFollow(section.channel) })
+                        YtSection.History -> ({ viewModel.clearHistory() })
+                        else -> null
+                    },
                     selected = state.section == section,
                     focusRequester = firstSection.takeIf { section == sections.first() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item(key = "refresh") {
+                TvActionButton(
+                    text = stringResource(R.string.dial_youtube_refresh),
+                    icon = Icons.Rounded.Refresh,
+                    onClick = viewModel::refresh,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -165,51 +178,27 @@ fun YouTubeScreen(
                     VideoGrid(state, viewModel, onPlaying, gridFocus)
                 }
                 else -> {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = section.label(),
-                                color = TvColors.TextPrimary,
-                                fontFamily = TvFonts.Body,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 24.sp,
-                            )
-                            Text(
-                                text = when {
-                                    state.loading -> stringResource(R.string.dial_youtube_loading)
-                                    state.failed -> stringResource(R.string.dial_youtube_failed)
-                                    state.items.isEmpty() && section == YtSection.History -> stringResource(R.string.dial_youtube_history_empty)
-                                    else -> stringResource(R.string.dial_youtube_hint)
-                                },
-                                color = TvColors.TextSecondary,
-                                fontFamily = TvFonts.Body,
-                                fontSize = 14.sp,
-                            )
-                        }
-                        if (section is YtSection.Followed) {
-                            TvActionButton(
-                                text = stringResource(R.string.dial_youtube_unfollow),
-                                icon = Icons.Rounded.Check,
-                                onClick = { viewModel.toggleFollow(section.channel) },
-                            )
-                        }
-                        if (section == YtSection.History && state.items.isNotEmpty()) {
-                            TvActionButton(
-                                text = stringResource(R.string.dial_youtube_clear_history),
-                                icon = Icons.Rounded.Delete,
-                                onClick = viewModel::clearHistory,
-                            )
-                        } else if (section != YtSection.History) {
-                            TvIconActionButton(
-                                icon = Icons.Rounded.Refresh,
-                                contentDescription = stringResource(R.string.dial_youtube_refresh),
-                                onClick = viewModel::refresh,
-                            )
-                        }
+                    Column {
+                        Text(
+                            text = section.label(),
+                            color = TvColors.TextPrimary,
+                            fontFamily = TvFonts.Body,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                        )
+                        Text(
+                            text = when {
+                                state.loading -> stringResource(R.string.dial_youtube_loading)
+                                state.failed -> stringResource(R.string.dial_youtube_failed)
+                                section == YtSection.History && state.items.isEmpty() -> stringResource(R.string.dial_youtube_history_empty)
+                                section == YtSection.History -> stringResource(R.string.dial_youtube_history_hint)
+                                section is YtSection.Followed -> stringResource(R.string.dial_youtube_followed_hint)
+                                else -> stringResource(R.string.dial_youtube_hint)
+                            },
+                            color = TvColors.TextSecondary,
+                            fontFamily = TvFonts.Body,
+                            fontSize = 14.sp,
+                        )
                     }
                     VideoGrid(state, viewModel, onPlaying, gridFocus)
                 }

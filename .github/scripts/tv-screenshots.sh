@@ -193,7 +193,7 @@ if check "launch"; then
         # Radio: the voted-for stations, a search with a station playing (artwork in the player),
         # and the podcast charts.
         open_tab radio 14; shot 49-radio-popular
-        press $DOWN $DOWN $DOWN; sleep 1; press $OK; sleep 1; type_text "BBC%sRadio%s2"; sleep 8; shot 49d-radio-search
+        press $DOWN $DOWN $DOWN; sleep 1; press $OK; sleep 1; type_text "BBC"; sleep 8; shot 49d-radio-search
         press $DOWN; sleep 1; press $OK; sleep 15; shot 49a-radio-playing
         check "radio playback"
         press $BACK; sleep 2; press $BACK; sleep 2

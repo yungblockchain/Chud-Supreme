@@ -470,7 +470,7 @@ fun App(
         youtube.events.collect { event ->
             when (event) {
                 is YouTubeEvent.OpenExternally -> {
-                    Toast.makeText(context, youTubeFallback, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, event.reason?.let { "$youTubeFallback · $it" } ?: youTubeFallback, Toast.LENGTH_LONG).show()
                     openInYouTubeApp(event.video.url)
                 }
                 is YouTubeEvent.Message -> Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()

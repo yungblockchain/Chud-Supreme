@@ -940,6 +940,8 @@
     <string name="dial_youtube_failed">YouTube didn\'t answer. Try again in a moment.</string>
     <string name="dial_youtube_hint">OK plays. Hold OK to follow the channel.</string>
     <string name="dial_youtube_history_empty">Nothing watched here yet.</string>
+    <string name="dial_youtube_history_hint">OK plays again. Hold OK on Watched here to clear the list.</string>
+    <string name="dial_youtube_followed_hint">OK plays. Hold OK on the channel\'s button to unfollow.</string>
     <string name="dial_youtube_refresh">Refresh</string>
     <string name="dial_youtube_clear_history">Clear history</string>
     <string name="dial_youtube_unfollow">Unfollow</string>
@@ -953,6 +955,11 @@
     <string name="dial_youtube_live">LIVE</string>
     <string name="dial_youtube_opening">Opening…</string>
     <string name="dial_youtube_fallback">Opening in the YouTube app</string>
+    <string name="dial_youtube_reason_bot">YouTube wants a sign-in from this network</string>
+    <string name="dial_youtube_reason_age">age-restricted</string>
+    <string name="dial_youtube_reason_country">not available in your country</string>
+    <string name="dial_youtube_reason_paid">paid or members-only</string>
+    <string name="dial_youtube_reason_private">private video</string>
     <string name="dial_youtube_play_in">YouTube videos play</string>
     <string name="dial_youtube_play_here">In Chud Supreme</string>
     <string name="dial_youtube_play_app">In the YouTube app</string>

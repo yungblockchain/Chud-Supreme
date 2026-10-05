@@ -1,6 +1,7 @@
 package com.m3u.tv
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -63,7 +64,12 @@ import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException
+import org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException
+import org.schabi.newpipe.extractor.exceptions.PaidContentException
+import org.schabi.newpipe.extractor.exceptions.PrivateContentException
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
@@ -396,6 +402,8 @@ object YouTubeClient {
             muxedUrl = muxed?.content,
             userAgent = userAgentFor(plan?.sampleUrl ?: hls ?: muxed?.content.orEmpty()),
             related = related,
+            videoOnly = info.videoOnlyStreams.size,
+            audio = info.audioStreams.size,
         )
     }
 
@@ -459,6 +467,9 @@ data class ResolvedVideo(
     val muxedUrl: String?,
     val userAgent: String,
     val related: List<YouTubeVideo>,
+    /** How many streams of each kind the extractor found (for the log when none plays). */
+    val videoOnly: Int = 0,
+    val audio: Int = 0,
 )
 
 /** The extractor's HTTP: plain HttpURLConnection, with YouTube's consent and captcha handling. */
@@ -696,7 +707,7 @@ data class YouTubeState(
 
 sealed interface YouTubeEvent {
     /** The app's player couldn't take this one: the YouTube app should open it. */
-    data class OpenExternally(val video: YouTubeVideo) : YouTubeEvent
+    data class OpenExternally(val video: YouTubeVideo, val reason: String? = null) : YouTubeEvent
     data class Message(val text: String) : YouTubeEvent
 }
 
@@ -848,15 +859,19 @@ class YouTubeViewModel @Inject constructor(
             try {
                 waitUntilReady()
                 val prefs = store.preferences.value
-                val resolved = runCatching { YouTubeClient.resolve(video.id, prefs.maxHeight) }
-                    .onFailure { if (it is CancellationException) throw it }
-                    .getOrNull()
+                val attempt = runCatching { YouTubeClient.resolve(video.id, prefs.maxHeight) }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        Log.w(TAG, "Could not get streams for ${video.id}: ${it.javaClass.simpleName}: ${it.message}")
+                    }
+                val resolved = attempt.getOrNull()
                 val url = resolved?.let { r ->
                     r.manifest?.let { withContext(Dispatchers.IO) { local.publish(it, "application/dash+xml", "mpd") } } ?: r.hlsUrl ?: r.muxedUrl
                 }
                 if (resolved == null || url == null) {
+                    if (resolved != null) Log.w(TAG, "No playable stream for ${video.id} (video-only ${resolved.videoOnly}, audio ${resolved.audio})")
                     store.addToHistory(video)
-                    _events.tryEmit(YouTubeEvent.OpenExternally(video))
+                    _events.tryEmit(YouTubeEvent.OpenExternally(video, reasonFor(attempt.exceptionOrNull())))
                     return@launch
                 }
                 val channelId = withContext(Dispatchers.IO) { rememberChannel(video, resolved, url) }
@@ -931,7 +946,19 @@ class YouTubeViewModel @Inject constructor(
         while (!ready) delay(50)
     }
 
+    /** Why the app's player couldn't take a video, in the person's words. */
+    private fun reasonFor(error: Throwable?): String? = when (error) {
+        null -> null
+        is SignInConfirmNotBotException -> context.getString(R.string.dial_youtube_reason_bot)
+        is AgeRestrictedContentException -> context.getString(R.string.dial_youtube_reason_age)
+        is GeographicRestrictionException -> context.getString(R.string.dial_youtube_reason_country)
+        is PaidContentException -> context.getString(R.string.dial_youtube_reason_paid)
+        is PrivateContentException -> context.getString(R.string.dial_youtube_reason_private)
+        else -> null
+    }
+
     companion object {
+        private const val TAG = "ChudYouTube"
         const val PLAYLIST_URL = "youtube://videos"
         const val PLAYLIST_TITLE = "YouTube"
         private const val SEARCH_DEBOUNCE_MS = 500L
