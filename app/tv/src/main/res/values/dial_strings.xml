@@ -1261,4 +1261,16 @@
     <string name="dial_quiz_hard">hard</string>
     <string name="dial_setting_aniskip">Anime intro and ending times (AniSkip)</string>
     <string name="dial_files_found">Found on your network</string>
+    <!-- Stage 7b: Formula 1, radio now playing and lyrics -->
+    <string name="dial_f1_title">Formula 1</string>
+    <string name="dial_f1_loading">Getting the Formula 1 calendar…</string>
+    <string name="dial_f1_failed">Formula 1 didn\'t load. Try Refresh in a moment.</string>
+    <string name="dial_f1_next">Next Grand Prix</string>
+    <string name="dial_f1_last">Last race · %1$s</string>
+    <string name="dial_f1_standings">Drivers\' championship</string>
+    <string name="dial_f1_points">%1$s pts</string>
+    <string name="dial_setting_radio_lyrics">Song words on radio (LRCLIB)</string>
+    <string name="dial_lyrics_loading">Looking for the words…</string>
+    <string name="dial_lyrics_none">No words for this one.</string>
+    <string name="dial_lyrics_credit">Lyrics from LRCLIB</string>
 </resources>

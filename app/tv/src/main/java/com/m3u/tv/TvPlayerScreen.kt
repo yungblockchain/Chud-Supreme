@@ -80,6 +80,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
@@ -679,6 +680,18 @@ fun TvPlayerScreen(
     // "What's going on?": the last couple of minutes of subtitles go to Claude with the title.
     val sceneViewModel: SceneExplainerViewModel = hiltViewModel()
     val sceneAnswer by sceneViewModel.answer.collectAsStateWithLifecycle()
+    // Radio: the song now, and its words.
+    val streamTitle = if (artwork != null) rememberStreamTitle(player, channel?.title) else null
+    var lyrics by remember { mutableStateOf<String?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(streamTitle, preferences.radioLyrics, live) {
+        lyrics = null
+        val song = streamTitle ?: return@LaunchedEffect
+        if (!preferences.radioLyrics || !live) return@LaunchedEffect
+        lyricsLoading = true
+        lyrics = LrcLib.lyrics(song)
+        lyricsLoading = false
+    }
     val dialogue = remember(player) { player?.let { RecentDialogue(it) } }
     DisposableEffect(player, dialogue) {
         val target = player ?: return@DisposableEffect onDispose { }
@@ -840,14 +853,42 @@ fun TvPlayerScreen(
             )
         }
 
-        // Radio and podcasts: the artwork where the picture would be.
+        // Radio and podcasts: the artwork where the picture would be, with the song playing now
+        // and (for radio) its words beside it.
         if (artwork != null) {
+            val showLyrics = live && preferences.radioLyrics && streamTitle != null
             AudioArtwork(
                 artwork = artwork,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(y = (-72).dp),
+                    .offset(x = if (showLyrics) (-220).dp else 0.dp, y = (-72).dp),
             )
+            streamTitle?.let { song ->
+                Text(
+                    text = song,
+                    color = TvColors.TextPrimary,
+                    fontFamily = TvFonts.Body,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(x = if (showLyrics) (-220).dp else 0.dp, y = 104.dp)
+                        .widthIn(max = 420.dp),
+                )
+                if (showLyrics) {
+                    LyricsPanel(
+                        song = song,
+                        lyrics = lyrics,
+                        loading = lyricsLoading,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 40.dp)
+                            .offset(y = (-40).dp),
+                    )
+                }
+            }
         }
         segmentSkipped?.let { category ->
             Text(

@@ -118,6 +118,8 @@ data class DialPreferences(
     val scoreTicker: Boolean = true,
     /** Anime episodes without markers get their opening and ending times from AniSkip. */
     val aniSkip: Boolean = true,
+    /** Radio shows the words of the song playing (LRCLIB). */
+    val radioLyrics: Boolean = true,
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -474,6 +476,7 @@ class DialSettingsStore @Inject constructor(
             .putBoolean(KEY_AUDIO_DESCRIPTION, next.audioDescription)
             .putBoolean(KEY_SCORE_TICKER, next.scoreTicker)
             .putBoolean(KEY_ANISKIP, next.aniSkip)
+            .putBoolean(KEY_RADIO_LYRICS, next.radioLyrics)
             .apply()
     }
 
@@ -676,6 +679,7 @@ class DialSettingsStore @Inject constructor(
             audioDescription = prefs.getBoolean(KEY_AUDIO_DESCRIPTION, defaults.audioDescription),
             scoreTicker = prefs.getBoolean(KEY_SCORE_TICKER, defaults.scoreTicker),
             aniSkip = prefs.getBoolean(KEY_ANISKIP, defaults.aniSkip),
+            radioLyrics = prefs.getBoolean(KEY_RADIO_LYRICS, defaults.radioLyrics),
         )
     }
 
@@ -741,6 +745,7 @@ class DialSettingsStore @Inject constructor(
         const val KEY_AUDIO_DESCRIPTION = "audio_description"
         const val KEY_SCORE_TICKER = "score_ticker"
         const val KEY_ANISKIP = "aniskip"
+        const val KEY_RADIO_LYRICS = "radio_lyrics"
         const val KEY_WATCHED_PREFIX = "watched_"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"

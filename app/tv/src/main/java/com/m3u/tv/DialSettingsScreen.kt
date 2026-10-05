@@ -336,6 +336,13 @@ fun DialSettingsScreen(
         }
         item {
             SettingRow(
+                label = stringResource(R.string.dial_setting_radio_lyrics),
+                value = onOff(preferences.radioLyrics),
+                onClick = { onUpdate { it.copy(radioLyrics = !it.radioLyrics) } },
+            )
+        }
+        item {
+            SettingRow(
                 label = stringResource(R.string.dial_setting_back_in_player),
                 value = stringResource(
                     if (preferences.backToMini) R.string.dial_value_mini_player else R.string.dial_value_close_player

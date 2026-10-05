@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.rounded.Paid
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SportsMotorsports
 import androidx.compose.material.icons.rounded.SportsSoccer
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
@@ -44,6 +45,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -202,6 +204,15 @@ fun MatchCentreScreen(
     var detailLoading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
     var watchNote by remember { mutableStateOf<String?>(null) }
+    var showF1 by remember { mutableStateOf(false) }
+    var f1 by remember { mutableStateOf<F1Weekend?>(null) }
+    var f1Loading by remember { mutableStateOf(false) }
+    LaunchedEffect(showF1, reload) {
+        if (!showF1) return@LaunchedEffect
+        f1Loading = true
+        f1 = FormulaOne.weekend() ?: f1
+        f1Loading = false
+    }
     val context = LocalContext.current
     var shots by remember { mutableStateOf<List<FootballFeeds.Shot>>(emptyList()) }
     var followed by remember { mutableStateOf(loadFollowed(context)) }
@@ -365,11 +376,26 @@ fun MatchCentreScreen(
                     TvActionButton(
                         text = item.second,
                         icon = Icons.Rounded.SportsSoccer,
-                        selected = index == leagueIndex,
-                        onClick = { leagueIndex = index },
+                        selected = !showF1 && index == leagueIndex,
+                        onClick = {
+                            showF1 = false
+                            leagueIndex = index
+                        },
+                    )
+                }
+                item {
+                    TvActionButton(
+                        text = stringResource(R.string.dial_f1_title),
+                        icon = Icons.Rounded.SportsMotorsports,
+                        selected = showF1,
+                        onClick = { showF1 = true },
                     )
                 }
             }
+        }
+        if (showF1) {
+            formulaOneItems(f1, f1Loading)
+            return@LazyColumn
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
