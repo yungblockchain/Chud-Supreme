@@ -26,6 +26,7 @@
   .ok { color:var(--ok); } .bad { color:var(--bad); }
   small { color:var(--muted); }
   .remote { padding:0 16px 16px; display:grid; gap:12px; }
+  .captions { min-height:96px; padding:16px; border-radius:12px; background:#000; color:#fff; font-size:26px; line-height:1.35; text-align:center; white-space:pre-line; }
   .pad { display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(3, 64px); gap:8px; max-width:260px; margin:0 auto; }
   .pad .up { grid-column:2; grid-row:1; } .pad .left { grid-column:1; grid-row:2; } .pad .ok { grid-column:2; grid-row:2; }
   .pad .right { grid-column:3; grid-row:2; } .pad .down { grid-column:2; grid-row:3; }
@@ -69,6 +70,16 @@
         <button type="button" data-key="chdown" class="k">Ch −</button>
       </div>
       <div class="status" id="remote-status"></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Subtitles on your phone</summary>
+    <div class="remote">
+      <p class="lead">The TV's subtitles, big, right here (they show when subtitles are on in the player).</p>
+      <button type="button" id="captions-toggle">Show subtitles here</button>
+      <div id="captions" class="captions" aria-live="polite"></div>
+      <div class="status" id="captions-status"></div>
     </div>
   </details>
 
@@ -181,7 +192,7 @@
     button.addEventListener('click', async () => {
       const data = new URLSearchParams({ key: button.dataset.key, pin: pin.value.trim() });
       try {
-        const response = await fetch('/api/key', { method: 'POST', body: data });
+        const response = await fetch('/api/press', { method: 'POST', body: data });
         const result = await response.json();
         remoteStatus.className = result.ok ? 'status' : 'status bad';
         remoteStatus.textContent = result.ok ? '' : (messages[result.error] || 'That did not work.');
@@ -189,6 +200,28 @@
         remoteStatus.className = 'status bad'; remoteStatus.textContent = 'Could not reach the TV.';
       }
     });
+  });
+  // Subtitles: asks the TV for the line on screen a couple of times a second while it's on.
+  const captionsToggle = document.getElementById('captions-toggle');
+  const captionsBox = document.getElementById('captions');
+  const captionsStatus = document.getElementById('captions-status');
+  let captionsTimer = null;
+  function stopCaptions(text) {
+    clearInterval(captionsTimer); captionsTimer = null;
+    captionsToggle.textContent = 'Show subtitles here';
+    captionsStatus.className = text ? 'status bad' : 'status'; captionsStatus.textContent = text || '';
+  }
+  captionsToggle.addEventListener('click', () => {
+    if (captionsTimer) { stopCaptions(); return; }
+    captionsToggle.textContent = 'Stop';
+    captionsTimer = setInterval(async () => {
+      try {
+        const response = await fetch('/captions?pin=' + encodeURIComponent(pin.value.trim()));
+        const result = await response.json();
+        if (!result.ok) { stopCaptions(messages[result.error] || 'That did not work.'); return; }
+        captionsBox.textContent = result.text;
+      } catch (e) { stopCaptions('Could not reach the TV.'); }
+    }, 600);
   });
   // Voice search: the phone listens (the browser's own speech recognition) and sends the words.
   const voice = document.getElementById('voice');

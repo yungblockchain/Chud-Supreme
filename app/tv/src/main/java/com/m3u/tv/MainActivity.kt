@@ -3,14 +3,15 @@ package com.m3u.tv
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import android.view.KeyEvent
-import androidx.activity.SystemBarStyle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.tv.material3.MaterialTheme
@@ -26,6 +27,13 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val translated = Gamepad.translate(event)
         val key = translated ?: event
+        // The remote lock (quick settings) keeps every key but volume and power until it's undone.
+        if (RemoteLock.intercept(
+                key,
+                onHint = { Toast.makeText(this, R.string.dial_remote_locked, Toast.LENGTH_SHORT).show() },
+                onUnlocked = { Toast.makeText(this, R.string.dial_remote_unlocked, Toast.LENGTH_SHORT).show() },
+            )
+        ) return true
         if (key.keyCode == KeyEvent.KEYCODE_BACK) {
             if (key.action == KeyEvent.ACTION_DOWN && key.repeatCount >= 1) backHeld = true
             if (key.action == KeyEvent.ACTION_UP && backHeld) {

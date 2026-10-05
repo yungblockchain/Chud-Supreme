@@ -1210,4 +1210,19 @@
     <string name="dial_pad_channel_up">Channel up</string>
     <string name="dial_pad_channel_down">Channel down</string>
     <string name="dial_pad_unused">Not used</string>
+    <!-- Stage 6c: guide search, channel list, sleep timer, audio description, remote lock -->
+    <string name="dial_search_on_tv">On TV</string>
+    <string name="dial_airing_now">On now</string>
+    <string name="dial_airing_today">Today %1$s</string>
+    <string name="dial_airing_tomorrow">Tomorrow %1$s</string>
+    <string name="dial_airing_watch">OK to watch</string>
+    <string name="dial_airing_remind">OK for a reminder</string>
+    <string name="dial_airing_reminder_set">Reminder set · OK to clear it</string>
+    <string name="dial_player_channels">Channels · %1$d</string>
+    <string name="dial_player_sleep_end">End of this</string>
+    <string name="dial_setting_audio_description">Audio description (where there is one)</string>
+    <string name="dial_remote_lock">Lock the remote</string>
+    <string name="dial_remote_lock_value">Up, Up, Down, Down unlocks</string>
+    <string name="dial_remote_locked">Remote locked. Press Up, Up, Down, Down to unlock.</string>
+    <string name="dial_remote_unlocked">Remote unlocked</string>
 </resources>

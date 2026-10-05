@@ -112,6 +112,8 @@ data class DialPreferences(
     val controllerRumble: Boolean = true,
     /** A and B (Cross and Circle) swapped, for Nintendo-style "right button confirms". */
     val swapControllerAB: Boolean = false,
+    /** Audio tracks that describe what's on screen come first, where a stream has them. */
+    val audioDescription: Boolean = false,
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -465,6 +467,7 @@ class DialSettingsStore @Inject constructor(
             .putBoolean(KEY_BINGE, next.bingeMode)
             .putBoolean(KEY_CONTROLLER_RUMBLE, next.controllerRumble)
             .putBoolean(KEY_SWAP_AB, next.swapControllerAB)
+            .putBoolean(KEY_AUDIO_DESCRIPTION, next.audioDescription)
             .apply()
     }
 
@@ -664,6 +667,7 @@ class DialSettingsStore @Inject constructor(
             bingeMode = prefs.getBoolean(KEY_BINGE, defaults.bingeMode),
             controllerRumble = prefs.getBoolean(KEY_CONTROLLER_RUMBLE, defaults.controllerRumble),
             swapControllerAB = prefs.getBoolean(KEY_SWAP_AB, defaults.swapControllerAB),
+            audioDescription = prefs.getBoolean(KEY_AUDIO_DESCRIPTION, defaults.audioDescription),
         )
     }
 
@@ -726,6 +730,7 @@ class DialSettingsStore @Inject constructor(
         const val KEY_BINGE = "binge_mode"
         const val KEY_CONTROLLER_RUMBLE = "controller_rumble"
         const val KEY_SWAP_AB = "controller_swap_ab"
+        const val KEY_AUDIO_DESCRIPTION = "audio_description"
         const val KEY_WATCHED_PREFIX = "watched_"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"

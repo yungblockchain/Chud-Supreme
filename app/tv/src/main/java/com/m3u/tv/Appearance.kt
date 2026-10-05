@@ -263,7 +263,18 @@ object Skins {
         focus = SkinFocus.Ring, backdropArtwork = false,
     )
 
-    val builtIn: List<Skin> = listOf(SupremeBlack, Charcoal, Glass, Midnight, Forest, Ember, NeonCity, Paper)
+    /** Black and white with a bold yellow focus and bigger text: the easiest to read from the sofa. */
+    val HighContrast = Skin(
+        id = "high-contrast", name = "High Contrast", builtIn = true,
+        background = Color(0xFF000000), surface = Color(0xFF000000), surfaceRaised = Color(0xFF1C1C1C),
+        accent = Color(0xFFFFE600), onAccent = Color(0xFF000000), highlight = Color(0xFFFFE600),
+        text = Color(0xFFFFFFFF), textSecondary = Color(0xFFFFFFFF), textMuted = Color(0xFFD6D6D6),
+        danger = Color(0xFFFF7A7A), positive = Color(0xFF6BFF9C),
+        font = SkinFont.Hyperlegible, accentFont = SkinFont.Hyperlegible, corners = SkinCorners.Rounded,
+        focus = SkinFocus.Fill, backdropArtwork = false, scalePercent = 115, animations = false,
+    )
+
+    val builtIn: List<Skin> = listOf(SupremeBlack, Charcoal, Glass, Midnight, Forest, Ember, NeonCity, Paper, HighContrast)
 
     fun byId(id: String): Skin? = builtIn.firstOrNull { it.id == id }
 }

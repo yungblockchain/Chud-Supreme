@@ -28,11 +28,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /* -------------------------------------------------------------------------------------------------
  * The phone page: while it's switched on, the Fire TV serves a small web page on the home
  * network. A phone opens it (QR code on the TV) and types there instead of on the remote: a
- * search, a question for Claude, an Xtream login or M3U link, or API keys. Every change needs
+ * search, a question for Claude, an Xtream login or M3U link, or API keys; it's also a remote,
+ * and shows the player's subtitles in big text. Every change needs
  * the 6-digit PIN shown on the TV; wrong PINs lock it for a minute. Keys go straight into the
  * encrypted store and are never shown back.
  * ---------------------------------------------------------------------------------------------- */
@@ -162,6 +165,16 @@ class PhoneCompanion @Inject constructor(
                         respond(output, 200, JSON, text, download = "chud-supreme-backup.json")
                     }
                 }
+                // The subtitle on screen now, for the phone page's big-text view.
+                method == "GET" && path == "/captions" -> {
+                    val refused = checkPin(parseForm(query))
+                    if (refused != null) {
+                        respond(output, refused.first, JSON, refused.second)
+                    } else {
+                        val text = CaptionFeed.current()
+                        respond(output, 200, JSON, JsonObject(mapOf("ok" to JsonPrimitive(true), "text" to JsonPrimitive(text))).toString())
+                    }
+                }
                 // A watch-party guest asking what's playing and where. The code is the key.
                 method == "GET" && path == "/party" -> {
                     val form = parseForm(query)
@@ -239,7 +252,7 @@ class PhoneCompanion @Inject constructor(
                 PhoneMessage.KeySaved(name)
             }
             "party" -> PhoneMessage.JoinParty(field("code").ifEmpty { return 400 to BAD }.take(8))
-            "key" -> PhoneMessage.Key(REMOTE_KEYS[field("key")] ?: return 400 to BAD)
+            "press" -> PhoneMessage.Key(REMOTE_KEYS[field("key")] ?: return 400 to BAD)
             "restore" -> {
                 val raw = form["backup"].orEmpty().trim().ifEmpty { return 400 to BAD }
                 val summary = runBlocking { backup.restore(raw) } ?: return 400 to """{"ok":false,"error":"not_a_backup"}"""
@@ -335,4 +348,23 @@ class PhoneCompanion @Inject constructor(
         private const val JSON = "application/json"
         private const val BAD = """{"ok":false,"error":"missing"}"""
     }
+}
+
+/** The subtitle line on screen now (the phone page shows it); empty when there's none. */
+object CaptionFeed {
+    @Volatile
+    private var text: String = ""
+
+    @Volatile
+    private var at = 0L
+
+    fun update(line: String) {
+        text = line
+        at = System.currentTimeMillis()
+    }
+
+    /** A line older than half a minute is stale (subtitles off, or the player closed). */
+    fun current(): String = if (System.currentTimeMillis() - at > STALE_MS) "" else text
+
+    private const val STALE_MS = 30_000L
 }

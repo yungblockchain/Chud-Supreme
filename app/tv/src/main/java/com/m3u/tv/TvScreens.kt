@@ -178,6 +178,8 @@ fun TvBrowsePane(
     universal: UniversalResults = UniversalResults(),
     onOpenVideo: (VideoResult) -> Unit = {},
     onPlayServer: (ServerItem) -> Unit = {},
+    onAiring: (Airing) -> Unit = {},
+    remindedKeys: Set<String> = emptySet(),
     guideContent: @Composable () -> Unit = {},
     claudeContent: @Composable () -> Unit = {},
     dialSettingsContent: @Composable () -> Unit = {},
@@ -304,6 +306,8 @@ fun TvBrowsePane(
                         onOpenTitle = onOpenTitle,
                         onOpenVideo = onOpenVideo,
                         onPlayServer = onPlayServer,
+                        onAiring = onAiring,
+                        remindedKeys = remindedKeys,
                     )
 
                     TvDestination.Live, TvDestination.Films, TvDestination.Series -> CatalogScreen(

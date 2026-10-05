@@ -83,6 +83,26 @@ interface ProgrammeDao {
     @Query("DELETE FROM programmes WHERE epg_url = :epgUrl")
     suspend fun deleteAllByEpgUrl(epgUrl: String)
 
+    /** Programmes in [epgUrls] whose title contains [pattern] (%, _ and the backslash escaped with a backslash), overlapping [from, to). */
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE epg_url IN (:epgUrls)
+        AND `end` > :from
+        AND start < :to
+        AND title LIKE '%' || :pattern || '%' ESCAPE '\'
+        ORDER BY start ASC, id ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchByTitle(
+        epgUrls: List<String>,
+        pattern: String,
+        from: Long,
+        to: Long,
+        limit: Int,
+    ): List<Programme>
+
     @Query(
         """
         SELECT * FROM programmes

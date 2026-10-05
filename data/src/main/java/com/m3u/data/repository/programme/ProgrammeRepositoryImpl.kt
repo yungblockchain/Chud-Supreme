@@ -11,6 +11,11 @@ import com.m3u.data.database.M3UDatabase
 import com.m3u.data.database.dao.ChannelDao
 import com.m3u.data.database.dao.PlaylistDao
 import com.m3u.data.database.dao.ProgrammeDao
+import com.m3u.data.database.model.Channel
+import com.m3u.data.database.model.DataSource
+import com.m3u.data.database.model.Playlist
+import com.m3u.data.database.model.isSeries
+import com.m3u.data.database.model.isVod
 import com.m3u.data.database.model.Programme
 import com.m3u.data.database.model.ProgrammeRange
 import com.m3u.data.database.model.epgUrlsOrXtreamXmlUrl
@@ -151,6 +156,29 @@ internal class ProgrammeRepositoryImpl @Inject constructor(
             epgUrls = epgUrls,
             time = time
         ).associateBy { it.channelId }
+    }
+
+    override suspend fun searchAirings(query: String, from: Long, to: Long, limit: Int): List<Pair<Channel, Programme>> {
+        val words = query.trim()
+        if (words.length < 2 || limit <= 0 || to <= from) return emptyList()
+        // Which live playlists each guide belongs to.
+        val owners = mutableMapOf<String, MutableList<Playlist>>()
+        playlistDao.getAll()
+            .filter { it.source != DataSource.EPG && !it.isVod && !it.isSeries }
+            .forEach { playlist -> playlist.epgUrlsOrXtreamXmlUrl().forEach { owners.getOrPut(it) { mutableListOf() } += playlist } }
+        if (owners.isEmpty()) return emptyList()
+        val pattern = words.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        val found = programmeDao.searchByTitle(owners.keys.toList(), pattern, from, to, limit * SEARCH_OVERSCAN)
+        val out = mutableListOf<Pair<Channel, Programme>>()
+        val seen = HashSet<String>()
+        for (programme in found) {
+            val channel = owners[programme.epgUrl].orEmpty().firstNotNullOfOrNull { playlist ->
+                channelDao.getByPlaylistUrlAndRelationId(playlist.url, programme.channelId)?.takeIf { !it.hidden }
+            } ?: continue
+            if (seen.add("${channel.id}@${programme.start}")) out += channel to programme
+            if (out.size >= limit) break
+        }
+        return out
     }
 
     override suspend fun getProgrammesInRange(
@@ -301,6 +329,8 @@ internal class ProgrammeRepositoryImpl @Inject constructor(
 
     private companion object {
         const val MAX_RANGE_PROGRAMMES = 500
+        /** Programmes looked at per result wanted (some belong to hidden or missing channels). */
+        const val SEARCH_OVERSCAN = 4
         const val EPG_INSERT_BATCH_SIZE = 1_000
         const val EPG_STAGING_DIRECTORY = "epg-import-staging"
         val EPG_STAGING_LIMITS = BoundedJsonlRecordStaging.Limits(

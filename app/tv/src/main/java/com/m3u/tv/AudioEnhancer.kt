@@ -220,16 +220,23 @@ fun languageRoot(code: String?): String? {
 }
 
 /**
- * Applies the language rules to a player: the preferred audio language first, and subtitles in
- * the preferred language switched on when the sound isn't in the language the person speaks.
+ * Applies the language rules to a player: the preferred audio language first (and the audio
+ * description track, if asked for), and subtitles in the preferred language switched on when the
+ * sound isn't in the language the person speaks.
  * Returns the listener to remove later.
  */
-fun applyLanguageRules(player: Player, audio: String, subtitles: String, foreignSubtitles: Boolean): Player.Listener {
-    if (audio.isNotEmpty()) {
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setPreferredAudioLanguages(audio)
-            .build()
-    }
+fun applyLanguageRules(
+    player: Player,
+    audio: String,
+    subtitles: String,
+    foreignSubtitles: Boolean,
+    describe: Boolean = false,
+): Player.Listener {
+    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+        .apply { if (audio.isNotEmpty()) setPreferredAudioLanguages(audio) }
+        // Audio description: the track that describes the picture, when there is one.
+        .setPreferredAudioRoleFlags(if (describe) C.ROLE_FLAG_DESCRIBES_VIDEO else 0)
+        .build()
     val listener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
             val spoken = audio.ifEmpty { Locale.getDefault().language }

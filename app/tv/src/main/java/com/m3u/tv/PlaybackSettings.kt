@@ -260,6 +260,14 @@ fun PlaybackSettingsScreen(
             )
         }
 
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_audio_description),
+                value = stringResource(if (preferences.audioDescription) R.string.dial_value_on else R.string.dial_value_off),
+                onClick = { onUpdate { it.copy(audioDescription = !it.audioDescription) } },
+            )
+        }
+
         item { SettingsSection(stringResource(R.string.dial_playback_section_subtitles)) }
         item {
             SettingRow(

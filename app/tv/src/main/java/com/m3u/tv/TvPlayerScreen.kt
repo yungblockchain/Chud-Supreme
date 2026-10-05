@@ -125,6 +125,14 @@ import kotlinx.coroutines.yield
 
 private const val ZAP_BANNER_MS = 3_500L
 private val SLEEP_STEPS_MINUTES = listOf(30, 60, 90, 120)
+/** The sleep timer's "end of this film or episode" step. */
+private const val SLEEP_END_OF_VIDEO = -1
+/** Stops just before the end, so binge mode or autoplay doesn't start the next episode. */
+private const val SLEEP_END_MARGIN_MS = 1_500L
+private const val SLEEP_FADE_MS = 30_000L
+private const val SLEEP_FADE_TICK_MS = 500L
+private const val SLEEP_TICK_MS = 30_000L
+private const val SLEEP_MIN_VOLUME = 0.05f
 
 /** How long the "+30 s" bubble stays after the last scrub step. */
 private const val SCRUB_BUBBLE_MS = 900L
@@ -261,11 +269,21 @@ fun TvPlayerScreen(
     menuPresses: Int = 0,
     /** Bumped when an overlay over the player (quick settings) closes: focus comes back here. */
     refocus: Int = 0,
+    /** Live: the channels being zapped through, for the channel list (Left with the controls hidden). */
+    zapChannels: List<Channel> = emptyList(),
+    /** The card in [zapChannels] that stands for what's playing (merged copies share one). */
+    zapCurrentId: Int? = null,
+    /** What's on now, by channel id, for the channel list. */
+    nowTitles: Map<Int, String> = emptyMap(),
+    onOpenChannelList: () -> Unit = {},
+    onZapTo: (Channel) -> Unit = {},
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
     val optionsFocusRequester = remember { FocusRequester() }
     var optionsOpen by remember { mutableStateOf(false) }
+    var channelListOpen by remember { mutableStateOf(false) }
+    var channelListClosed by remember { mutableIntStateOf(0) }
     var restoreOptionsFocus by remember { mutableStateOf(false) }
     val currentOnClose by rememberUpdatedState(onClose)
 
@@ -364,13 +382,14 @@ fun TvPlayerScreen(
     }
 
     fun cycleSleepTimer() {
-        val nextMinutes = when (val current = sleepMinutes) {
-            null -> SLEEP_STEPS_MINUTES.first()
-            else -> SLEEP_STEPS_MINUTES.firstOrNull { it > current }
-        }
+        // Films and episodes can stop at their own end (before the next one starts).
+        val steps = (if (!live && (player?.duration ?: 0L) > 0L) listOf(SLEEP_END_OF_VIDEO) else emptyList()) +
+            SLEEP_STEPS_MINUTES
+        val current = sleepMinutes
+        val nextMinutes = if (current == null) steps.first() else steps.getOrNull(steps.indexOf(current) + 1)
         sleepMinutes = nextMinutes
         now = System.currentTimeMillis()
-        sleepEndsAt = nextMinutes?.let { now + it * 60_000L }
+        sleepEndsAt = nextMinutes?.takeIf { it > 0 }?.let { now + it * 60_000L }
     }
 
     BackHandler {
@@ -465,17 +484,34 @@ fun TvPlayerScreen(
     }
 
 
-    LaunchedEffect(sleepEndsAt) {
-        val end = sleepEndsAt ?: return@LaunchedEffect
-        while (true) {
-            now = System.currentTimeMillis()
-            if (now >= end) {
-                sleepEndsAt = null
-                sleepMinutes = null
-                currentOnClose()
-                break
+    // The sleep timer: the sound fades over the last half minute, then the player closes. "End of
+    // this" follows the video's own end, so pausing or seeking moves it too.
+    LaunchedEffect(sleepEndsAt, sleepMinutes, player) {
+        val untilEnd = sleepMinutes == SLEEP_END_OF_VIDEO
+        if (!untilEnd && sleepEndsAt == null) return@LaunchedEffect
+        val target = player
+        try {
+            while (true) {
+                now = System.currentTimeMillis()
+                val left = if (untilEnd) {
+                    val length = target?.duration ?: C.TIME_UNSET
+                    if (target == null || length == C.TIME_UNSET || length <= 0L) Long.MAX_VALUE
+                    else length - target.currentPosition - SLEEP_END_MARGIN_MS
+                } else {
+                    (sleepEndsAt ?: break) - now
+                }
+                if (left <= 0L) {
+                    sleepEndsAt = null
+                    sleepMinutes = null
+                    currentOnClose()
+                    break
+                }
+                target?.volume = if (left < SLEEP_FADE_MS) (left.toFloat() / SLEEP_FADE_MS).coerceIn(SLEEP_MIN_VOLUME, 1f) else 1f
+                delay(if (untilEnd || left < SLEEP_FADE_MS + SLEEP_TICK_MS) SLEEP_FADE_TICK_MS else minOf(SLEEP_TICK_MS, left - SLEEP_FADE_MS))
             }
-            delay(minOf(30_000L, end - now))
+        } finally {
+            // Cancelled, changed or done: the sound back to normal for whatever plays next.
+            target?.volume = 1f
         }
     }
 
@@ -599,13 +635,14 @@ fun TvPlayerScreen(
     val stats by rememberPlaybackStats(player, statsVisible, displayHz)
 
     // Language rules: the preferred audio, and subtitles when the sound is in another language.
-    DisposableEffect(player, preferences.audioLanguage, preferences.subtitleLanguage, preferences.foreignAudioSubtitles) {
+    DisposableEffect(player, preferences.audioLanguage, preferences.subtitleLanguage, preferences.foreignAudioSubtitles, preferences.audioDescription) {
         val target = player ?: return@DisposableEffect onDispose { }
         val listener = applyLanguageRules(
             target,
             audio = preferences.audioLanguage,
             subtitles = preferences.subtitleLanguage,
             foreignSubtitles = preferences.foreignAudioSubtitles,
+            describe = preferences.audioDescription,
         )
         onDispose { target.removeListener(listener) }
     }
@@ -641,6 +678,11 @@ fun TvPlayerScreen(
     }
     // An explanation belongs to this video: gone when the player closes or the channel changes.
     DisposableEffect(channel?.id) { onDispose { sceneViewModel.dismiss() } }
+    LaunchedEffect(channelListClosed) {
+        if (channelListClosed == 0) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { playPauseFocusRequester.requestFocus() }
+    }
     LaunchedEffect(refocus) {
         if (refocus == 0) return@LaunchedEffect
         withFrameNanos { }
@@ -682,7 +724,7 @@ fun TvPlayerScreen(
                 }
                 // The options panel moves with the arrows like any list. The "still watching?" card
                 // keeps Up/Down to itself: the control row underneath is only faded out, not gone.
-                if (optionsOpen) return@onPreviewKeyEvent false
+                if (optionsOpen || channelListOpen) return@onPreviewKeyEvent false
                 if (stillWatching) return@onPreviewKeyEvent key == Key.DirectionUp || key == Key.DirectionDown
                 // A skip on offer: OK takes it (with the controls hidden), Back waves it away.
                 val offered = skipOffered
@@ -728,6 +770,15 @@ fun TvPlayerScreen(
                         true
                     }
                     key == Key.Back -> false
+                    live && !controlsVisible && key == Key.DirectionLeft && zapChannels.size > 1 -> {
+                        // The channel list, over the picture.
+                        if (firstPress) {
+                            channelListOpen = true
+                            onOpenChannelList()
+                        }
+                        if (isDown) swallowedKey = key
+                        true
+                    }
                     !controlsVisible -> {
                         // Wake the overlay; don't let this press reach the focused button.
                         if (isDown) {
@@ -1104,10 +1155,12 @@ fun TvPlayerScreen(
                             PlayerButton.Sleep -> TvActionButton(
                                 text = stringResource(R.string.dial_player_sleep),
                                 icon = Icons.Rounded.Bedtime,
-                                supportingText = sleepMinutesLeft
-                                    ?.let { stringResource(R.string.dial_player_sleep_left, it) }
-                                    ?: stringResource(R.string.dial_player_sleep_off),
-                                selected = sleepEndsAt != null,
+                                supportingText = when {
+                                    sleepMinutes == SLEEP_END_OF_VIDEO -> stringResource(R.string.dial_player_sleep_end)
+                                    sleepMinutesLeft != null -> stringResource(R.string.dial_player_sleep_left, sleepMinutesLeft)
+                                    else -> stringResource(R.string.dial_player_sleep_off)
+                                },
+                                selected = sleepEndsAt != null || sleepMinutes == SLEEP_END_OF_VIDEO,
                                 onClick = {
                                     cycleSleepTimer()
                                     showControls()
@@ -1139,6 +1192,28 @@ fun TvPlayerScreen(
                     )
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = channelListOpen,
+            enter = slideInHorizontally { -it } + fadeIn(),
+            exit = slideOutHorizontally { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.CenterStart),
+        ) {
+            PlayerChannelList(
+                channels = zapChannels,
+                currentId = zapCurrentId ?: channel?.id,
+                nowTitles = nowTitles,
+                onPick = { picked ->
+                    channelListOpen = false
+                    channelListClosed++
+                    if (picked.id != (zapCurrentId ?: channel?.id)) onZapTo(picked)
+                },
+                onClose = {
+                    channelListOpen = false
+                    channelListClosed++
+                },
+            )
         }
 
         AnimatedVisibility(

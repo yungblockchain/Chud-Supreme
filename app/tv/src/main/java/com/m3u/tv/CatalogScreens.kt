@@ -596,6 +596,8 @@ fun SearchScreen(
     onOpenTitle: (TmdbTitle) -> Unit = {},
     onOpenVideo: (VideoResult) -> Unit = {},
     onPlayServer: (ServerItem) -> Unit = {},
+    onAiring: (Airing) -> Unit = {},
+    remindedKeys: Set<String> = emptySet(),
 ) {
     val fieldFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -682,6 +684,11 @@ fun SearchScreen(
             }
             // The same words elsewhere: the media server, films and series anywhere, YouTube.
             if (universal.query == query) {
+                if (universal.airings.isNotEmpty()) {
+                    item(key = "universal-airings") {
+                        AiringRow(stringResource(R.string.dial_search_on_tv), universal.airings, remindedKeys, onAiring)
+                    }
+                }
                 if (universal.server.isNotEmpty()) {
                     item(key = "universal-server") {
                         ServerResultRow(stringResource(R.string.dial_search_on_server), universal.server, onPlayServer)

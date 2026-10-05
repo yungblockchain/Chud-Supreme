@@ -72,6 +72,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
+import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.tv.material3.Text
 import com.m3u.data.database.model.Channel
@@ -264,6 +265,7 @@ fun App(
         else -> listOfNotNull(currentChannel)
     }
     val zapIndex = zapChannels.indexOfFirst { it.id == shownId }
+    val nowTitles by viewModel.nowTitles.collectAsStateWithLifecycle()
     val zap: (Int) -> Unit = { step ->
         if (zapIndex >= 0 && zapChannels.size > 1) {
             viewModel.play(zapChannels[Math.floorMod(zapIndex + step, zapChannels.size)])
@@ -549,6 +551,20 @@ fun App(
     ) {
         remember(playingId, nowPlaying) { dial.nextEpisode() }
     } else null
+    // The subtitle on screen, for the phone page's big-text view.
+    DisposableEffect(player) {
+        val target = player ?: return@DisposableEffect onDispose { }
+        val listener = object : Player.Listener {
+            override fun onCues(cueGroup: CueGroup) {
+                CaptionFeed.update(cueGroup.cues.mapNotNull { it.text?.toString()?.trim() }.filter { it.isNotEmpty() }.joinToString("\n"))
+            }
+        }
+        target.addListener(listener)
+        onDispose {
+            target.removeListener(listener)
+            CaptionFeed.update("")
+        }
+    }
     // Night mode and the dialogue boost, on the player's sound wherever it shows (full screen,
     // the corner, behind a details page).
     val enhancer = remember(player) { (player as? ExoPlayer)?.let { AudioEnhancer(it) } }
@@ -1131,6 +1147,23 @@ fun App(
                         universal.search(query)
                     },
                     universal = universalResults,
+                    remindedKeys = reminders.map { it.key }.toSet(),
+                    onAiring = { airing ->
+                        if (airing.isOn(System.currentTimeMillis())) {
+                            openOrPlay(airing.channel)
+                        } else {
+                            val programme = GuideProgramme(
+                                title = airing.title,
+                                description = "",
+                                startMillis = airing.startMs,
+                                endMillis = airing.endMs,
+                                serverStart = null,
+                                hasArchive = false,
+                            )
+                            val set = dial.toggleReminder(airing.channel, programme)
+                            Toast.makeText(context, if (set) reminderSet.format(airing.title) else reminderCleared, Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     onOpenVideo = { video -> openVideo(video) },
                     onPlayServer = { item ->
                         if (item.isSeries) {
@@ -1406,6 +1439,11 @@ fun App(
                 onPlayPause = { viewModel.pauseOrContinue(!isPlaying) },
                 onNextChannel = { zap(1) },
                 onPreviousChannel = { zap(-1) },
+                zapChannels = zapChannels,
+                zapCurrentId = shownId,
+                nowTitles = nowTitles,
+                onOpenChannelList = { viewModel.loadNowTitles(zapChannels) },
+                onZapTo = { picked -> viewModel.play(picked) },
                 onToggleFavourite = { currentChannel?.let(viewModel::toggleFavorite) },
                 onBack = if (preferences.backToMini) minimizePlayer else closePlayer,
                 onClose = closePlayer,

@@ -186,6 +186,25 @@ class TvHomeViewModel @Inject constructor(
             ).joinToString("    ·    ").ifBlank { null }
         }
     }
+    private val _nowTitles = MutableStateFlow<Map<Int, String>>(emptyMap())
+
+    /** What's on now on each of a list of channels (channel id to programme title). */
+    val nowTitles: StateFlow<Map<Int, String>> = _nowTitles.asStateFlow()
+
+    /** Looks up what's on now for [channels] (the player's channel list), a playlist at a time. */
+    fun loadNowTitles(channels: List<Channel>) {
+        viewModelScope.launch {
+            val titles = mutableMapOf<Int, String>()
+            channels.groupBy { it.playlistUrl }.forEach { (playlistUrl, members) ->
+                val now = runCatching { programmes.getProgrammesCurrently(playlistUrl) }.getOrDefault(emptyMap())
+                members.forEach { channel ->
+                    channel.relationId?.let(now::get)?.title?.takeIf { it.isNotBlank() }?.let { titles[channel.id] = it }
+                }
+            }
+            _nowTitles.value = titles
+        }
+    }
+
     /** What's playing, under its custom name when the editor gave it one. */
     val currentChannel: StateFlow<Channel?> = combine(playerManager.channel, edits.names) { channel, names ->
         channel?.let { current -> names[current.url]?.let { current.copy(title = it) } ?: current }

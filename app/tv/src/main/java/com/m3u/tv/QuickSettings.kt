@@ -137,6 +137,17 @@ fun QuickSettingsPanel(
             )
         }
         item {
+            // The lock says how to undo it on the first press after it's on.
+            SettingRow(
+                label = stringResource(R.string.dial_remote_lock),
+                value = stringResource(R.string.dial_remote_lock_value),
+                onClick = {
+                    onClose()
+                    RemoteLock.lock()
+                },
+            )
+        }
+        item {
             Text(
                 text = stringResource(R.string.dial_quick_settings_hint),
                 color = TvColors.TextMuted,

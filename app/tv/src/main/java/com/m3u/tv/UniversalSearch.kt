@@ -1,5 +1,6 @@
 package com.m3u.tv
 
+import android.text.format.DateFormat as AndroidDateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -18,6 +20,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,10 +30,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.m3u.data.database.model.Channel
+import com.m3u.data.repository.programme.ProgrammeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -49,9 +58,16 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 /* -------------------------------------------------------------------------------------------------
- * Search beyond the playlists: the same words looked up on TMDB (films and series anywhere),
- * YouTube, and the media server. Each lands as its own row under the playlist results.
+ * Search beyond the playlists: the same words looked up in the TV guide (what's on now and in the
+ * coming week), on TMDB (films and series anywhere), YouTube, and the media server. Each lands as
+ * its own row under the playlist results.
  * ---------------------------------------------------------------------------------------------- */
+
+/** A programme in the guide, on a channel the person has. */
+@Immutable
+data class Airing(val channel: Channel, val title: String, val startMs: Long, val endMs: Long) {
+    fun isOn(now: Long): Boolean = now in startMs until endMs
+}
 
 @Immutable
 data class VideoResult(val id: String, val title: String, val channel: String?, val thumbnail: String?) {
@@ -64,12 +80,14 @@ data class UniversalResults(
     val titles: List<TmdbTitle> = emptyList(),
     val videos: List<VideoResult> = emptyList(),
     val server: List<ServerItem> = emptyList(),
+    val airings: List<Airing> = emptyList(),
 )
 
 @HiltViewModel
 class UniversalSearchViewModel @Inject constructor(
     private val secrets: SecretStore,
     private val serverStore: MediaServerStore,
+    private val programmes: ProgrammeRepository,
 ) : ViewModel() {
     private val _results = MutableStateFlow(UniversalResults())
     val results: StateFlow<UniversalResults> = _results.asStateFlow()
@@ -86,6 +104,14 @@ class UniversalSearchViewModel @Inject constructor(
         job = viewModelScope.launch(Dispatchers.IO) {
             delay(DEBOUNCE_MS)
             _results.value = UniversalResults(query = trimmed)
+            launch {
+                val now = System.currentTimeMillis()
+                val found = runCatching { programmes.searchAirings(trimmed, now, now + GUIDE_AHEAD_MS, MAX_AIRINGS) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrDefault(emptyList())
+                    .map { (channel, programme) -> Airing(channel, programme.title, programme.start, programme.end) }
+                _results.update { if (it.query == trimmed) it.copy(airings = found) else it }
+            }
             launch {
                 val key = secrets.get(SecretName.Tmdb) ?: return@launch
                 val titles = runCatching { TmdbClient.searchAll(key, trimmed) }
@@ -113,6 +139,8 @@ class UniversalSearchViewModel @Inject constructor(
     private companion object {
         const val MIN_CHARS = 3
         const val DEBOUNCE_MS = 600L
+        const val GUIDE_AHEAD_MS = 7 * 24 * 60 * 60_000L
+        const val MAX_AIRINGS = 24
     }
 }
 
@@ -295,3 +323,102 @@ fun TmdbResultRow(title: String, titles: List<TmdbTitle>, onOpen: (TmdbTitle) ->
         }
     }
 }
+
+/**
+ * Guide matches: OK plays what's on now, or sets (or clears) a reminder for later.
+ * [reminded] holds the reminder keys already set.
+ */
+@Composable
+fun AiringRow(title: String, airings: List<Airing>, reminded: Set<String>, onPick: (Airing) -> Unit) {
+    if (airings.isEmpty()) return
+    val now = System.currentTimeMillis()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            color = TvColors.TextPrimary,
+            fontFamily = TvFonts.Body,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 20.sp,
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+            modifier = Modifier.focusGroup(),
+        ) {
+            items(airings, key = { "${it.channel.id}@${it.startMs}" }) { airing ->
+                val on = airing.isOn(now)
+                val set = reminderKey(airing.channel.id, airing.startMs) in reminded
+                FocusFrame(
+                    onClick = { onPick(airing) },
+                    shape = RoundedCornerShape(12.dp),
+                    semanticsLabel = airing.title,
+                    focusedScale = 1.04f,
+                    modifier = Modifier.width(300.dp),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(TvColors.Surface)
+                            .padding(14.dp),
+                    ) {
+                        Text(
+                            text = when {
+                                on -> stringResource(R.string.dial_airing_now)
+                                else -> airingTime(airing.startMs, now)
+                            },
+                            color = if (on) TvColors.Danger else TvColors.Focus,
+                            fontFamily = TvFonts.Body,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                        Text(
+                            text = airing.title,
+                            color = TvColors.TextPrimary,
+                            fontFamily = TvFonts.Body,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = airing.channel.title,
+                            color = TvColors.TextSecondary,
+                            fontFamily = TvFonts.Body,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = stringResource(
+                                when {
+                                    on -> R.string.dial_airing_watch
+                                    set -> R.string.dial_airing_reminder_set
+                                    else -> R.string.dial_airing_remind
+                                }
+                            ),
+                            color = TvColors.TextMuted,
+                            fontFamily = TvFonts.Body,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** "Today 21:00", "Tomorrow 06:30", "Sat 20:00". */
+@Composable
+private fun airingTime(startMs: Long, now: Long): String {
+    val zone = TimeZone.getDefault()
+    fun day(ms: Long) = (ms + zone.getOffset(ms)) / DAY_MS
+    val clock = AndroidDateFormat.getTimeFormat(LocalContext.current).format(Date(startMs))
+    return when (day(startMs) - day(now)) {
+        0L -> stringResource(R.string.dial_airing_today, clock)
+        1L -> stringResource(R.string.dial_airing_tomorrow, clock)
+        else -> SimpleDateFormat("EEE", Locale.getDefault()).format(Date(startMs)) + " " + clock
+    }
+}
+
+private const val DAY_MS = 86_400_000L
