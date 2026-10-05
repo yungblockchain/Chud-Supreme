@@ -89,8 +89,8 @@ fun DetailsScreen(
     onTraktRate: (Int) -> Unit = {},
     onTraktComment: (String, Boolean) -> Unit = { _, _ -> },
     onTraktWatched: () -> Unit = {},
-    /** Plays the trailer TMDB lists (through the YouTube tab's player). */
-    onTrailer: ((String) -> Unit)? = null,
+    /** Plays a trailer: Apple's preview for a film, else the one TMDB lists on YouTube. */
+    onTrailer: ((youTubeKey: String?) -> Unit)? = null,
     hideWatched: Boolean = false,
     onToggleHideWatched: () -> Unit = {},
     /** Marks episodes watched or not (the whole season, or one on hold-OK). */
@@ -249,7 +249,7 @@ fun DetailsScreen(
                                 )
                             }
                             val trailerKey = extras?.takeIf { it.channelId == state.channel.id }?.extras?.trailerKey
-                            if (trailerKey != null && onTrailer != null) {
+                            if (onTrailer != null && (trailerKey != null || state.kind == DetailsKind.Film)) {
                                 TvActionButton(
                                     text = stringResource(R.string.dial_details_trailer),
                                     icon = Icons.Rounded.Theaters,

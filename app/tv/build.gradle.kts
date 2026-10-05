@@ -165,6 +165,9 @@ dependencies {
     implementation(libs.io.coil.kt.gif)
     implementation(libs.zxing.core)
     implementation(libs.newpipe.extractor)
+    implementation(libs.smbj)
+    // Already in the app through the data module; the Files tab speaks WebDAV with it.
+    implementation(libs.squareup.okhttp3)
     coreLibraryDesugaring(libs.android.desugar.jdk.libs.nio)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.ui.compose)

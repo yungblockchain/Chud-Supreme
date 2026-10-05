@@ -86,6 +86,8 @@ class BackupService @Inject constructor(
     private val reminders: ReminderStore,
     private val channelEdits: ChannelEditStore,
     private val multiviewPresets: MultiviewPresetStore,
+    private val smartHome: SmartHomeStore,
+    private val files: FilesStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -141,6 +143,8 @@ class BackupService @Inject constructor(
             reminders.reload()
             channelEdits.reload()
             multiviewPresets.reload()
+            smartHome.reload()
+            files.reload()
             skins.reload()
         }
         val skinList = (root["skins"] as? JsonArray).orEmpty()
@@ -249,7 +253,7 @@ class BackupService @Inject constructor(
         private const val KEPT_NAME = "last-backup.json"
         val PREF_FILES = listOf(
             "dial_settings", "appearance", "infinity_layout", "stremio_addons", "profiles",
-            "media_server", "infinity_shelf", "youtube", "radio", "reminders", "channel_edits", "multiview_presets",
+            "media_server", "infinity_shelf", "youtube", "radio", "reminders", "channel_edits", "multiview_presets", "smart_home", "file_shares",
         )
     }
 }

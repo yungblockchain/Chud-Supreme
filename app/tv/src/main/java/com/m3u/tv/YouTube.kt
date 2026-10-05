@@ -14,23 +14,13 @@ import com.m3u.data.service.MediaCommand
 import com.m3u.data.service.PlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.BufferedInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.InputStream
 import java.net.HttpURLConnection
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.time.Duration
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -48,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -572,77 +563,166 @@ object DashManifests {
         .replace("\"", "&quot;")
 }
 
+/* ---------------------------------------------------------------------- invidious / piped */
+
 /**
- * A tiny web server on the Fire TV's own loopback address that hands the player the manifests
- * built above. Only this device can reach it, and it only ever serves what was put in it.
+ * The fallback when YouTube turns the extractor away: Invidious and Piped are open-source YouTube
+ * front ends whose public servers fetch the video themselves (and, with "local", pass it through),
+ * so the stick never talks to YouTube's video servers at all. The list of healthy Invidious
+ * servers comes from api.invidious.io and is kept for a day.
  */
-@Singleton
-class LocalMediaServer @Inject constructor() {
-    private val documents = ConcurrentHashMap<String, Pair<String, ByteArray>>()
-    private val random = SecureRandom()
-    private var server: ServerSocket? = null
-    private val pool = Executors.newFixedThreadPool(2)
+object AltYouTube {
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    @Volatile private var invidious: List<String> = emptyList()
+    @Volatile private var invidiousAt = 0L
+    private val PIPED = listOf("https://pipedapi.kavin.rocks", "https://api.piped.private.coffee", "https://pipedapi.adminforge.de")
+    private val FALLBACK_INVIDIOUS = listOf("https://inv.nadeko.net", "https://invidious.nerdvpn.de", "https://yewtu.be")
 
-    /** Puts [body] up and returns its URL. Old documents are dropped so nothing piles up. */
-    @Synchronized
-    fun publish(body: String, contentType: String, extension: String): String? {
-        val socket = server ?: runCatching {
-            ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0)) }
-        }.getOrNull()?.also { socket ->
-            server = socket
-            Thread({
-                while (!socket.isClosed) {
-                    val client = runCatching { socket.accept() }.getOrNull() ?: break
-                    runCatching { pool.execute { runCatching { serve(client) } } }.onFailure { client.close() }
-                }
-            }, "local-media").apply { isDaemon = true }.start()
-        } ?: return null
-        if (documents.size >= MAX_DOCUMENTS) documents.clear()
-        val token = ByteArray(12).also(random::nextBytes).joinToString("") { "%02x".format(it) }
-        documents["/$token.$extension"] = contentType to body.toByteArray(Charsets.UTF_8)
-        return "http://127.0.0.1:${socket.localPort}/$token.$extension"
+    suspend fun resolve(videoId: String, maxHeight: Int): ResolvedVideo? = withContext(Dispatchers.IO) {
+        for (base in invidiousServers().take(4)) {
+            fromInvidious(base, videoId, maxHeight)?.let { return@withContext it }
+        }
+        for (base in PIPED) {
+            fromPiped(base, videoId, maxHeight)?.let { return@withContext it }
+        }
+        null
     }
 
-    private fun serve(client: Socket) {
-        client.use { socket ->
-            socket.soTimeout = 10_000
-            val input = BufferedInputStream(socket.getInputStream())
-            val requestLine = readLine(input) ?: return
-            while (true) {
-                val header = readLine(input) ?: break
-                if (header.isEmpty()) break
+    private fun invidiousServers(): List<String> {
+        if (invidious.isNotEmpty() && System.currentTimeMillis() - invidiousAt < DAY_MS) return invidious
+        val listed = runCatching {
+            val root = get("https://api.invidious.io/instances.json?sort_by=health") as? JsonArray ?: return@runCatching emptyList()
+            root.mapNotNull { entry ->
+                val pair = entry as? JsonArray ?: return@mapNotNull null
+                val info = pair.getOrNull(1) as? JsonObject ?: return@mapNotNull null
+                val api = info["api"]?.jsonPrimitive?.booleanOrNull == true
+                val type = info["type"]?.jsonPrimitive?.contentOrNull
+                val uri = info["uri"]?.jsonPrimitive?.contentOrNull
+                if (api && type == "https" && uri != null) uri.trimEnd('/') else null
             }
-            val parts = requestLine.split(' ')
-            val path = parts.getOrNull(1)?.substringBefore('?') ?: return
-            val output = socket.getOutputStream()
-            val document = documents[path]
-            if (parts.firstOrNull() != "GET" || document == null) {
-                output.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
-            } else {
-                output.write(
-                    ("HTTP/1.1 200 OK\r\nContent-Type: ${document.first}\r\nContent-Length: ${document.second.size}\r\n" +
-                        "Cache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray()
-                )
-                output.write(document.second)
+        }.getOrDefault(emptyList())
+        invidious = (listed + FALLBACK_INVIDIOUS).distinct()
+        invidiousAt = System.currentTimeMillis()
+        return invidious
+    }
+
+    private fun fromInvidious(base: String, id: String, maxHeight: Int): ResolvedVideo? {
+        val root = get("$base/api/v1/videos/$id?local=true") as? JsonObject ?: return null
+        val live = root["liveNow"]?.jsonPrimitive?.booleanOrNull == true
+        val hls = root["hlsUrl"]?.jsonPrimitive?.contentOrNull?.let { absolute(base, it) }
+        val muxed = (root["formatStreams"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .mapNotNull { stream ->
+                val url = stream["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val height = stream["resolution"]?.jsonPrimitive?.contentOrNull?.removeSuffix("p")?.toIntOrNull() ?: 360
+                Triple(absolute(base, url), height, stream["type"]?.jsonPrimitive?.contentOrNull.orEmpty())
             }
-            output.flush()
+            .filter { it.third.startsWith("video/mp4") || it.third.isEmpty() }
+            .sortedByDescending { it.second }
+            .let { all -> all.firstOrNull { it.second <= maxHeight } ?: all.lastOrNull() }
+            ?.first
+        if (hls == null && muxed == null) return null
+        return ResolvedVideo(
+            title = root["title"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            durationMs = (root["lengthSeconds"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L) * 1000L,
+            live = live,
+            hlsUrl = if (live) hls else null,
+            manifest = null,
+            muxedUrl = muxed ?: hls,
+            userAgent = YouTubeClient.DESKTOP_UA,
+            related = emptyList(),
+        )
+    }
+
+    private fun fromPiped(base: String, id: String, maxHeight: Int): ResolvedVideo? {
+        val root = get("$base/streams/$id") as? JsonObject ?: return null
+        val live = root["livestream"]?.jsonPrimitive?.booleanOrNull == true
+        val hls = root["hls"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        val muxed = (root["videoStreams"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .filter { it["videoOnly"]?.jsonPrimitive?.booleanOrNull == false }
+            .mapNotNull { stream ->
+                val url = stream["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val height = stream["quality"]?.jsonPrimitive?.contentOrNull?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 360
+                url to height
+            }
+            .sortedByDescending { it.second }
+            .let { all -> all.firstOrNull { it.second <= maxHeight } ?: all.lastOrNull() }
+            ?.first
+        if (hls == null && muxed == null) return null
+        return ResolvedVideo(
+            title = root["title"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            durationMs = (root["duration"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L) * 1000L,
+            live = live,
+            // Piped's HLS carries the video and sound together at every quality.
+            hlsUrl = hls,
+            manifest = null,
+            muxedUrl = muxed,
+            userAgent = YouTubeClient.DESKTOP_UA,
+            related = emptyList(),
+        )
+    }
+
+    private fun absolute(base: String, url: String): String = if (url.startsWith("/")) base + url else url
+
+    private fun get(url: String): JsonElement? {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8_000
+                readTimeout = 15_000
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("User-Agent", "ChudSupreme/1.0 (Android TV)")
+            }
+            if (connection.responseCode != 200) null
+            else json.parseToJsonElement(connection.inputStream.bufferedReader().use { it.readText() })
+        } catch (e: Exception) {
+            null
+        } finally {
+            connection?.disconnect()
         }
     }
 
-    private fun readLine(input: InputStream): String? {
-        val buffer = ByteArrayOutputStream()
-        while (true) {
-            val byte = input.read()
-            if (byte == -1) return if (buffer.size() == 0) null else buffer.toString(Charsets.ISO_8859_1.name())
-            if (byte == '\n'.code) break
-            if (byte != '\r'.code) buffer.write(byte)
-            if (buffer.size() > 4096) return null
-        }
-        return buffer.toString(Charsets.ISO_8859_1.name())
-    }
+    private const val DAY_MS = 24 * 60 * 60_000L
+}
 
-    private companion object {
-        const val MAX_DOCUMENTS = 16
+/* ------------------------------------------------------------------------ iTunes trailers */
+
+/**
+ * Film trailers from Apple's store listing: every film there carries a short preview (usually the
+ * trailer) as a plain MP4, which plays straight away without YouTube.
+ */
+object ItunesTrailers {
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    suspend fun find(title: String, year: String?): String? = withContext(Dispatchers.IO) {
+        val country = Locale.getDefault().country.ifBlank { "GB" }.lowercase(Locale.ROOT)
+        val url = "https://itunes.apple.com/search?media=movie&entity=movie&limit=10&country=$country&term=${URLEncoder.encode(title, "UTF-8")}"
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8_000
+                readTimeout = 12_000
+            }
+            if (connection.responseCode != 200) return@withContext null
+            val root = json.parseToJsonElement(connection.inputStream.bufferedReader().use { it.readText() }) as? JsonObject
+                ?: return@withContext null
+            val wanted = title.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
+            val results = (root["results"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                .filter { it["previewUrl"]?.jsonPrimitive?.contentOrNull != null }
+            results.sortedBy { item ->
+                val name = item["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
+                val released = item["releaseDate"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                (if (name == wanted) 0 else if (name.startsWith(wanted)) 1 else 2) + (if (year != null && released.startsWith(year)) 0 else 3)
+            }.firstOrNull { item ->
+                val name = item["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
+                name.startsWith(wanted) || wanted.startsWith(name)
+            }?.get("previewUrl")?.jsonPrimitive?.contentOrNull
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } finally {
+            connection?.disconnect()
+        }
     }
 }
 
@@ -864,7 +944,12 @@ class YouTubeViewModel @Inject constructor(
                         if (it is CancellationException) throw it
                         Log.w(TAG, "Could not get streams for ${video.id}: ${it.javaClass.simpleName}: ${it.message}")
                     }
+                // YouTube turned the extractor away (it often asks datacentre and VPN addresses to
+                // sign in): an Invidious or Piped server fetches the video for the stick instead.
                 val resolved = attempt.getOrNull()
+                    ?: runCatching { AltYouTube.resolve(video.id, prefs.maxHeight) }
+                        .onFailure { if (it is CancellationException) throw it }
+                        .getOrNull()
                 val url = resolved?.let { r ->
                     r.manifest?.let { withContext(Dispatchers.IO) { local.publish(it, "application/dash+xml", "mpd") } } ?: r.hlsUrl ?: r.muxedUrl
                 }
@@ -912,8 +997,37 @@ class YouTubeViewModel @Inject constructor(
      * manifest, so the video is looked up afresh and played by its id.
      */
     fun playSaved(channel: Channel, onPlaying: () -> Unit) {
-        val id = channel.relationId?.removePrefix("yt:")?.takeIf { it.isNotBlank() } ?: return
+        val relation = channel.relationId.orEmpty()
+        if (relation.startsWith(DIRECT_PREFIX)) {
+            playDirect(channel.url, channel.title, channel.cover, onPlaying)
+            return
+        }
+        val id = relation.removePrefix("yt:").takeIf { it.isNotBlank() } ?: return
         play(YouTubeVideo(id = id, title = channel.title, channel = channel.category, thumbnail = channel.cover), onPlaying)
+    }
+
+    /** A plain video address (an iTunes trailer preview, say) through the same player. */
+    fun playDirect(url: String, title: String, cover: String?, onPlaying: () -> Unit) {
+        viewModelScope.launch {
+            val channelId = withContext(Dispatchers.IO) {
+                if (playlistDao.get(PLAYLIST_URL) == null) {
+                    playlistDao.insertOrReplace(Playlist(title = PLAYLIST_TITLE, url = PLAYLIST_URL, source = DataSource.M3U))
+                }
+                val relation = DIRECT_PREFIX + url.hashCode().toString(36)
+                val existing = channelDao.getByPlaylistUrlAndRelationId(PLAYLIST_URL, relation)
+                val id = channelDao.insertOrReplace(
+                    Channel(
+                        url = url, category = PLAYLIST_TITLE, title = title, cover = cover,
+                        playlistUrl = PLAYLIST_URL, id = existing?.id ?: 0, relationId = relation,
+                        favourite = existing?.favourite ?: false,
+                    )
+                ).toInt()
+                if (id != 0) id else channelDao.getByPlaylistUrlAndRelationId(PLAYLIST_URL, relation)?.id ?: 0
+            }
+            stopped()
+            runCatching { playerManager.play(MediaCommand.Common(channelId), applyContinueWatching = false) }
+            onPlaying()
+        }
     }
 
     /** The playlist stand-in and a channel row per video (the row keeps its id across plays). */
@@ -960,6 +1074,7 @@ class YouTubeViewModel @Inject constructor(
     companion object {
         private const val TAG = "ChudYouTube"
         const val PLAYLIST_URL = "youtube://videos"
+        private const val DIRECT_PREFIX = "direct:"
         const val PLAYLIST_TITLE = "YouTube"
         private const val SEARCH_DEBOUNCE_MS = 500L
         private const val LIVE_TTL_MS = 10 * 60_000L

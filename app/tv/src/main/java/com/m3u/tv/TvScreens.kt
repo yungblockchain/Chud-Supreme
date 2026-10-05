@@ -195,6 +195,8 @@ fun TvBrowsePane(
     homeRows: List<HomeRow> = HomeRow.entries,
     hiddenRows: Set<HomeRow> = emptySet(),
     becauseYouWatched: Pair<String, List<TmdbTitle>>? = null,
+    newEpisodes: List<NewEpisode> = emptyList(),
+    anime: List<TmdbTitle> = emptyList(),
     kidsProfile: Boolean = false,
     onSwitchProfile: () -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
@@ -232,6 +234,7 @@ fun TvBrowsePane(
             destination != TvDestination.Server &&
             destination != TvDestination.YouTube &&
             destination != TvDestination.Radio &&
+            destination != TvDestination.Files &&
             destination != TvDestination.MatchCentre &&
             destination != TvDestination.News &&
             destination != TvDestination.Account
@@ -249,6 +252,7 @@ fun TvBrowsePane(
             destination != TvDestination.Server &&
             destination != TvDestination.YouTube &&
             destination != TvDestination.Radio &&
+            destination != TvDestination.Files &&
             destination != TvDestination.MatchCentre &&
             destination != TvDestination.News &&
             destination != TvDestination.Account
@@ -287,6 +291,8 @@ fun TvBrowsePane(
                         homeRows = homeRows,
                         hiddenRows = hiddenRows,
                         becauseYouWatched = becauseYouWatched,
+                        newEpisodes = newEpisodes,
+                        anime = anime,
                     )
 
                     TvDestination.Search -> SearchScreen(
@@ -324,6 +330,8 @@ fun TvBrowsePane(
                     TvDestination.YouTube -> YouTubeScreen(onPlaying = onPlayResolved)
 
                     TvDestination.Radio -> RadioScreen(onPlaying = onPlayResolved)
+
+                    TvDestination.Files -> FilesScreen(onPlaying = onPlayResolved)
 
                     TvDestination.MatchCentre -> MatchCentreScreen(onWatch = onWatchFixture)
 
@@ -487,6 +495,8 @@ private fun HomeScreen(
     homeRows: List<HomeRow> = HomeRow.entries,
     hiddenRows: Set<HomeRow> = emptySet(),
     becauseYouWatched: Pair<String, List<TmdbTitle>>? = null,
+    newEpisodes: List<NewEpisode> = emptyList(),
+    anime: List<TmdbTitle> = emptyList(),
 ) {
     // The last ten things watched (live, films, episodes); before anything's been watched, a
     // taste of the selected playlist.
@@ -611,6 +621,19 @@ private fun HomeScreen(
                             title = stringResource(R.string.dial_because_you_watched, name),
                             subtitle = stringResource(R.string.dial_because_you_watched_hint),
                             titles = titles,
+                            onOpen = onOpenTitle,
+                        )
+                    }
+                }
+                HomeRow.NewEpisodes -> if (newEpisodes.isNotEmpty()) {
+                    item(key = "new-episodes") { NewEpisodesRow(items = newEpisodes, onOpen = onPlay) }
+                }
+                HomeRow.Anime -> if (anime.isNotEmpty()) {
+                    item(key = "anime") {
+                        TitleRow(
+                            title = stringResource(R.string.dial_anime_title),
+                            subtitle = stringResource(R.string.dial_anime_subtitle),
+                            titles = anime,
                             onOpen = onOpenTitle,
                         )
                     }

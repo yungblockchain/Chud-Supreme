@@ -234,6 +234,8 @@ fun ServicesSettingsScreen(
                 onClick = viewModel::toggleScrobble,
             )
         }
+        item { SettingsSection(stringResource(R.string.dial_services_section_smart_home)) }
+        item { SmartHomeRows() }
         item { SettingsSection(stringResource(R.string.dial_services_section_ratings)) }
         item { KeyRow(SecretName.MdbList, R.string.dial_services_mdblist, R.string.dial_services_mdblist_hint) }
         item { KeyRow(SecretName.Omdb, R.string.dial_services_omdb, R.string.dial_services_omdb_hint) }

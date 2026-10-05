@@ -38,6 +38,7 @@ nextLib = "1.9.1-0.10.1"
 libass-android = "0.5.1"
 zxing = "3.5.3"
 newpipe-extractor = "v0.26.5"
+smbj = "0.13.0"
 desugar-jdk-libs = "2.1.5"
 rtmpClientPage16k = "16647b19d51a08625d9ed32bf6aa31734747c4a9"
 slf4j-api = "2.0.17"
@@ -151,6 +152,7 @@ google-material = { group = "com.google.android.material", name = "material", ve
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet" }
 squareup-retrofit2 = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "squareup-retrofit2" }
+squareup-okhttp3 = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "squareup-okhttp" }
 squareup-okhttp3-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "squareup-okhttp" }
 squareup-leakcanary = { group = "com.squareup.leakcanary", name = "leakcanary-android", version.ref = "squareup-leakcanary" }
 
@@ -193,6 +195,8 @@ libass-media = { module = "io.github.peerless2012:ass-media", version.ref = "lib
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 # YouTube streams without the Data API quota (NewPipe's extractor, JitPack)
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe-extractor" }
+# SMB (Windows / NAS) shares for the Files tab
+smbj = { module = "com.hierynomus:smbj", version.ref = "smbj" }
 # java.time / java.nio for NewPipe Extractor below API 33
 android-desugar-jdk-libs-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar-jdk-libs" }
 rtmp-client-page16k = { module = "com.github.anenasa:LibRtmp-Client-for-Android", version.ref = "rtmpClientPage16k" }

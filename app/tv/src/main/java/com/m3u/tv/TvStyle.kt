@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
@@ -110,6 +111,8 @@ enum class TvDestination(
     YouTube(Icons.Rounded.SmartDisplay),
     /** Radio stations and podcasts. */
     Radio(Icons.Rounded.Radio),
+    /** Films on a NAS or computer: SMB and WebDAV shares. */
+    Files(Icons.Rounded.FolderOpen),
     Guide(Icons.Rounded.DateRange),
     /** Live scores, fixtures, lineups. */
     MatchCentre(Icons.Rounded.SportsSoccer),

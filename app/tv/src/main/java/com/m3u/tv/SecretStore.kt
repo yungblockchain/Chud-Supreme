@@ -39,6 +39,9 @@ enum class SecretName(val key: String) {
     MdbList("mdblist_api_key"),
     FanartTv("fanart_tv_api_key"),
     MediaServerToken("media_server_token"),
+    HomeAssistant("home_assistant_token"),
+    /** A WebDAV / SMB share's password, by share id (see FilesStore). */
+    SharePasswords("share_passwords"),
 }
 
 /**

@@ -138,6 +138,8 @@ private const val REMINDER_LEAD_MS = 2 * 60_000L
 private const val REMINDER_CHECK_MS = 20_000L
 private const val NOTICE_REMINDER_WINDOW_MS = 6 * 60 * 60_000L
 private const val WATCHED_CHECK_MS = 30_000L
+private const val LIGHTS_DIM_DELAY_MS = 1_500L
+private const val LIGHTS_UP_DELAY_MS = 4_000L
 /** A key held this many repeats (about half a second) counts as a long press. */
 private const val LONG_PRESS_REPEAT = 1
 
@@ -183,6 +185,9 @@ fun App(
     youtube: YouTubeViewModel = hiltViewModel(),
     radio: RadioViewModel = hiltViewModel(),
     liveBadges: LiveBadgesViewModel = hiltViewModel(),
+    discover: DiscoverViewModel = hiltViewModel(),
+    smartHome: SmartHomeViewModel = hiltViewModel(),
+    files: FilesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -239,7 +244,8 @@ fun App(
     val onDemandSource = currentChannel?.playlistUrl == MediaServerViewModel.PLAYLIST_URL ||
         currentChannel?.playlistUrl == StremioIds.PLAYLIST_URL ||
         currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL ||
-        currentChannel?.playlistUrl == RadioViewModel.PODCASTS_URL
+        currentChannel?.playlistUrl == RadioViewModel.PODCASTS_URL ||
+        currentChannel?.playlistUrl == FilesViewModel.PLAYLIST_URL
     val audioSource = currentChannel?.playlistUrl == RadioViewModel.STATIONS_URL ||
         currentChannel?.playlistUrl == RadioViewModel.PODCASTS_URL
     val live = partyGuestLive ?: (!catchUp && !onDemandSource &&
@@ -268,6 +274,9 @@ fun App(
         if (channel.playlistUrl == YouTubeViewModel.PLAYLIST_URL) {
             // A saved YouTube row: its streams are looked up again (the old address was a one-off).
             youtube.playSaved(channel) { surface = TvSurface.Player }
+        } else if (channel.playlistUrl == FilesViewModel.PLAYLIST_URL) {
+            // A file on a share: served by the stick again before it plays.
+            files.playSaved(channel) { surface = TvSurface.Player }
         } else if (playlist != null && (playlist.isVod || playlist.isSeries)) {
             dial.openDetails(channel, playlist)
         } else if (dial.playsExternally(channel)) {
@@ -477,6 +486,7 @@ fun App(
     }
     val youTubeFallback = stringResource(R.string.dial_youtube_fallback)
     val trailerTitle = stringResource(R.string.dial_trailer_title)
+    val noTrailer = stringResource(R.string.dial_trailer_none)
     LaunchedEffect(youtube) {
         youtube.events.collect { event ->
             when (event) {
@@ -535,6 +545,12 @@ fun App(
     DisposableEffect(enhancer) { onDispose { enhancer?.release() } }
     LaunchedEffect(enhancer, preferences.nightMode, preferences.dialogueBoost) {
         enhancer?.set(night = preferences.nightMode, dialogue = preferences.dialogueBoost)
+    }
+    // The lights: dimmed while video plays full screen, back up a few seconds after it stops.
+    val videoPlaying = surface == TvSurface.Player && isPlaying && !audioSource
+    LaunchedEffect(videoPlaying) {
+        delay(if (videoPlaying) LIGHTS_DIM_DELAY_MS else LIGHTS_UP_DELAY_MS)
+        smartHome.onPlayback(videoPlaying)
     }
     // Binge mode: the next episode starts straight away, no countdown card.
     LaunchedEffect(upNext, preferences.bingeMode) {
@@ -603,6 +619,16 @@ fun App(
         }
     }
     val becauseYouWatched by metadata.becauseYouWatched.collectAsStateWithLifecycle()
+    val newEpisodes by discover.newEpisodes.collectAsStateWithLifecycle()
+    val anime by discover.anime.collectAsStateWithLifecycle()
+    // New episodes for the series in favourites and "continue watching"; anime for everyone
+    // except kids profiles (AniList's chart isn't sorted for age).
+    LaunchedEffect(destination, state.favorites.size, continueWatching.size, kidsProfile) {
+        if (destination != TvDestination.Home) return@LaunchedEffect
+        val seriesUrls = state.playlists.filter { it.isSeries }.map { it.url }.toSet()
+        discover.loadNewEpisodes((continueWatching + state.favorites).filter { it.playlistUrl in seriesUrls })
+        if (!kidsProfile && HomeRow.Anime !in preferences.homeRowsHidden) discover.loadAnime()
+    }
     LaunchedEffect(destination, continueWatching.firstOrNull()?.id) {
         if (destination != TvDestination.Home) return@LaunchedEffect
         val last = continueWatching.firstOrNull()
@@ -1137,6 +1163,8 @@ fun App(
                     homeRows = preferences.homeRows,
                     hiddenRows = preferences.homeRowsHidden,
                     becauseYouWatched = becauseYouWatched,
+                    newEpisodes = newEpisodes,
+                    anime = if (kidsProfile) emptyList() else anime,
                     missed = missed,
                     onOpenMissed = { item ->
                         if (dial.playsExternally(item.channel)) {
@@ -1225,10 +1253,21 @@ fun App(
                     // A trailer isn't the film: nothing of a previous episode (markers, up next,
                     // watched marks, scrobbling) may apply to it.
                     dial.clearNowPlaying()
-                    youtube.play(
-                        YouTubeVideo(id = key, title = trailerTitle.format(current.channel.title), channel = null, thumbnail = null),
-                        onPlaying = { surface = TvSurface.Player },
-                    )
+                    val name = trailerTitle.format(current.channel.title)
+                    scope.launch {
+                        // Apple's preview plays straight away; YouTube's needs the extractor.
+                        val preview = if (current.kind == DetailsKind.Film) {
+                            ItunesTrailers.find(OpenSubtitles.cleanTitle(current.channel.title), OpenSubtitles.yearIn(current.channel.title))
+                        } else null
+                        when {
+                            preview != null -> youtube.playDirect(preview, name, current.channel.cover) { surface = TvSurface.Player }
+                            key != null -> youtube.play(
+                                YouTubeVideo(id = key, title = name, channel = null, thumbnail = null),
+                                onPlaying = { surface = TvSurface.Player },
+                            )
+                            else -> Toast.makeText(context, noTrailer, Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 },
                 hideWatched = preferences.hideWatched,
                 onToggleHideWatched = { dial.updatePreferences { it.copy(hideWatched = !it.hideWatched) } },

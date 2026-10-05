@@ -728,6 +728,8 @@ internal fun SettingRow(
 private fun HomeRow.label(): String = stringResource(
     when (this) {
         HomeRow.BecauseYouWatched -> R.string.dial_home_row_because
+        HomeRow.NewEpisodes -> R.string.dial_new_episodes_title
+        HomeRow.Anime -> R.string.dial_anime_title
         HomeRow.LastWatched -> R.string.dial_home_row_last_watched
         HomeRow.Trending -> R.string.dial_home_row_trending
         HomeRow.Trakt -> R.string.dial_home_row_trakt

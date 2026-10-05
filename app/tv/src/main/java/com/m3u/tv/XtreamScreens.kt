@@ -1,5 +1,6 @@
 package com.m3u.tv
 
+import java.util.Locale
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -194,6 +195,17 @@ fun XtreamSignInScreen(
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Next,
                     readOnly = form.busy,
+                )
+                // Free-to-air channels from iptv-org's public list, for the country the TV is set to.
+                TvActionButton(
+                    text = stringResource(R.string.dial_signin_free_channels),
+                    icon = Icons.Rounded.Link,
+                    supportingText = stringResource(R.string.dial_signin_free_channels_hint),
+                    onClick = {
+                        val country = Locale.getDefault().country.ifBlank { "GB" }.lowercase(Locale.ROOT)
+                        viewModel.updatePlaylistUrl("https://iptv-org.github.io/iptv/countries/$country.m3u")
+                        viewModel.updateEpgUrl("")
+                    },
                 )
             } else {
             DialTextField(

@@ -299,3 +299,13 @@
 -dontwarn java.lang.invoke.**
 -dontwarn javax.lang.model.**
 -dontwarn sun.misc.**
+
+## smbj (SMB shares): its event bus finds handlers by reflection; Bouncy Castle does the NTLM maths.
+-keep class com.hierynomus.** { *; }
+-keep class net.engio.mbassy.** { *; }
+-dontwarn com.hierynomus.**
+-dontwarn net.engio.mbassy.**
+-dontwarn org.bouncycastle.**
+-dontwarn javax.el.**
+-dontwarn org.ietf.jgss.**
+-dontwarn javax.security.auth.**

@@ -1135,6 +1135,7 @@ class TvHomeViewModel @Inject constructor(
         val STAND_IN_PLAYLISTS: Set<String> = setOf(
             StremioIds.PLAYLIST_URL, MediaServerViewModel.PLAYLIST_URL,
             YouTubeViewModel.PLAYLIST_URL, RadioViewModel.STATIONS_URL, RadioViewModel.PODCASTS_URL,
+            FilesViewModel.PLAYLIST_URL,
         )
         private const val TV_SETTINGS_SURFACE = "tv"
         const val SEARCH_MIN_LENGTH = 2

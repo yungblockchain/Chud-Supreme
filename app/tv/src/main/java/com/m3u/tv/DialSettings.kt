@@ -146,7 +146,8 @@ enum class PreferredQuality { Best, Fhd, Hd, Sd }
 /** The rows Home can show, in their default order. */
 enum class HomeRow(val id: String) {
     LastWatched("last"), Trending("trending"), Trakt("trakt"), ContinueWatching("continue"),
-    BecauseYouWatched("because"), Tonight("tonight"), Missed("missed"), Clubs("clubs"), Doors("doors");
+    BecauseYouWatched("because"), NewEpisodes("newep"), Tonight("tonight"), Missed("missed"), Anime("anime"),
+    Clubs("clubs"), Doors("doors");
 
     companion object {
         fun parse(ids: String?): List<HomeRow> {
