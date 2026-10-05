@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -61,6 +62,8 @@ data class TitleExtras(
     val genres: List<String> = emptyList(),
     val runtimeMinutes: Int? = null,
     val certification: String? = null,
+    /** The YouTube id of the official trailer, when TMDB lists one. */
+    val trailerKey: String? = null,
 )
 
 @Immutable
@@ -132,7 +135,7 @@ internal object TmdbClient {
             key,
             "/${kind.path}/$id",
             listOf(
-                "append_to_response" to "$credits,external_ids,images,release_dates,content_ratings",
+                "append_to_response" to "$credits,external_ids,images,release_dates,content_ratings,videos",
                 "include_image_language" to "${Locale.getDefault().language},en,null",
             ),
         ) as? JsonObject ?: return null
@@ -172,6 +175,11 @@ internal object TmdbClient {
             )
         }.take(MAX_CAST)
         val imdb = root.text("imdb_id") ?: (root["external_ids"] as? JsonObject)?.text("imdb_id")
+        val videos = ((root["videos"] as? JsonObject)?.get("results") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .filter { it.text("site") == "YouTube" }
+        val trailer = (videos.firstOrNull { it.text("type") == "Trailer" && it["official"]?.let { o -> (o as? JsonPrimitive)?.booleanOrNull } == true }
+            ?: videos.firstOrNull { it.text("type") == "Trailer" }
+            ?: videos.firstOrNull { it.text("type") == "Teaser" })?.text("key")
         return TitleExtras(
             tmdbId = id,
             kind = kind,
@@ -186,7 +194,14 @@ internal object TmdbClient {
             runtimeMinutes = root.int("runtime")
                 ?: ((root["episode_run_time"] as? JsonArray)?.firstOrNull() as? JsonPrimitive)?.intOrNull,
             certification = certification,
+            trailerKey = trailer,
         )
+    }
+
+    /** Titles TMDB recommends after [id] ("because you watched"). */
+    suspend fun recommendations(key: String, kind: MediaKind, id: Int): List<TmdbTitle> {
+        val root = get(key, "/${kind.path}/$id/recommendations") as? JsonObject ?: return emptyList()
+        return (root["results"] as? JsonArray).orEmpty().mapNotNull { it.toTitle(kind) }.take(MAX_SEARCH)
     }
 
     suspend fun person(key: String, id: Int): PersonDetails? {

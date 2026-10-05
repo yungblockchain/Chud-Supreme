@@ -71,6 +71,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -224,6 +227,39 @@ class PlayerOptionsViewModel @Inject constructor(
         _search.value = SubtitleSearch.Idle
     }
 
+    /**
+     * A film or episode with no subtitles at all: the most-downloaded OpenSubtitles file in
+     * [language] is added, quietly. Once per title; nothing happens without an OpenSubtitles key.
+     */
+    fun autoFetch(target: SubtitleTarget, language: String) {
+        val key = secrets.get(SecretName.OpenSubtitles) ?: return
+        val once = "${target.title}|${target.season}|${target.episode}"
+        if (once == autoFetched) return
+        autoFetched = once
+        viewModelScope.launch {
+            val results = runCatching { OpenSubtitles.search(key, target) }.getOrNull().orEmpty()
+            val best = results
+                .filter { languageRoot(it.language) == languageRoot(language) }
+                .sortedWith(compareBy<SubtitleResult> { it.hearingImpaired }.thenByDescending { it.downloads })
+                .firstOrNull() ?: return@launch
+            runCatching {
+                val file = OpenSubtitles.download(context, key, best)
+                playerManager.addSubtitle(
+                    uri = Uri.fromFile(file),
+                    mimeType = MimeTypes.APPLICATION_SUBRIP,
+                    language = best.language.ifBlank { null },
+                    label = "OpenSubtitles · ${languageName(best.language)}",
+                )
+                _autoAdded.tryEmit(languageName(best.language))
+            }
+        }
+    }
+
+    private var autoFetched: String? = null
+    private val _autoAdded = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    /** A subtitle was fetched by itself (the language's name), for a short notice. */
+    val autoAdded: SharedFlow<String> = _autoAdded.asSharedFlow()
+
     private companion object {
         val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
         const val STEP_MS = 1
@@ -321,6 +357,8 @@ fun PlayerOptionsPanel(
     onAddBookmark: ((Long) -> Unit)? = null,
     onClearBookmarks: () -> Unit = {},
     onSeekTo: (Long) -> Unit = {},
+    /** Asks Claude what's going on in the scene (films and episodes). */
+    onExplainScene: (() -> Unit)? = null,
     viewModel: PlayerOptionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.tracks.collectAsStateWithLifecycle()
@@ -440,6 +478,29 @@ fun PlayerOptionsPanel(
                         onClick = viewModel::cycleSpeed,
                     )
                 }
+            }
+            onExplainScene?.let { explain ->
+                item(key = "explain-scene") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_scene_ask),
+                        hint = stringResource(R.string.dial_scene_ask_hint),
+                        onClick = explain,
+                    )
+                }
+            }
+            item(key = "night-mode") {
+                OptionRow(
+                    label = stringResource(R.string.dial_setting_night_mode),
+                    value = stringResource(if (preferences.nightMode) R.string.dial_value_on else R.string.dial_value_off),
+                    onClick = { onUpdatePreferences { it.copy(nightMode = !it.nightMode) } },
+                )
+            }
+            item(key = "dialogue-boost") {
+                OptionRow(
+                    label = stringResource(R.string.dial_setting_dialogue_boost),
+                    value = stringResource(if (preferences.dialogueBoost) R.string.dial_value_on else R.string.dial_value_off),
+                    onClick = { onUpdatePreferences { it.copy(dialogueBoost = !it.dialogueBoost) } },
+                )
             }
             item(key = "aspect") {
                 OptionRow(

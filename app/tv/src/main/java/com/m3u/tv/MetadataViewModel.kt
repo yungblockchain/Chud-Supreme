@@ -100,6 +100,29 @@ class MetadataViewModel @Inject constructor(
 
     fun hasTmdbKey(): Boolean = secrets.has(SecretName.Tmdb)
 
+    /** "Because you watched X": TMDB's picks after the last film or series opened. */
+    private val _becauseYouWatched = MutableStateFlow<Pair<String, List<TmdbTitle>>?>(null)
+    val becauseYouWatched: StateFlow<Pair<String, List<TmdbTitle>>?> = _becauseYouWatched.asStateFlow()
+    private var becauseFor: Int? = null
+
+    fun loadBecauseYouWatched(last: Channel?, isSeries: Boolean) {
+        val key = secrets.get(SecretName.Tmdb) ?: return
+        if (last == null) {
+            _becauseYouWatched.value = null
+            return
+        }
+        if (becauseFor == last.id) return
+        becauseFor = last.id
+        viewModelScope.launch(Dispatchers.IO) {
+            val kind = if (isSeries) MediaKind.Tv else MediaKind.Movie
+            val title = runCatching {
+                TmdbClient.search(key, kind, OpenSubtitles.cleanTitle(last.title), OpenSubtitles.yearIn(last.title))
+            }.getOrNull() ?: return@launch
+            val picks = runCatching { TmdbClient.recommendations(key, kind, title.id) }.getOrDefault(emptyList())
+            if (becauseFor == last.id) _becauseYouWatched.value = if (picks.isEmpty()) null else title.title to picks
+        }
+    }
+
     /** Films and shows trending this week, matched against the person's playlists. */
     fun loadTrending() {
         val key = secrets.get(SecretName.Tmdb) ?: run {

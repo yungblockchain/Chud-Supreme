@@ -9,6 +9,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -92,6 +93,21 @@ data class DialPreferences(
     /** Home's rows in the person's order, and the ones switched off. */
     val homeRows: List<HomeRow> = HomeRow.entries,
     val homeRowsHidden: Set<HomeRow> = emptySet(),
+    /** Preferred audio and subtitle languages (ISO 639 codes; "" = whatever the stream offers). */
+    val audioLanguage: String = "",
+    val subtitleLanguage: String = "",
+    /** Turn subtitles on by themselves when the audio isn't in the preferred language. */
+    val foreignAudioSubtitles: Boolean = true,
+    /** Fetch subtitles from OpenSubtitles when a film or episode has none. */
+    val autoSubtitles: Boolean = false,
+    /** Evens out loud and quiet parts (late-night viewing). */
+    val nightMode: Boolean = false,
+    /** Lifts speech above music and effects. */
+    val dialogueBoost: Boolean = false,
+    /** Series pages leave out episodes already watched. */
+    val hideWatched: Boolean = false,
+    /** The next episode starts at once, without the countdown card. */
+    val bingeMode: Boolean = false,
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -101,6 +117,8 @@ data class DialPreferences(
         val SKIP_AHEAD_OPTIONS = listOf(1, 5, 10, 30, 60, 120)
         val STILL_WATCHING_OPTIONS = listOf(0, 2, 4, 6)
         val SCREENSAVER_OPTIONS = listOf(0, 5, 10, 15, 30)
+        /** "" is "any"; the rest are ISO 639-1 codes the track selector understands. */
+        val LANGUAGE_OPTIONS = listOf("", "en", "es", "fr", "de", "it", "pt", "nl", "pl", "tr", "ar", "hi", "ru", "ja", "ko", "zh")
     }
 }
 
@@ -128,7 +146,7 @@ enum class PreferredQuality { Best, Fhd, Hd, Sd }
 /** The rows Home can show, in their default order. */
 enum class HomeRow(val id: String) {
     LastWatched("last"), Trending("trending"), Trakt("trakt"), ContinueWatching("continue"),
-    Tonight("tonight"), Missed("missed"), Clubs("clubs"), Doors("doors");
+    BecauseYouWatched("because"), Tonight("tonight"), Missed("missed"), Clubs("clubs"), Doors("doors");
 
     companion object {
         fun parse(ids: String?): List<HomeRow> {
@@ -432,7 +450,29 @@ class DialSettingsStore @Inject constructor(
             .putInt(KEY_SCREENSAVER, next.screensaverMinutes)
             .putString(KEY_HOME_ROWS, next.homeRows.joinToString(",") { it.id })
             .putStringSet(KEY_HOME_ROWS_HIDDEN, next.homeRowsHidden.map { it.id }.toSet())
+            .putString(KEY_AUDIO_LANGUAGE, next.audioLanguage)
+            .putString(KEY_SUBTITLE_LANGUAGE, next.subtitleLanguage)
+            .putBoolean(KEY_FOREIGN_SUBTITLES, next.foreignAudioSubtitles)
+            .putBoolean(KEY_AUTO_SUBTITLES, next.autoSubtitles)
+            .putBoolean(KEY_NIGHT_MODE, next.nightMode)
+            .putBoolean(KEY_DIALOGUE_BOOST, next.dialogueBoost)
+            .putBoolean(KEY_HIDE_WATCHED, next.hideWatched)
+            .putBoolean(KEY_BINGE, next.bingeMode)
             .apply()
+    }
+
+    /** Episodes marked watched for a series, by episode id. */
+    private val _watchedVersion = MutableStateFlow(0)
+    val watchedVersion: StateFlow<Int> = _watchedVersion.asStateFlow()
+
+    fun watchedEpisodes(seriesId: Int): Set<String> =
+        prefs.getStringSet("$KEY_WATCHED_PREFIX$seriesId", null)?.toSet().orEmpty()
+
+    fun setWatched(seriesId: Int, episodeIds: Collection<String>, watched: Boolean) {
+        val current = watchedEpisodes(seriesId)
+        val next = if (watched) current + episodeIds else current - episodeIds.toSet()
+        prefs.edit().putStringSet("$KEY_WATCHED_PREFIX$seriesId", next).apply()
+        _watchedVersion.update { it + 1 }
     }
 
     /** Adds [deltaMs] to today's play time for a kids profile and returns the day's total. */
@@ -607,6 +647,14 @@ class DialSettingsStore @Inject constructor(
             homeRows = HomeRow.parse(prefs.getString(KEY_HOME_ROWS, null)),
             homeRowsHidden = prefs.getStringSet(KEY_HOME_ROWS_HIDDEN, null)
                 ?.mapNotNull { id -> HomeRow.entries.firstOrNull { it.id == id } }?.toSet() ?: defaults.homeRowsHidden,
+            audioLanguage = prefs.getString(KEY_AUDIO_LANGUAGE, null) ?: defaults.audioLanguage,
+            subtitleLanguage = prefs.getString(KEY_SUBTITLE_LANGUAGE, null) ?: defaults.subtitleLanguage,
+            foreignAudioSubtitles = prefs.getBoolean(KEY_FOREIGN_SUBTITLES, defaults.foreignAudioSubtitles),
+            autoSubtitles = prefs.getBoolean(KEY_AUTO_SUBTITLES, defaults.autoSubtitles),
+            nightMode = prefs.getBoolean(KEY_NIGHT_MODE, defaults.nightMode),
+            dialogueBoost = prefs.getBoolean(KEY_DIALOGUE_BOOST, defaults.dialogueBoost),
+            hideWatched = prefs.getBoolean(KEY_HIDE_WATCHED, defaults.hideWatched),
+            bingeMode = prefs.getBoolean(KEY_BINGE, defaults.bingeMode),
         )
     }
 
@@ -659,6 +707,15 @@ class DialSettingsStore @Inject constructor(
         const val KEY_SCREENSAVER = "screensaver_minutes"
         const val KEY_HOME_ROWS = "home_rows"
         const val KEY_HOME_ROWS_HIDDEN = "home_rows_hidden"
+        const val KEY_AUDIO_LANGUAGE = "audio_language"
+        const val KEY_SUBTITLE_LANGUAGE = "subtitle_language"
+        const val KEY_FOREIGN_SUBTITLES = "foreign_audio_subtitles"
+        const val KEY_AUTO_SUBTITLES = "auto_subtitles"
+        const val KEY_NIGHT_MODE = "night_mode"
+        const val KEY_DIALOGUE_BOOST = "dialogue_boost"
+        const val KEY_HIDE_WATCHED = "hide_watched"
+        const val KEY_BINGE = "binge_mode"
+        const val KEY_WATCHED_PREFIX = "watched_"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"
         const val KEY_FAVOURITE_GROUPS = "favourite_groups"

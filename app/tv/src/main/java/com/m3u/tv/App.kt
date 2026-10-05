@@ -136,6 +136,9 @@ private const val SCROBBLE_TICK_MS = 60_000L
 private const val REMINDER_LEAD_MS = 2 * 60_000L
 private const val REMINDER_CHECK_MS = 20_000L
 private const val NOTICE_REMINDER_WINDOW_MS = 6 * 60 * 60_000L
+private const val WATCHED_CHECK_MS = 30_000L
+/** A key held this many repeats (about half a second) counts as a long press. */
+private const val LONG_PRESS_REPEAT = 1
 
 /** How long the "press Back again" hint waits for the second press. */
 private const val EXIT_WINDOW_MS = 2_500L
@@ -471,6 +474,7 @@ fun App(
         )
     }
     val youTubeFallback = stringResource(R.string.dial_youtube_fallback)
+    val trailerTitle = stringResource(R.string.dial_trailer_title)
     LaunchedEffect(youtube) {
         youtube.events.collect { event ->
             when (event) {
@@ -523,6 +527,26 @@ fun App(
     ) {
         remember(playingId, nowPlaying) { dial.nextEpisode() }
     } else null
+    // Binge mode: the next episode starts straight away, no countdown card.
+    LaunchedEffect(upNext, preferences.bingeMode) {
+        val (series, episode) = upNext ?: return@LaunchedEffect
+        if (preferences.bingeMode) dial.playEpisode(series, episode, fromStart = true)
+    }
+    // An episode that ended, or got within the last tenth, counts as watched.
+    LaunchedEffect(playbackState == Player.STATE_ENDED, nowPlaying?.episode?.id) {
+        if (playbackState == Player.STATE_ENDED) dial.markPlayingWatched()
+    }
+    LaunchedEffect(nowPlaying?.episode?.id, isPlaying) {
+        if (nowPlaying?.episode == null || !isPlaying) return@LaunchedEffect
+        while (true) {
+            delay(WATCHED_CHECK_MS)
+            val current = player ?: break
+            if (current.duration > 0 && current.currentPosition >= current.duration * 9 / 10) {
+                dial.markPlayingWatched()
+                break
+            }
+        }
+    }
     LaunchedEffect(surface) {
         if (surface == TvSurface.Browse || surface == TvSurface.Mini) {
             dial.refreshAfterPlayback()
@@ -568,6 +592,13 @@ fun App(
             }
             delay(REMINDER_CHECK_MS)
         }
+    }
+    val becauseYouWatched by metadata.becauseYouWatched.collectAsStateWithLifecycle()
+    LaunchedEffect(destination, continueWatching.firstOrNull()?.id) {
+        if (destination != TvDestination.Home) return@LaunchedEffect
+        val last = continueWatching.firstOrNull()
+        val playlist = last?.let { channel -> state.playlists.firstOrNull { it.url == channel.playlistUrl } }
+        metadata.loadBecauseYouWatched(last, isSeries = playlist?.isSeries == true)
     }
     LaunchedEffect(destination, traktAccount, state.favorites.size) {
         if (destination == TvDestination.Home) {
@@ -791,6 +822,8 @@ fun App(
     val lastKeyAt = remember { longArrayOf(SystemClock.uptimeMillis()) }
     // The ambient screensaver, after the menus sit untouched for the time set in Settings.
     var screensaverOn by remember { mutableStateOf(false) }
+    var quickSettingsOpen by remember { mutableStateOf(false) }
+    var swallowBackUp by remember { mutableStateOf(false) }
     val screensaverMs by rememberUpdatedState(preferences.screensaverMinutes * 60_000L)
     val screensaverAllowed by rememberUpdatedState(
         surface == TvSurface.Browse && details == null && person == null && !showSplash && !overlayUp
@@ -882,6 +915,29 @@ fun App(
                     if (event.type == KeyEventType.KeyUp) screensaverOn = false
                     return@onPreviewKeyEvent true
                 }
+                val repeat = event.nativeKeyEvent.repeatCount
+                // Holding Menu: quick settings, from anywhere.
+                if (event.key == Key.Menu && event.type == KeyEventType.KeyDown && repeat == LONG_PRESS_REPEAT &&
+                    !showSplash && !overlayUp
+                ) {
+                    quickSettingsOpen = true
+                    return@onPreviewKeyEvent true
+                }
+                // Holding Back: out of the player completely (not to the corner), or back to Home.
+                if (event.key == Key.Back) {
+                    if (event.type == KeyEventType.KeyDown && repeat == LONG_PRESS_REPEAT && !showSplash && !overlayUp) {
+                        swallowBackUp = true
+                        when {
+                            surface == TvSurface.Player || surface == TvSurface.Mini -> closePlayer()
+                            details == null && person == null -> destination = TvDestination.Home
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                    if (swallowBackUp) {
+                        if (event.type == KeyEventType.KeyUp) swallowBackUp = false
+                        return@onPreviewKeyEvent true
+                    }
+                }
                 // The Menu key opens the side menu while browsing (it may be hidden to a strip).
                 if (event.type == KeyEventType.KeyDown && event.key == Key.Menu &&
                     surface == TvSurface.Browse && details == null && !showSplash && !overlayUp &&
@@ -908,7 +964,7 @@ fun App(
         // Only what's playing (or was last played) sets the backdrop, so browsing categories
         // never swaps the picture behind the whole screen.
         TvBackdrop(channel = currentChannel ?: state.recent)
-        val browsing = onBrowse && details == null && !showSplash && !overlayUp
+        val browsing = onBrowse && details == null && !showSplash && !overlayUp && !quickSettingsOpen
         // Nothing focused after the launch animation, a tab change or an overlay closing (the
         // screen asked for focus while it couldn't take it): put focus in the screen, so the
         // first key press does something sensible.
@@ -1066,6 +1122,7 @@ fun App(
                     onOpenTonight = onOpenTonight,
                     homeRows = preferences.homeRows,
                     hiddenRows = preferences.homeRowsHidden,
+                    becauseYouWatched = becauseYouWatched,
                     missed = missed,
                     onOpenMissed = { item ->
                         if (dial.playsExternally(item.channel)) {
@@ -1150,6 +1207,15 @@ fun App(
                 onTraktRate = metadata::rate,
                 onTraktComment = metadata::postComment,
                 onTraktWatched = metadata::markWatched,
+                onTrailer = { key ->
+                    youtube.play(
+                        YouTubeVideo(id = key, title = trailerTitle.format(current.channel.title), channel = null, thumbnail = null),
+                        onPlaying = { surface = TvSurface.Player },
+                    )
+                },
+                hideWatched = preferences.hideWatched,
+                onToggleHideWatched = { dial.updatePreferences { it.copy(hideWatched = !it.hideWatched) } },
+                onSetWatched = { ids, watched -> dial.setWatched(current.channel.id, ids, watched) },
             )
         }
 
@@ -1320,7 +1386,7 @@ fun App(
             )
         }
 
-        upNext?.let { (series, episode) ->
+        upNext?.takeIf { !preferences.bingeMode }?.let { (series, episode) ->
             UpNextCard(
                 episode = episode,
                 onPlay = { dial.playEpisode(series, episode, fromStart = true) },
@@ -1395,6 +1461,14 @@ fun App(
         }
         if (showSplash) {
             BrandSplash(onFinished = { splashDone = true })
+        }
+        if (quickSettingsOpen) {
+            QuickSettingsPanel(
+                preferences = preferences,
+                onUpdate = dial::updatePreferences,
+                onClose = { quickSettingsOpen = false },
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
         }
         if (screensaverOn) {
             val slides = remember(trending, state.recentlyPlayed) {

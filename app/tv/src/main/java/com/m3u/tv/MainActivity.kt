@@ -2,6 +2,7 @@ package com.m3u.tv
 
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
@@ -18,6 +19,10 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    /** Game controller buttons arrive as the remote keys they stand for (see [Gamepad]). */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        super.dispatchKeyEvent(Gamepad.translate(event) ?: event)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val initialDestination = tvDestinationFromExtra(intent?.getStringExtra(EXTRA_DESTINATION))

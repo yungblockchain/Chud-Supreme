@@ -194,6 +194,7 @@ fun TvBrowsePane(
     onOpenTonight: (TonightProgramme) -> Unit = {},
     homeRows: List<HomeRow> = HomeRow.entries,
     hiddenRows: Set<HomeRow> = emptySet(),
+    becauseYouWatched: Pair<String, List<TmdbTitle>>? = null,
     kidsProfile: Boolean = false,
     onSwitchProfile: () -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
@@ -285,6 +286,7 @@ fun TvBrowsePane(
                         onOpenTonight = onOpenTonight,
                         homeRows = homeRows,
                         hiddenRows = hiddenRows,
+                        becauseYouWatched = becauseYouWatched,
                     )
 
                     TvDestination.Search -> SearchScreen(
@@ -484,6 +486,7 @@ private fun HomeScreen(
     onOpenTonight: (TonightProgramme) -> Unit = {},
     homeRows: List<HomeRow> = HomeRow.entries,
     hiddenRows: Set<HomeRow> = emptySet(),
+    becauseYouWatched: Pair<String, List<TmdbTitle>>? = null,
 ) {
     // The last ten things watched (live, films, episodes); before anything's been watched, a
     // taste of the selected playlist.
@@ -599,6 +602,17 @@ private fun HomeScreen(
                                 onFocused = { focusedChannel = it },
                             )
                         }
+                    }
+                }
+                // TMDB's picks after the last film or series opened.
+                HomeRow.BecauseYouWatched -> becauseYouWatched?.let { (name, titles) ->
+                    item(key = "because") {
+                        TitleRow(
+                            title = stringResource(R.string.dial_because_you_watched, name),
+                            subtitle = stringResource(R.string.dial_because_you_watched_hint),
+                            titles = titles,
+                            onOpen = onOpenTitle,
+                        )
                     }
                 }
                 HomeRow.Tonight -> if (tonight.isNotEmpty()) {

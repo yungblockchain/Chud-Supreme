@@ -200,6 +200,73 @@ fun DialSettingsScreen(
             )
         }
 
+        item { SettingsSection(stringResource(R.string.dial_settings_section_sound_language)) }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_audio_language),
+                value = languageLabel(preferences.audioLanguage),
+                onClick = { onUpdate { it.copy(audioLanguage = DialPreferences.LANGUAGE_OPTIONS.nextAfter(it.audioLanguage)) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_subtitle_language),
+                value = languageLabel(preferences.subtitleLanguage),
+                onClick = { onUpdate { it.copy(subtitleLanguage = DialPreferences.LANGUAGE_OPTIONS.nextAfter(it.subtitleLanguage)) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_foreign_subtitles),
+                value = onOff(preferences.foreignAudioSubtitles),
+                onClick = { onUpdate { it.copy(foreignAudioSubtitles = !it.foreignAudioSubtitles) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_auto_subtitles),
+                value = onOff(preferences.autoSubtitles),
+                onClick = { onUpdate { it.copy(autoSubtitles = !it.autoSubtitles) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_night_mode),
+                value = onOff(preferences.nightMode),
+                onClick = { onUpdate { it.copy(nightMode = !it.nightMode) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_dialogue_boost),
+                value = onOff(preferences.dialogueBoost),
+                onClick = { onUpdate { it.copy(dialogueBoost = !it.dialogueBoost) } },
+            )
+        }
+        item {
+            Text(
+                text = stringResource(R.string.dial_setting_sound_hint),
+                color = TvColors.TextSecondary,
+                fontFamily = TvFonts.Body,
+                fontSize = 14.sp,
+                modifier = Modifier.widthIn(max = 820.dp),
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_binge),
+                value = onOff(preferences.bingeMode),
+                onClick = { onUpdate { it.copy(bingeMode = !it.bingeMode) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_hide_watched),
+                value = onOff(preferences.hideWatched),
+                onClick = { onUpdate { it.copy(hideWatched = !it.hideWatched) } },
+            )
+        }
+
         item { SettingsSection(stringResource(R.string.dial_settings_section_live)) }
         item {
             SettingRow(
@@ -660,6 +727,7 @@ internal fun SettingRow(
 @Composable
 private fun HomeRow.label(): String = stringResource(
     when (this) {
+        HomeRow.BecauseYouWatched -> R.string.dial_home_row_because
         HomeRow.LastWatched -> R.string.dial_home_row_last_watched
         HomeRow.Trending -> R.string.dial_home_row_trending
         HomeRow.Trakt -> R.string.dial_home_row_trakt
@@ -697,3 +765,8 @@ fun UpdateRows() {
         },
     )
 }
+
+/** "Any" or the language's own name for an ISO code. */
+@Composable
+private fun languageLabel(code: String): String =
+    if (code.isEmpty()) stringResource(R.string.dial_language_any) else languageName(code)

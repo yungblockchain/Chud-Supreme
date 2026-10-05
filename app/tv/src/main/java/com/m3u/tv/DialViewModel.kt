@@ -61,6 +61,10 @@ data class DetailsState(
     /** Saved position for a film, or for the series' last-opened episode; 0 if none. */
     val resumeMs: Long = 0L,
     val seriesProgress: SeriesProgress? = null,
+    /** How far into each episode of the selected season playback got (0..1), by episode id. */
+    val episodeProgress: Map<String, Float> = emptyMap(),
+    /** Episodes marked watched, by id. */
+    val watched: Set<String> = emptySet(),
 )
 
 @Immutable
@@ -271,8 +275,10 @@ class DialViewModel @Inject constructor(
                             selectedSeason = season,
                             seriesProgress = progress,
                             resumeMs = resume,
+                            watched = store.watchedEpisodes(channel.id),
                         )
                     }
+                    loadEpisodeProgress()
                 }
             }
         }
@@ -292,6 +298,51 @@ class DialViewModel @Inject constructor(
 
     fun selectSeason(key: String) {
         _details.update { it?.copy(selectedSeason = key) }
+        loadEpisodeProgress()
+    }
+
+    /** Reads the saved position of every episode in the selected season, for the progress bars. */
+    private fun loadEpisodeProgress() {
+        val current = _details.value ?: return
+        val series = current.channel
+        val season = current.series?.seasons?.firstOrNull { it.key == current.selectedSeason } ?: return
+        viewModelScope.launch {
+            val progress = HashMap<String, Float>()
+            for (episode in season.episodes) {
+                val position = savedPosition(series.copyXtreamEpisode(episode.toEpisodeInfo()).url)
+                if (position <= 0L) continue
+                val length = parseDuration(episode.duration)
+                progress[episode.id] = if (length > 0L) (position.toFloat() / length).coerceIn(0.02f, 1f) else 0.1f
+            }
+            updateDetailsFor(series.id) { it.copy(episodeProgress = progress, watched = store.watchedEpisodes(series.id)) }
+        }
+    }
+
+    /** "1:02:03" / "45:10" / "45" (minutes) → milliseconds, 0 when unreadable. */
+    private fun parseDuration(text: String?): Long {
+        val parts = text?.trim()?.split(':')?.mapNotNull { it.trim().toLongOrNull() } ?: return 0L
+        return when (parts.size) {
+            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
+            2 -> (parts[0] * 60 + parts[1]) * 1000L
+            1 -> parts[0] * 60_000L
+            else -> 0L
+        }
+    }
+
+    /** Marks [episodeIds] of the open series watched (or not), for the page and "hide watched". */
+    fun setWatched(seriesId: Int, episodeIds: Collection<String>, watched: Boolean) {
+        store.setWatched(seriesId, episodeIds, watched)
+        updateDetailsFor(seriesId) { it.copy(watched = store.watchedEpisodes(seriesId)) }
+    }
+
+    /** The episode playing now counts as watched (it ended, or nearly did). */
+    fun markPlayingWatched() {
+        val playing = _nowPlaying.value ?: return
+        val series = playing.series ?: return
+        val episode = playing.episode ?: return
+        if (episode.id in store.watchedEpisodes(series.id)) return
+        store.setWatched(series.id, listOf(episode.id), true)
+        updateDetailsFor(series.id) { it.copy(watched = store.watchedEpisodes(series.id)) }
     }
 
     /** Re-reads saved positions after the player closes, so "Resume from" stays accurate. */
@@ -308,6 +359,7 @@ class DialViewModel @Inject constructor(
             updateDetailsFor(current.channel.id) {
                 it.copy(resumeMs = resume, seriesProgress = progress)
             }
+            if (current.kind == DetailsKind.Series) loadEpisodeProgress()
         }
     }
 

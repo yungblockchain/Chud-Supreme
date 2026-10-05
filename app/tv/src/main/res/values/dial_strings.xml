@@ -1068,4 +1068,39 @@
     <string name="dial_multiview_save_preset">Save these as a preset</string>
     <string name="dial_multiview_preset_saved">Preset saved: %1$s</string>
     <string name="dial_multiview_preset_label">PRESET · hold OK to forget</string>
+
+    <!-- Stage 5b: on demand, sound and language, controls -->
+    <string name="dial_details_trailer">Trailer</string>
+    <string name="dial_trailer_title">%1$s · trailer</string>
+    <string name="dial_details_season_watched">Mark season watched</string>
+    <string name="dial_details_season_unwatched">Mark season unwatched</string>
+    <string name="dial_details_hide_watched">Hide watched</string>
+    <string name="dial_details_watched_hint">Hold OK on an episode to mark it.</string>
+    <string name="dial_details_all_watched">Every episode in this season is watched.</string>
+    <string name="dial_details_watched">Watched</string>
+    <string name="dial_because_you_watched">Because you watched %1$s</string>
+    <string name="dial_because_you_watched_hint">Picks from TMDB. OK finds it in your playlists.</string>
+    <string name="dial_home_row_because">Because you watched</string>
+    <string name="dial_settings_section_sound_language">Sound, language and episodes</string>
+    <string name="dial_setting_audio_language">Audio language</string>
+    <string name="dial_setting_subtitle_language">Subtitle language</string>
+    <string name="dial_language_any">Any</string>
+    <string name="dial_setting_foreign_subtitles">Subtitles when the sound is in another language</string>
+    <string name="dial_setting_auto_subtitles">Fetch subtitles when a film has none (OpenSubtitles)</string>
+    <string name="dial_subtitles_auto_added">Subtitles added: %1$s</string>
+    <string name="dial_setting_night_mode">Night mode (quieter loud bits)</string>
+    <string name="dial_setting_dialogue_boost">Dialogue boost</string>
+    <string name="dial_setting_sound_hint">Night mode and the dialogue boost shape the sound on the stick. With Dolby or DTS sent straight to a soundbar, use the soundbar\'s own night mode instead.</string>
+    <string name="dial_setting_binge">Binge mode (next episode at once)</string>
+    <string name="dial_setting_hide_watched">Hide watched episodes</string>
+    <string name="dial_quick_settings">Quick settings</string>
+    <string name="dial_quick_settings_hint">Hold Menu anywhere to open these. Hold Back to leave the player completely.</string>
+    <string name="dial_scene_ask">What\'s going on?</string>
+    <string name="dial_scene_ask_hint">Claude explains this scene, no spoilers</string>
+    <string name="dial_scene_title">CLAUDE · THIS SCENE</string>
+    <string name="dial_scene_thinking">Thinking about this scene…</string>
+    <string name="dial_scene_back">Back closes this.</string>
+    <string name="dial_scene_no_key">Add your Claude key in the Claude tab first.</string>
+    <string name="dial_scene_failed">Claude couldn\'t answer just now.</string>
+    <string name="dial_claude_suggest_for_me">What should I watch tonight? Go by what I\'ve been watching.</string>
 </resources>

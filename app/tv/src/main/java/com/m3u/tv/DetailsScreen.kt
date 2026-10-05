@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Theaters
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.tv.material3.Icon
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -84,6 +89,12 @@ fun DetailsScreen(
     onTraktRate: (Int) -> Unit = {},
     onTraktComment: (String, Boolean) -> Unit = { _, _ -> },
     onTraktWatched: () -> Unit = {},
+    /** Plays the trailer TMDB lists (through the YouTube tab's player). */
+    onTrailer: ((String) -> Unit)? = null,
+    hideWatched: Boolean = false,
+    onToggleHideWatched: () -> Unit = {},
+    /** Marks episodes watched or not (the whole season, or one on hold-OK). */
+    onSetWatched: (List<String>, Boolean) -> Unit = { _, _ -> },
 ) {
     BackHandler(enabled = active, onBack = onBack)
     val primaryFocus = remember { FocusRequester() }
@@ -236,6 +247,14 @@ fun DetailsScreen(
                                     onClick = { onPlayEpisode(allEpisodes.random()) },
                                 )
                             }
+                            val trailerKey = extras?.takeIf { it.channelId == state.channel.id }?.extras?.trailerKey
+                            if (trailerKey != null && onTrailer != null) {
+                                TvActionButton(
+                                    text = stringResource(R.string.dial_details_trailer),
+                                    icon = Icons.Rounded.Theaters,
+                                    onClick = { onTrailer(trailerKey) },
+                                )
+                            }
                             TvActionButton(
                                 text = stringResource(
                                     if (isFavourite) R.string.dial_player_favourite_remove
@@ -301,12 +320,44 @@ fun DetailsScreen(
                             }
                         }
                     }
-                    items(season?.episodes.orEmpty(), key = { "episode-${it.id}" }) { episode ->
+                    // Watched marks: hide them, or mark the season in one go.
+                    val seasonIds = season?.episodes?.map { it.id }.orEmpty()
+                    val seasonDone = seasonIds.isNotEmpty() && seasonIds.all { it in state.watched }
+                    item(key = "watched-tools") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.focusGroup()) {
+                            TvActionButton(
+                                text = stringResource(if (seasonDone) R.string.dial_details_season_unwatched else R.string.dial_details_season_watched),
+                                icon = Icons.Rounded.DoneAll,
+                                onClick = { onSetWatched(seasonIds, !seasonDone) },
+                            )
+                            TvActionButton(
+                                text = stringResource(R.string.dial_details_hide_watched),
+                                icon = if (hideWatched) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                checked = hideWatched,
+                                onClick = onToggleHideWatched,
+                            )
+                            Text(
+                                text = stringResource(R.string.dial_details_watched_hint),
+                                color = TvColors.TextMuted,
+                                fontFamily = TvFonts.Body,
+                                fontSize = 13.sp,
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                            )
+                        }
+                    }
+                    val shownEpisodes = season?.episodes.orEmpty().filter { !hideWatched || it.id !in state.watched }
+                    items(shownEpisodes, key = { "episode-${it.id}" }) { episode ->
                         EpisodeRow(
                             episode = episode,
                             lastWatched = episode.id == state.seriesProgress?.episodeId,
                             onClick = { onPlayEpisode(episode) },
+                            progress = state.episodeProgress[episode.id],
+                            watched = episode.id in state.watched,
+                            onToggleWatched = { onSetWatched(listOf(episode.id), episode.id !in state.watched) },
                         )
+                    }
+                    if (hideWatched && shownEpisodes.isEmpty() && seasonIds.isNotEmpty()) {
+                        item(key = "all-watched") { Credit(stringResource(R.string.dial_details_all_watched)) }
                     }
                 }
             }
@@ -587,9 +638,13 @@ private fun EpisodeRow(
     episode: SeriesEpisode,
     lastWatched: Boolean,
     onClick: () -> Unit,
+    progress: Float? = null,
+    watched: Boolean = false,
+    onToggleWatched: (() -> Unit)? = null,
 ) {
     FocusFrame(
         onClick = onClick,
+        onLongClick = onToggleWatched,
         shape = RoundedCornerShape(14.dp),
         focusedScale = 1.02f,
         semanticsLabel = listOfNotNull(
@@ -648,13 +703,40 @@ private fun EpisodeRow(
                     fontSize = 13.sp,
                 )
             }
-            episode.duration?.let {
-                Text(
-                    text = it,
-                    color = secondary,
-                    fontFamily = TvFonts.Body,
-                    fontSize = 14.sp,
+            if (watched) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = stringResource(R.string.dial_details_watched),
+                    tint = if (focused) TvColors.OnFocus else TvColors.Positive,
+                    modifier = Modifier.size(22.dp),
                 )
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                episode.duration?.let {
+                    Text(
+                        text = it,
+                        color = secondary,
+                        fontFamily = TvFonts.Body,
+                        fontSize = 14.sp,
+                    )
+                }
+                // How far in playback got, as a short bar.
+                if (progress != null && !watched) {
+                    Box(
+                        modifier = Modifier
+                            .width(72.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(if (focused) TvColors.OnFocus.copy(alpha = 0.25f) else TvColors.TextMuted.copy(alpha = 0.4f)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progress)
+                                .background(if (focused) TvColors.OnFocus else TvColors.Focus),
+                        )
+                    }
+                }
             }
         }
     }

@@ -382,7 +382,9 @@ class ClaudeViewModel @Inject constructor(
 
     private suspend fun myLists(seen: MutableMap<Int, Channel>): String {
         val favourites = channelRepository.observeAllFavorite().first().take(FAVOURITES_LIMIT)
-        val recent = listOfNotNull(channelRepository.getPlayedRecently())
+        // The last ten things played, so "what should I watch" can go by taste.
+        val recent = runCatching { channelRepository.getPlayedRecently(RECENT_LIMIT) }.getOrDefault(emptyList())
+            .ifEmpty { listOfNotNull(channelRepository.getPlayedRecently()) }
         (favourites + recent).forEach { seen[it.id] = it }
         val favouritesJson = JsonArray(favourites.map { itemJson(it) })
         val recentJson = JsonArray(recent.map { itemJson(it) })
@@ -494,6 +496,7 @@ class ClaudeViewModel @Inject constructor(
         const val MAX_CATEGORIES = 150
         const val WHATS_ON_LIMIT = 12
         const val FAVOURITES_LIMIT = 30
+        const val RECENT_LIMIT = 10
         const val HOUR_MS = 60 * 60_000L
 
         val TOOLS: JsonArray = buildJsonArray {
@@ -548,7 +551,7 @@ class ClaudeViewModel @Inject constructor(
             )
             tool(
                 name = "my_lists",
-                description = "The viewer's favourites and the last thing they played.",
+                description = "The viewer's favourites and the last ten things they played, newest first (their taste).",
                 properties = {},
                 required = emptyList(),
             )

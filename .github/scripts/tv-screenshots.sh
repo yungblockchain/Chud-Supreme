@@ -207,6 +207,10 @@ if check "launch"; then
         press $OK; sleep 1
         open_tab live 10; shot 50b-live-merged
         open_tab settings 8; for _ in $(seq 1 21); do press $DOWN; done; press $OK; sleep 1
+        # Stage 5b: quick settings (hold Menu) and the sound and language rows.
+        open_tab home 10; adb shell input keyevent --longpress 82; sleep 2; shot 51-quick-settings
+        press $BACK; sleep 1
+        open_tab settings 8; for _ in $(seq 1 30); do press $DOWN; done; sleep 1; shot 51a-settings-sound-language
         open_tab search 8; type_text "Film%s12345"; sleep 5; shot 43-search-universal
         # The Menu key opens the hidden side menu with its labels; Left from the hero does too.
         press $UP; adb shell input keyevent 82; sleep 1; shot 26-menu-open

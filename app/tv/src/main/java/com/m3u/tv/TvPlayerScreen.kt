@@ -92,6 +92,11 @@ import androidx.compose.material.icons.rounded.LiveTv
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.media3.exoplayer.ExoPlayer
+import java.util.Locale
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.tv.material3.Text
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
@@ -123,6 +128,8 @@ private val SLEEP_STEPS_MINUTES = listOf(30, 60, 90, 120)
 /** How long the "+30 s" bubble stays after the last scrub step. */
 private const val SCRUB_BUBBLE_MS = 900L
 private const val SEGMENT_CHECK_MS = 400L
+/** How long a film plays before "no subtitles at all" counts as true (some streams add them late). */
+private const val AUTO_SUBTITLE_WAIT_MS = 4_000L
 /** A live stream counts as rewindable when the player holds at least this much behind the edge. */
 private const val LIVE_SEEK_MIN_MS = 30_000L
 /** A live pause longer than this would outrun the player's buffer: Play takes the catch-up route. */
@@ -585,6 +592,55 @@ fun TvPlayerScreen(
     // Stats for nerds, and the picture at the progress-bar cursor.
     val displayHz = remember(activity) { activity?.let { displayRefreshRate(it) } ?: 0f }
     val stats by rememberPlaybackStats(player, statsVisible, displayHz)
+
+    // Night mode and the dialogue boost, on the player's own sound.
+    val enhancer = remember(player) { (player as? ExoPlayer)?.let { AudioEnhancer(it) } }
+    DisposableEffect(enhancer) { onDispose { enhancer?.release() } }
+    LaunchedEffect(enhancer, preferences.nightMode, preferences.dialogueBoost) {
+        enhancer?.set(night = preferences.nightMode, dialogue = preferences.dialogueBoost)
+    }
+    // Language rules: the preferred audio, and subtitles when the sound is in another language.
+    DisposableEffect(player, preferences.audioLanguage, preferences.subtitleLanguage, preferences.foreignAudioSubtitles) {
+        val target = player ?: return@DisposableEffect onDispose { }
+        val listener = applyLanguageRules(
+            target,
+            audio = preferences.audioLanguage,
+            subtitles = preferences.subtitleLanguage,
+            foreignSubtitles = preferences.foreignAudioSubtitles,
+        )
+        onDispose { target.removeListener(listener) }
+    }
+    // A film or episode with no subtitles at all: fetched from OpenSubtitles, if that's switched on.
+    val optionsViewModel: PlayerOptionsViewModel = hiltViewModel()
+    val context = LocalContext.current
+    val subtitleAddedText = stringResource(R.string.dial_subtitles_auto_added)
+    LaunchedEffect(player, subtitleTarget, preferences.autoSubtitles, playbackState == Player.STATE_READY) {
+        val target = subtitleTarget ?: return@LaunchedEffect
+        val current = player ?: return@LaunchedEffect
+        if (!preferences.autoSubtitles || live || playbackState != Player.STATE_READY) return@LaunchedEffect
+        delay(AUTO_SUBTITLE_WAIT_MS)
+        if (current.currentTracks.hasText()) return@LaunchedEffect
+        val language = preferences.subtitleLanguage
+            .ifEmpty { preferences.audioLanguage }
+            .ifEmpty { Locale.getDefault().language }
+        optionsViewModel.autoFetch(target, language)
+    }
+    LaunchedEffect(optionsViewModel) {
+        optionsViewModel.autoAdded.collect { name ->
+            Toast.makeText(context, subtitleAddedText.format(name), Toast.LENGTH_SHORT).show()
+        }
+    }
+    // "What's going on?": the last couple of minutes of subtitles go to Claude with the title.
+    val sceneViewModel: SceneExplainerViewModel = hiltViewModel()
+    val sceneAnswer by sceneViewModel.answer.collectAsStateWithLifecycle()
+    val dialogue = remember(player) { RecentDialogue() }
+    DisposableEffect(player, dialogue) {
+        val target = player ?: return@DisposableEffect onDispose { }
+        target.addListener(dialogue)
+        onDispose { target.removeListener(dialogue) }
+    }
+    val sceneNoKey = stringResource(R.string.dial_scene_no_key)
+    val sceneFailed = stringResource(R.string.dial_scene_failed)
     val previews = rememberSeekPreviews(player, mode = if (live) SeekPreviewMode.Off else preferences.seekPreviews)
 
     val controlsAlpha by animateFloatAsState(
@@ -785,6 +841,13 @@ fun TvPlayerScreen(
                     .padding(end = 56.dp, bottom = 56.dp),
             )
         }
+        SceneAnswerCard(
+            answer = sceneAnswer,
+            onDismiss = sceneViewModel::dismiss,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 40.dp, end = 40.dp),
+        )
         if (stillWatching) {
             StillWatchingCard(
                 onContinue = {
@@ -1099,6 +1162,23 @@ fun TvPlayerScreen(
                     restoreOptionsFocus = true
                     showControls()
                 },
+                onExplainScene = if (!live && channel != null) {
+                    {
+                        optionsOpen = false
+                        controlsVisible = false
+                        val episodeLabel = subtitleTarget?.let { target ->
+                            if (target.season != null && target.episode != null) "S${target.season} E${target.episode}" else null
+                        }
+                        sceneViewModel.explain(
+                            title = subtitleTarget?.title ?: channel.title,
+                            episode = episodeLabel,
+                            positionMs = player?.currentPosition ?: position,
+                            dialogue = dialogue.recent(),
+                            noKey = sceneNoKey,
+                            failed = sceneFailed,
+                        )
+                    }
+                } else null,
             )
         }
     }

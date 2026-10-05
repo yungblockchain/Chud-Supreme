@@ -154,6 +154,7 @@ private fun ClaudeChat(state: ClaudeUiState, viewModel: ClaudeViewModel, onPlay:
     val listState = rememberLazyListState()
     val firstSuggestion = remember { FocusRequester() }
     val suggestions = listOf(
+        stringResource(R.string.dial_claude_suggest_for_me),
         stringResource(R.string.dial_claude_suggest_on_now),
         stringResource(R.string.dial_claude_suggest_film),
         stringResource(R.string.dial_claude_suggest_series),

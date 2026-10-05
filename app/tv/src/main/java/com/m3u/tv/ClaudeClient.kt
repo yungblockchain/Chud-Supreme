@@ -148,7 +148,7 @@ internal object ClaudeApi {
             put("model", model.id)
             put("max_tokens", maxTokens)
             put("system", system)
-            put("tools", tools)
+            if (tools.isNotEmpty()) put("tools", tools)
             put("messages", JsonArray(messages))
         }
         return request(apiKey, "POST", "$BASE/messages", body.toString()).jsonObject
