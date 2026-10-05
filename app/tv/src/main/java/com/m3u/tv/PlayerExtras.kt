@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -152,12 +153,22 @@ class SeekPreviews(private val uri: Uri) {
     }
 }
 
+/** Provider streams (Xtream's /movie/ and /series/ paths) are usually limited to one connection. */
+private fun Uri.isProviderStream(): Boolean {
+    val path = path.orEmpty()
+    return path.contains("/movie/") || path.contains("/series/") || path.contains("/live/")
+}
+
 /** A [SeekPreviews] for what the player is playing now; closed when that changes. */
 @Composable
-fun rememberSeekPreviews(player: Player?, enabled: Boolean): SeekPreviews? {
+fun rememberSeekPreviews(player: Player?, mode: SeekPreviewMode): SeekPreviews? {
     val uri = player?.currentMediaItem?.localConfiguration?.uri
-    val previews = remember(uri, enabled) {
-        if (!enabled || uri == null) null else SeekPreviews(uri).takeIf { it.supported }
+    val previews = remember(uri, mode) {
+        when {
+            uri == null || mode == SeekPreviewMode.Off -> null
+            mode == SeekPreviewMode.DirectLinks && uri.isProviderStream() -> null
+            else -> SeekPreviews(uri).takeIf { it.supported }
+        }
     }
     DisposableEffect(previews) {
         onDispose { previews?.close() }
@@ -317,7 +328,7 @@ fun PlaybackStatsPanel(stats: PlaybackStats, modifier: Modifier = Modifier) {
         add(
             stringResource(R.string.dial_stats_video).padEnd(STAT_LABEL) + listOfNotNull(
                 video?.takeIf { it.width > 0 }?.let { "${it.width}×${it.height}" },
-                video?.takeIf { it.frameRate > 0f }?.let { "%.3g fps".format(it.frameRate) },
+                video?.takeIf { it.frameRate > 0f }?.let { "%.2f fps".format(it.frameRate) },
                 video?.sampleMimeType?.let { codecLabel(it) },
                 video?.takeIf { it.bitrate > 0 }?.let { "%.1f Mbps".format(it.bitrate / 1_000_000f) },
             ).joinToString(" · ").ifEmpty { "—" }
@@ -372,20 +383,22 @@ fun PlaybackStatsPanel(stats: PlaybackStats, modifier: Modifier = Modifier) {
 
 private const val STAT_LABEL = 11
 
-private fun codecLabel(mime: String): String = when {
-    mime.endsWith("avc") -> "H.264"
-    mime.endsWith("hevc") -> "HEVC"
-    mime.endsWith("av01") -> "AV1"
-    mime.endsWith("vp9") || mime.endsWith("x-vnd.on2.vp9") -> "VP9"
-    mime.endsWith("dolby-vision") -> "Dolby Vision"
-    mime.endsWith("mpeg2") -> "MPEG-2"
-    mime.endsWith("ac3") -> "AC-3"
-    mime.endsWith("eac3") || mime.endsWith("eac3-joc") -> "E-AC-3"
-    mime.endsWith("mp4a-latm") -> "AAC"
-    mime.endsWith("mpeg") -> "MP3"
-    mime.endsWith("opus") -> "Opus"
-    mime.endsWith("true-hd") -> "TrueHD"
-    mime.contains("dts") -> "DTS"
+private fun codecLabel(mime: String): String = when (mime) {
+    MimeTypes.VIDEO_H264 -> "H.264"
+    MimeTypes.VIDEO_H265 -> "HEVC"
+    MimeTypes.VIDEO_AV1 -> "AV1"
+    MimeTypes.VIDEO_VP9 -> "VP9"
+    MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
+    MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
+    MimeTypes.AUDIO_AC3 -> "AC-3"
+    MimeTypes.AUDIO_E_AC3 -> "E-AC-3"
+    MimeTypes.AUDIO_E_AC3_JOC -> "E-AC-3 Atmos"
+    MimeTypes.AUDIO_AAC -> "AAC"
+    MimeTypes.AUDIO_MPEG -> "MP3"
+    MimeTypes.AUDIO_MPEG_L2 -> "MP2"
+    MimeTypes.AUDIO_OPUS -> "Opus"
+    MimeTypes.AUDIO_TRUEHD -> "TrueHD"
+    MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_EXPRESS -> "DTS"
     else -> mime.substringAfter('/')
 }
 

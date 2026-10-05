@@ -697,6 +697,8 @@
     <string name="dial_skip_clear">Clear this series’ markers</string>
     <string name="dial_setting_auto_skip">Skip intros and credits automatically</string>
     <string name="dial_setting_seek_previews">Pictures along the progress bar</string>
+    <string name="dial_previews_direct">Direct links only</string>
+    <string name="dial_previews_always">Always (uses a 2nd connection)</string>
     <string name="dial_setting_still_watching">Ask “still watching?” after</string>
     <string name="dial_value_hours">%1$d hours</string>
     <string name="dial_still_watching_title">Still watching?</string>

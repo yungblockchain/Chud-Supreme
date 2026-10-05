@@ -68,7 +68,7 @@ data class DialPreferences(
     /** The player's buttons, in order; buttons left out are hidden. */
     val playerButtons: List<PlayerButton> = PlayerButton.entries,
     /** A picture of the film at the cursor while moving along the progress bar. */
-    val seekPreviews: Boolean = true,
+    val seekPreviews: SeekPreviewMode = SeekPreviewMode.DirectLinks,
     /** Jump past a marked intro or into the next episode without asking. */
     val autoSkip: Boolean = false,
     /** Hours of a film or series left playing untouched before "Still watching?"; 0 = never. */
@@ -89,6 +89,13 @@ data class DialPreferences(
 }
 
 enum class MiniCorner { BottomRight, BottomLeft, TopRight, TopLeft }
+
+/**
+ * The pictures along the progress bar come from a second connection to the film. Many Xtream
+ * accounts allow one connection, and a second can get the stream itself cut off, so by default
+ * only direct links (not a provider's /movie/ or /series/ streams) get pictures.
+ */
+enum class SeekPreviewMode { Off, DirectLinks, Always }
 
 enum class MiniSize { Small, Medium, Large }
 
@@ -367,7 +374,7 @@ class DialSettingsStore @Inject constructor(
             .putString(KEY_MINI_CORNER, next.miniCorner.name)
             .putString(KEY_MINI_SIZE, next.miniSize.name)
             .putString(KEY_PLAYER_BUTTONS, next.playerButtons.joinToString(",") { it.id })
-            .putBoolean(KEY_SEEK_PREVIEWS, next.seekPreviews)
+            .putString(KEY_SEEK_PREVIEWS, next.seekPreviews.name)
             .putBoolean(KEY_AUTO_SKIP, next.autoSkip)
             .putInt(KEY_STILL_WATCHING, next.stillWatchingHours)
             .putString(KEY_SUBTITLE_COLOUR, next.subtitleColour.name)
@@ -492,7 +499,9 @@ class DialSettingsStore @Inject constructor(
                 ?.let { name -> MiniSize.entries.firstOrNull { it.name == name } }
                 ?: defaults.miniSize,
             playerButtons = PlayerButton.parse(prefs.getString(KEY_PLAYER_BUTTONS, null)),
-            seekPreviews = prefs.getBoolean(KEY_SEEK_PREVIEWS, defaults.seekPreviews),
+            seekPreviews = prefs.getString(KEY_SEEK_PREVIEWS, null)
+                ?.let { name -> SeekPreviewMode.entries.firstOrNull { it.name == name } }
+                ?: defaults.seekPreviews,
             autoSkip = prefs.getBoolean(KEY_AUTO_SKIP, defaults.autoSkip),
             stillWatchingHours = prefs.getInt(KEY_STILL_WATCHING, defaults.stillWatchingHours),
             subtitleColour = prefs.getString(KEY_SUBTITLE_COLOUR, null)

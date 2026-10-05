@@ -117,7 +117,14 @@ data class HostedParty(val code: String, val guests: Int, val startedAt: Long)
 sealed interface GuestState {
     data object Idle : GuestState
     data class Joining(val code: String) : GuestState
-    data class InParty(val code: String, val title: String, val synced: Boolean, val ownStream: Boolean) : GuestState
+    data class InParty(
+        val code: String,
+        val title: String,
+        val synced: Boolean,
+        val ownStream: Boolean,
+        /** Whether the host is on live TV (the guest's player follows this, not its own playlist). */
+        val live: Boolean,
+    ) : GuestState
     data class Failed(val code: String, val reason: PartyFailure) : GuestState
 }
 
@@ -182,9 +189,9 @@ class WatchParty @Inject constructor(
     }
 
     /** Called on the phone-page worker thread; answers from the main thread's view of the player. */
-    override fun state(code: String, guestId: String): String? {
-        val decoded = PartyCodes.decode(code) ?: return null
-        if (secret < 0 || decoded.secret != secret) return null
+    override fun state(code: String, guestId: String): PartyAnswer {
+        val decoded = PartyCodes.decode(code) ?: return PartyAnswer.NoParty
+        if (secret < 0 || decoded.secret != secret) return PartyAnswer.NoParty
         val latch = CountDownLatch(1)
         var json: String? = null
         main.post {
@@ -201,7 +208,11 @@ class WatchParty @Inject constructor(
                 _hosting.value?.let { if (it.guests != count) _hosting.value = it.copy(guests = count) }
             }
         }
-        return json
+        return json?.let { PartyAnswer.State(it) } ?: PartyAnswer.Busy
+    }
+
+    override fun onServerStopped() {
+        stopHosting()
     }
 
     private fun snapshot(): String {
@@ -259,6 +270,7 @@ class WatchParty @Inject constructor(
     private suspend fun follow(code: String, endpoint: String) {
         var currentKey: String? = null
         var ownStream = false
+        var expectedUri: String? = null
         var misses = 0
         while (true) {
             val sentAt = SystemClock.uptimeMillis()
@@ -299,9 +311,13 @@ class WatchParty @Inject constructor(
                 _events.tryEmit(PartyEvent.ShowPlayer)
                 // Give the stream a moment to open before judging the position.
                 delay(START_GRACE_MS)
+                expectedUri = playerManager.player.value?.currentMediaItem?.localConfiguration?.uri?.toString()
             }
-            val synced = align(state, programme, receivedAt - sentAt)
-            _guest.value = GuestState.InParty(code, programme.title, synced, ownStream)
+            // Only steer the party's own stream: if the viewer opened something else, leave it be.
+            val playingUri = playerManager.player.value?.currentMediaItem?.localConfiguration?.uri?.toString()
+            val onPartyStream = expectedUri != null && playingUri == expectedUri
+            val synced = onPartyStream && align(state, programme, receivedAt - sentAt, receivedAt)
+            _guest.value = GuestState.InParty(code, programme.title, synced, ownStream, programme.live)
             delay(POLL_MS)
         }
     }
@@ -331,7 +347,10 @@ class WatchParty @Inject constructor(
             .filter { it.title.equals(wanted, ignoreCase = true) }
         val episode = programme.episode
         if (episode != null) {
-            val series = matches.firstOrNull() ?: return null
+            // An episode id only means the same thing on the same provider.
+            val hostServer = runCatching { URL(programme.url).host }.getOrNull() ?: return null
+            val series = matches.firstOrNull { runCatching { URL(it.url).host }.getOrNull() == hostServer }
+                ?: return null
             return MediaCommand.XtreamEpisode(series.id, episode)
         }
         val channel: Channel = matches.firstOrNull { it.url == programme.url } ?: matches.firstOrNull() ?: return null
@@ -339,11 +358,14 @@ class WatchParty @Inject constructor(
     }
 
     /** Nudges this box to where the host is. Live TV only follows play and pause. */
-    private fun align(state: HostState, programme: PartyProgramme, tripMs: Long): Boolean {
+    private fun align(state: HostState, programme: PartyProgramme, tripMs: Long, receivedAt: Long): Boolean {
         val player = playerManager.player.value ?: return false
         if (state.playing != (player.playWhenReady)) playerManager.pauseOrContinue(state.playing)
         if (programme.live || state.duration <= 0L) return true
-        val expected = state.position + (if (state.playing) tripMs / 2 else 0L)
+        // Where the host is now: its position when it answered, plus half the trip and the time
+        // since the answer came in (both only while it's playing).
+        val elapsed = if (state.playing) tripMs / 2 + (SystemClock.uptimeMillis() - receivedAt) else 0L
+        val expected = state.position + elapsed
         val drift = player.currentPosition - expected
         if (kotlin.math.abs(drift) > MAX_DRIFT_MS) {
             player.seekTo(expected.coerceAtLeast(0L))
@@ -432,7 +454,7 @@ class WatchParty @Inject constructor(
         const val START_GRACE_MS = 2_500L
         const val MAX_DRIFT_MS = 1_500L
         const val MAX_MISSES = 10
-        const val SNAPSHOT_WAIT_MS = 800L
+        const val SNAPSHOT_WAIT_MS = 1_500L
         const val GUEST_GONE_MS = 8_000L
         const val CONNECT_TIMEOUT_MS = 1_500
         const val READ_TIMEOUT_MS = 2_000
@@ -440,9 +462,20 @@ class WatchParty @Inject constructor(
     }
 }
 
-/** The phone-page server's hook for the party: null means "no such party". */
+/** The phone-page server's hook for the party. */
 interface PartyEndpoint {
-    fun state(code: String, guestId: String): String?
+    fun state(code: String, guestId: String): PartyAnswer
+
+    /** The page was switched off, so no party can be reached any more. */
+    fun onServerStopped()
+}
+
+sealed interface PartyAnswer {
+    /** No party, or the wrong code. */
+    data object NoParty : PartyAnswer
+    /** The host couldn't answer in time (its main thread was busy); try again. */
+    data object Busy : PartyAnswer
+    data class State(val json: String) : PartyAnswer
 }
 
 @HiltViewModel

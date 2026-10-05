@@ -190,14 +190,17 @@ fun App(
     val details by dial.details.collectAsStateWithLifecycle()
     val continueWatching by dial.continueWatching.collectAsStateWithLifecycle()
     val nowPlaying by dial.nowPlaying.collectAsStateWithLifecycle()
+    val partyGuestState by party.guest.collectAsStateWithLifecycle()
 
     // What's playing, and whether up/down should flip channels. Flipping walks the list the channel
     // was opened from: the selected playlist if it's in there, otherwise favourites.
     val playingId = currentChannel?.id
     val playingPlaylist = state.playlists.firstOrNull { it.url == currentChannel?.playlistUrl }
     val catchUp = currentChannel?.url?.contains("/timeshift/") == true
-    val live = !catchUp &&
-        (playingPlaylist == null || !(playingPlaylist.isVod || playingPlaylist.isSeries))
+    // A watch-party guest follows the host's kind of stream, whatever playlist its own copy is in.
+    val partyGuestLive = (partyGuestState as? GuestState.InParty)?.live
+    val live = partyGuestLive ?: (!catchUp &&
+        (playingPlaylist == null || !(playingPlaylist.isVod || playingPlaylist.isSeries)))
     val zapChannels = when {
         playingId == null || !live -> emptyList()
         state.channels.any { it.id == playingId } -> state.channels
@@ -288,7 +291,7 @@ fun App(
 
     // Watch party: what the host is playing, for guests; and a guest's player coming to the front.
     val partyHosting by party.hosting.collectAsStateWithLifecycle()
-    val partyGuest by party.guest.collectAsStateWithLifecycle()
+    val partyGuest = partyGuestState
     val skipMarkers by dial.skipMarkers.collectAsStateWithLifecycle()
     LaunchedEffect(currentChannel, nowPlaying, live, player?.currentMediaItem?.mediaId) {
         val channel = currentChannel
@@ -311,8 +314,12 @@ fun App(
         party.events.collect { event ->
             when (event) {
                 PartyEvent.ShowPlayer -> surface = TvSurface.Player
-                is PartyEvent.JoinedStream ->
+                is PartyEvent.JoinedStream -> {
+                    // The party picked the stream, not a details page: nothing of a previous film
+                    // or series (its markers, its "up next") applies to it.
+                    dial.clearNowPlaying()
                     if (!event.ownStream) Toast.makeText(context, partyHostStream, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -936,9 +943,9 @@ fun App(
                 onMultiview = { currentChannel?.let(openMultiview) },
                 skipMarkers = skipMarkers,
                 onUpdateSkipMarkers = if (nowPlaying?.series != null) dial::updateSkipMarkers else null,
-                onNextEpisode = if (nowPlaying?.series != null) {
-                    { dial.nextEpisode()?.let { (series, episode) -> dial.playEpisode(series, episode, fromStart = true) } }
-                } else null,
+                onNextEpisode = remember(nowPlaying) { dial.nextEpisode() }?.let { (series, episode) ->
+                    { dial.playEpisode(series, episode, fromStart = true) }
+                },
                 partyHosting = partyHosting,
                 partyGuest = partyGuest,
                 onStartParty = startParty,

@@ -102,6 +102,7 @@ class PhoneCompanion @Inject constructor(
         workers?.shutdownNow()
         workers = null
         _info.value = null
+        party?.onServerStopped()
     }
 
     private fun handle(client: Socket) {
@@ -131,9 +132,8 @@ class PhoneCompanion @Inject constructor(
                 // A watch-party guest asking what's playing and where. The code is the key.
                 method == "GET" && path == "/party" -> {
                     val form = parseForm(query)
-                    val json = party?.state(form["code"].orEmpty().take(16), form["guest"].orEmpty().take(16))
-                    if (json == null) respond(output, 404, JSON, """{"ok":false,"error":"no_party"}""")
-                    else respond(output, 200, JSON, json)
+                    val (status, json) = partyState(form["code"].orEmpty().take(16), form["guest"].orEmpty().take(16))
+                    respond(output, status, JSON, json)
                 }
                 method == "POST" && path.startsWith("/api/") -> {
                     if (length !in 0..MAX_BODY) return respond(output, 413, JSON, """{"ok":false,"error":"too_large"}""")
@@ -142,6 +142,27 @@ class PhoneCompanion @Inject constructor(
                     respond(output, status, JSON, json)
                 }
                 else -> respond(output, 404, "text/plain", "Not found")
+            }
+        }
+    }
+
+    /** Wrong codes count like wrong PINs, so a code can't be guessed by trying them all. */
+    private fun partyState(code: String, guestId: String): Pair<Int, String> {
+        val now = System.currentTimeMillis()
+        if (now < lockedUntil) return 429 to """{"ok":false,"error":"locked"}"""
+        return when (val answer = party?.state(code, guestId) ?: PartyAnswer.NoParty) {
+            is PartyAnswer.State -> {
+                failures = 0
+                200 to answer.json
+            }
+            PartyAnswer.Busy -> 503 to """{"ok":false,"error":"busy"}"""
+            PartyAnswer.NoParty -> {
+                failures++
+                if (failures >= MAX_FAILURES) {
+                    lockedUntil = now + LOCK_MS
+                    failures = 0
+                }
+                404 to """{"ok":false,"error":"no_party"}"""
             }
         }
     }
@@ -199,7 +220,8 @@ class PhoneCompanion @Inject constructor(
         val bytes = body.toByteArray(Charsets.UTF_8)
         val reason = when (status) {
             200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"
-            413 -> "Payload Too Large"; 429 -> "Too Many Requests"; else -> "Error"
+            413 -> "Payload Too Large"; 429 -> "Too Many Requests"; 503 -> "Service Unavailable"
+            else -> "Error"
         }
         output.write(
             ("HTTP/1.1 $status $reason\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\n" +

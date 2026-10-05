@@ -352,7 +352,9 @@ fun TvPlayerScreen(
     LaunchedEffect(restoreOptionsFocus) {
         if (!restoreOptionsFocus) return@LaunchedEffect
         yield()
+        // The options button may be hidden in Settings (the Menu key still opens the panel).
         runCatching { optionsFocusRequester.requestFocus() }
+            .onFailure { runCatching { playPauseFocusRequester.requestFocus() } }
         restoreOptionsFocus = false
     }
 
@@ -487,7 +489,7 @@ fun TvPlayerScreen(
     // Stats for nerds, and the picture at the progress-bar cursor.
     val displayHz = remember(activity) { activity?.let { displayRefreshRate(it) } ?: 0f }
     val stats by rememberPlaybackStats(player, statsVisible, displayHz)
-    val previews = rememberSeekPreviews(player, enabled = !live && preferences.seekPreviews)
+    val previews = rememberSeekPreviews(player, mode = if (live) SeekPreviewMode.Off else preferences.seekPreviews)
 
     val controlsAlpha by animateFloatAsState(
         targetValue = if (controlsVisible) 1f else 0f,
@@ -510,8 +512,10 @@ fun TvPlayerScreen(
                     swallowedKey = null
                     return@onPreviewKeyEvent true
                 }
-                // The options panel and the "still watching?" card move with the arrows like any list.
-                if (optionsOpen || stillWatching) return@onPreviewKeyEvent false
+                // The options panel moves with the arrows like any list. The "still watching?" card
+                // keeps Up/Down to itself: the control row underneath is only faded out, not gone.
+                if (optionsOpen) return@onPreviewKeyEvent false
+                if (stillWatching) return@onPreviewKeyEvent key == Key.DirectionUp || key == Key.DirectionDown
                 // A skip on offer: OK takes it (with the controls hidden), Back waves it away.
                 val offered = skipOffered
                 if (offered != null && !controlsVisible) {

@@ -308,8 +308,14 @@ fun DialSettingsScreen(
         item {
             SettingRow(
                 label = stringResource(R.string.dial_setting_seek_previews),
-                value = onOff(preferences.seekPreviews),
-                onClick = { onUpdate { it.copy(seekPreviews = !it.seekPreviews) } },
+                value = stringResource(
+                    when (preferences.seekPreviews) {
+                        SeekPreviewMode.Off -> R.string.dial_value_off
+                        SeekPreviewMode.DirectLinks -> R.string.dial_previews_direct
+                        SeekPreviewMode.Always -> R.string.dial_previews_always
+                    }
+                ),
+                onClick = { onUpdate { it.copy(seekPreviews = SeekPreviewMode.entries.nextAfter(it.seekPreviews)) } },
             )
         }
         item {
@@ -374,8 +380,8 @@ fun DialSettingsScreen(
                         }
                     },
                     onKey = { event ->
-                        stepperKeys(event) { delta ->
-                            if (visible) onUpdate { prefs ->
+                        visible && stepperKeys(event) { delta ->
+                            onUpdate { prefs ->
                                 val order = prefs.playerButtons.toMutableList()
                                 val from = order.indexOf(button)
                                 if (from >= 0) {
