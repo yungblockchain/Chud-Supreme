@@ -111,6 +111,21 @@ internal object TmdbClient {
         return (root["results"] as? JsonArray)?.firstNotNullOfOrNull { it.toTitle(kind) }
     }
 
+    /** Films and series matching [query], best matches first (for the universal search). */
+    suspend fun searchAll(key: String, query: String): List<TmdbTitle> {
+        val root = get(key, "/search/multi", listOf("query" to query, "include_adult" to "false")) as? JsonObject
+            ?: return emptyList()
+        return (root["results"] as? JsonArray).orEmpty().mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val kind = when (item.text("media_type")) {
+                "movie" -> MediaKind.Movie
+                "tv" -> MediaKind.Tv
+                else -> return@mapNotNull null
+            }
+            item.toTitle(kind)
+        }.take(MAX_SEARCH)
+    }
+
     suspend fun extras(key: String, kind: MediaKind, id: Int): TitleExtras? {
         val credits = if (kind == MediaKind.Tv) "aggregate_credits" else "credits"
         val root = get(
@@ -296,6 +311,7 @@ internal object TmdbClient {
     private fun JsonObject.int(name: String): Int? = (this[name] as? JsonPrimitive)?.intOrNull
 
     private const val MAX_CAST = 24
+    private const val MAX_SEARCH = 20
     private const val MAX_KNOWN_FOR = 30
     private const val MAX_COMMENTS = 10
 }

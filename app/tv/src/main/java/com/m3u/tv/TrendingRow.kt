@@ -8,6 +8,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.width
+import androidx.tv.material3.Text
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import com.m3u.core.foundation.util.basic.title
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
@@ -109,3 +119,54 @@ fun TraktRow.displayName(): String = listName ?: stringResource(
         TraktRowKind.Custom -> R.string.dial_trakt_row_list
     }
 )
+
+/** "What you missed": programmes from the last day on favourite channels, replayable. */
+@Composable
+fun MissedRow(items: List<MissedProgramme>, onOpen: (MissedProgramme) -> Unit) {
+    if (items.isEmpty()) return
+    val timeFormat = remember { SimpleDateFormat("EEE HH:mm", Locale.getDefault()) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(
+            title = stringResource(R.string.dial_missed_title),
+            subtitle = stringResource(R.string.dial_missed_subtitle),
+            modifier = Modifier.padding(start = 48.dp),
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = 48.dp, top = 8.dp, end = 48.dp, bottom = 8.dp),
+            modifier = Modifier.focusGroup(),
+        ) {
+            items(items, key = { "${it.channel.id}-${it.programme.startMillis}" }) { item ->
+                FocusFrame(
+                    onClick = { onOpen(item) },
+                    shape = RoundedCornerShape(12.dp),
+                    semanticsLabel = item.programme.title,
+                    modifier = Modifier.width(300.dp),
+                ) { focused ->
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(16.dp),
+                    ) {
+                        Text(
+                            text = item.programme.title,
+                            color = if (focused) TvColors.OnFocus else TvColors.TextPrimary,
+                            fontFamily = TvFonts.Body,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = item.channel.title.title() + " · " + timeFormat.format(Date(item.programme.startMillis)),
+                            color = if (focused) TvColors.OnFocus.copy(alpha = 0.8f) else TvColors.TextSecondary,
+                            fontFamily = TvFonts.Body,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

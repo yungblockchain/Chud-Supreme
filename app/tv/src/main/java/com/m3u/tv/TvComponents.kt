@@ -392,6 +392,7 @@ private fun TvDestination.label(): String = when (this) {
     TvDestination.Films -> stringResource(R.string.dial_nav_films)
     TvDestination.Series -> stringResource(R.string.dial_nav_series)
     TvDestination.Infinite -> stringResource(R.string.dial_nav_infinite)
+    TvDestination.Server -> stringResource(R.string.dial_nav_server)
     TvDestination.Guide -> stringResource(R.string.dial_nav_guide)
     TvDestination.MatchCentre -> stringResource(R.string.dial_nav_match)
     TvDestination.News -> stringResource(R.string.dial_nav_news)
@@ -906,6 +907,8 @@ fun ChannelCard(
                             .aspectRatio(2f / 3f)
                             .clip(RoundedCornerShape(8.dp))
                     )
+                    val badges = remember(channel.title) { qualityBadges(channel.title) }
+                    QualityBadgeRow(badges, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
                 }
                 Text(
                     text = channel.title.title(),

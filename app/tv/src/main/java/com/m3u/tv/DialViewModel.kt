@@ -17,6 +17,7 @@ import com.m3u.data.service.PlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +33,12 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 enum class DetailsKind { Film, Series }
+
+/** A programme that has aired on a favourite channel and can be replayed. */
+@Immutable
+data class MissedProgramme(val channel: Channel, val programme: GuideProgramme)
+
+private const val BOOKMARK_GAP_MS = 5_000L
 
 /** A film or episode playing in the built-in player. */
 @Immutable
@@ -109,6 +116,43 @@ class DialViewModel @Inject constructor(
     /** Intro and credits markers for the series playing now (empty for films and live TV). */
     private val _skipMarkers = MutableStateFlow(SkipMarkers())
     val skipMarkers: StateFlow<SkipMarkers> = _skipMarkers.asStateFlow()
+
+    /** Per-channel refresh-rate rules; a version counter so the player re-reads after a change. */
+    private val _frameRateVersion = MutableStateFlow(0)
+    val frameRateVersion: StateFlow<Int> = _frameRateVersion.asStateFlow()
+
+    fun frameRateMode(channelId: Int): FrameRateMode = store.frameRateMode(channelId)
+
+    fun cycleFrameRateMode(channelId: Int) {
+        val next = FrameRateMode.entries.nextAfter(store.frameRateMode(channelId))
+        store.saveFrameRateMode(channelId, next)
+        _frameRateVersion.update { it + 1 }
+    }
+
+    /** Bookmarks for the film or episode playing now. */
+    private val _bookmarks = MutableStateFlow<List<Long>>(emptyList())
+    val bookmarks: StateFlow<List<Long>> = _bookmarks.asStateFlow()
+    private var bookmarkChannelId: Int? = null
+
+    fun loadBookmarks(channelId: Int?) {
+        bookmarkChannelId = channelId
+        _bookmarks.value = channelId?.let(store::bookmarks).orEmpty()
+    }
+
+    fun addBookmark(positionMs: Long) {
+        val id = bookmarkChannelId ?: return
+        // Two bookmarks within a few seconds of each other are one bookmark.
+        if (_bookmarks.value.any { abs(it - positionMs) < BOOKMARK_GAP_MS }) return
+        val next = (_bookmarks.value + positionMs).sorted()
+        _bookmarks.value = next
+        store.saveBookmarks(id, next)
+    }
+
+    fun clearBookmarks() {
+        val id = bookmarkChannelId ?: return
+        _bookmarks.value = emptyList()
+        store.saveBookmarks(id, emptyList())
+    }
 
     fun updateSkipMarkers(transform: (SkipMarkers) -> SkipMarkers) {
         val series = _nowPlaying.value?.series ?: return
@@ -565,6 +609,41 @@ class DialViewModel @Inject constructor(
         }
     }
 
+    /* ------------------------------------------------------------------ what you missed */
+
+    /** Programmes that ended in the last day on favourite channels and can still be replayed. */
+    private val _missed = MutableStateFlow<List<MissedProgramme>>(emptyList())
+    val missed: StateFlow<List<MissedProgramme>> = _missed.asStateFlow()
+    private var missedLoadedAt = 0L
+    private var missedJob: Job? = null
+
+    fun loadMissed(favourites: List<Channel>) {
+        if (favourites.isEmpty()) {
+            _missed.value = emptyList()
+            return
+        }
+        if (System.currentTimeMillis() - missedLoadedAt < MISSED_TTL_MS && _missed.value.isNotEmpty()) return
+        missedJob?.cancel()
+        missedJob = viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val found = mutableListOf<MissedProgramme>()
+            for (channel in favourites.take(MISSED_CHANNELS)) {
+                val credentials = credentialsFor(channel.playlistUrl) ?: continue
+                val streamId = XtreamCatalog.idFromUrl(channel.url) ?: continue
+                val programmes = guideRequests.withPermit {
+                    runCatching { XtreamCatalog.fullEpg(credentials, streamId) }.getOrDefault(emptyList())
+                }
+                programmes
+                    .filter { it.hasArchive && it.hasEndedBy(now) && it.endMillis > now - MISSED_WINDOW_MS }
+                    .sortedByDescending { it.endMillis }
+                    .take(MISSED_PER_CHANNEL)
+                    .forEach { found += MissedProgramme(channel, it) }
+                _missed.value = found.sortedByDescending { it.programme.endMillis }.take(MISSED_MAX)
+            }
+            missedLoadedAt = System.currentTimeMillis()
+        }
+    }
+
     /** Live TV and catch-up aren't films or episodes. */
     fun clearNowPlaying() {
         _nowPlaying.value = null
@@ -643,6 +722,11 @@ class DialViewModel @Inject constructor(
         const val FINISHED_MARGIN_MS = 3 * 60_000L
         const val NOW_NEXT_TTL_MS = 10 * 60_000L
         const val ARCHIVE_WINDOW_MS = 7 * 24 * 60 * 60_000L
+        const val MISSED_WINDOW_MS = 24 * 60 * 60_000L
+        const val MISSED_TTL_MS = 30 * 60_000L
+        const val MISSED_CHANNELS = 12
+        const val MISSED_PER_CHANNEL = 2
+        const val MISSED_MAX = 20
         const val FUTURE_WINDOW_MS = 24 * 60 * 60_000L
         const val LISTING_TTL_MS = 30 * 60_000L
         const val MAX_LISTINGS = 300

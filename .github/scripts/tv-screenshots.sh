@@ -171,6 +171,9 @@ if check "launch"; then
         press $DOWN; sleep 1
         adb shell input keyevent --longpress $OK; sleep 2; shot 25-hold-menu
         press $BACK; sleep 1
+        # Media server sign-in page, and a search that also looks beyond the playlists.
+        open_tab server 8; shot 42-media-server
+        open_tab search 8; type_text "Film%s12345"; sleep 5; shot 43-search-universal
         # The Menu key opens the hidden side menu with its labels; Left from the hero does too.
         press $UP; adb shell input keyevent 82; sleep 1; shot 26-menu-open
         press $DOWN $DOWN; sleep 1; shot 27-menu-moved

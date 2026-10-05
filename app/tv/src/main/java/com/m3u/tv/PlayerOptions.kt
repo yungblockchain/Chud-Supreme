@@ -317,6 +317,10 @@ fun PlayerOptionsPanel(
     onStartParty: (() -> Unit)? = null,
     onStopParty: () -> Unit = {},
     onLeaveParty: () -> Unit = {},
+    bookmarks: List<Long> = emptyList(),
+    onAddBookmark: ((Long) -> Unit)? = null,
+    onClearBookmarks: () -> Unit = {},
+    onSeekTo: (Long) -> Unit = {},
     viewModel: PlayerOptionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.tracks.collectAsStateWithLifecycle()
@@ -574,6 +578,31 @@ fun PlayerOptionsPanel(
                             label = stringResource(R.string.dial_skip_clear),
                             onClick = { onUpdateSkipMarkers { SkipMarkers() } },
                         )
+                    }
+                }
+            }
+
+            // Bookmarks inside the film: OK jumps to one.
+            if (!live && onAddBookmark != null) {
+                item { OptionsHeader(stringResource(R.string.dial_bookmarks_title)) }
+                item(key = "bookmark-add") {
+                    OptionRow(
+                        label = stringResource(R.string.dial_bookmarks_add),
+                        value = formatClock(positionMs()),
+                        onClick = { onAddBookmark(positionMs()) },
+                    )
+                }
+                bookmarks.forEach { mark ->
+                    item(key = "bookmark-$mark") {
+                        OptionRow(
+                            label = stringResource(R.string.dial_bookmarks_jump, formatClock(mark)),
+                            onClick = { onSeekTo(mark) },
+                        )
+                    }
+                }
+                if (bookmarks.isNotEmpty()) {
+                    item(key = "bookmark-clear") {
+                        OptionRow(label = stringResource(R.string.dial_bookmarks_clear), onClick = onClearBookmarks)
                     }
                 }
             }

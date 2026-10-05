@@ -219,6 +219,11 @@ fun TvPlayerScreen(
     onStartParty: (() -> Unit)? = null,
     onStopParty: () -> Unit = {},
     onLeaveParty: () -> Unit = {},
+    bookmarks: List<Long> = emptyList(),
+    onAddBookmark: ((Long) -> Unit)? = null,
+    onClearBookmarks: () -> Unit = {},
+    /** This channel's own refresh-rate rule (Default follows Settings). */
+    frameRateMode: FrameRateMode = FrameRateMode.Default,
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -396,13 +401,18 @@ fun TvPlayerScreen(
     // of the video's frame rate, so 24/25/30 fps content plays without judder. The TV blanks for
     // a moment when it switches, which is why this is off by default.
     val currentFastMenus by rememberUpdatedState(preferences.fastMenus)
-    LaunchedEffect(activity, videoFrameRate, preferences.matchFrameRate, preferences.live120, live) {
+    LaunchedEffect(activity, videoFrameRate, preferences.matchFrameRate, preferences.live120, live, frameRateMode) {
         val host = activity ?: return@LaunchedEffect
         val window = host.window ?: return@LaunchedEffect
-        val modeId = when {
-            live && preferences.live120 -> DisplayModes.modeAtLeast(host, 119f)?.modeId ?: 0
-            preferences.matchFrameRate && videoFrameRate > 0f -> bestDisplayModeFor(host, videoFrameRate)
-            else -> 0
+        val modeId = when (frameRateMode) {
+            FrameRateMode.Off -> 0
+            FrameRateMode.Hz60 -> DisplayModes.modeAtLeast(host, 59f)?.modeId ?: 0
+            FrameRateMode.Match -> if (videoFrameRate > 0f) bestDisplayModeFor(host, videoFrameRate) else 0
+            FrameRateMode.Default -> when {
+                live && preferences.live120 -> DisplayModes.modeAtLeast(host, 119f)?.modeId ?: 0
+                preferences.matchFrameRate && videoFrameRate > 0f -> bestDisplayModeFor(host, videoFrameRate)
+                else -> 0
+            }
         }
         val params = window.attributes
         if (params.preferredDisplayModeId != modeId) {
@@ -729,6 +739,7 @@ fun TvPlayerScreen(
                         skipBackMs = skipBackMs,
                         skipAheadMs = skipAheadMs,
                         previews = previews,
+                        bookmarks = bookmarks,
                         onSeek = { target ->
                             player?.seekTo(target)
                             position = target
@@ -936,6 +947,16 @@ fun TvPlayerScreen(
                 onStartParty = onStartParty,
                 onStopParty = onStopParty,
                 onLeaveParty = onLeaveParty,
+                bookmarks = bookmarks,
+                onAddBookmark = onAddBookmark,
+                onClearBookmarks = onClearBookmarks,
+                onSeekTo = { target ->
+                    player?.seekTo(target)
+                    position = target
+                    optionsOpen = false
+                    restoreOptionsFocus = true
+                    showControls()
+                },
             )
         }
     }
@@ -1083,6 +1104,7 @@ private fun ProgressLine(
     previews: SeekPreviews?,
     onSeek: (Long) -> Unit,
     onInteraction: () -> Unit,
+    bookmarks: List<Long> = emptyList(),
 ) {
     var focused by remember { mutableStateOf(false) }
     var cursor by remember { mutableStateOf<Long?>(null) }
@@ -1168,6 +1190,19 @@ private fun ProgressLine(
                         .fillMaxWidth(fraction)
                         .background(Color.White.copy(alpha = 0.35f))
                 )
+            }
+            // Bookmarks as small notches along the bar.
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                bookmarks.forEach { mark ->
+                    val at = (mark.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .offset(x = maxWidth * at - 2.dp)
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(TvColors.Accent),
+                    )
+                }
             }
         }
         Text(

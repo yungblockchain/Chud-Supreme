@@ -6,6 +6,7 @@ import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -101,6 +102,8 @@ enum class TvDestination(
     Series(Icons.Rounded.VideoLibrary),
     /** Debrid and addon catalogs (Stremio). Managing which addons are installed lives in Settings. */
     Infinite(Icons.Rounded.AllInclusive),
+    /** Jellyfin or Emby on the home network. */
+    Server(Icons.Rounded.Dns),
     Guide(Icons.Rounded.DateRange),
     /** Live scores, fixtures, lineups. */
     MatchCentre(Icons.Rounded.SportsSoccer),

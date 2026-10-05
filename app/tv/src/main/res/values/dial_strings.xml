@@ -839,4 +839,35 @@
     <string name="dial_infinity_reset_layout">Put every row back as it was</string>
     <string name="dial_infinity_in_library">In your library</string>
     <string name="dial_infinity_add_library">Add to library</string>
+    <!-- Media server (stage 3b) -->
+    <string name="dial_nav_server">Media server</string>
+    <string name="dial_server_title">Media server</string>
+    <string name="dial_server_intro">Sign in to your Jellyfin or Emby server on the home network. Films and series play straight from it, and what you watch is kept in step with the server.</string>
+    <string name="dial_server_address">Server address</string>
+    <string name="dial_server_username">User name</string>
+    <string name="dial_server_password">Password</string>
+    <string name="dial_server_sign_in">Sign in</string>
+    <string name="dial_server_signing_in">Signing in…</string>
+    <string name="dial_server_sign_out">Sign out (%1$s)</string>
+    <string name="dial_server_refresh">Refresh</string>
+    <string name="dial_server_continue">Continue watching</string>
+    <string name="dial_server_error_unreachable">Couldn’t reach the server. Check the address and that it’s on the same network.</string>
+    <string name="dial_server_error_login">The server didn’t accept that user name and password.</string>
+    <string name="dial_server_error_other">The server answered with an error. Try again.</string>
+    <string name="dial_search_on_server">On your media server</string>
+    <string name="dial_search_on_tmdb">Films and series everywhere</string>
+    <string name="dial_search_on_youtube">On YouTube</string>
+    <string name="dial_search_no_youtube">No app on this TV can open YouTube links.</string>
+    <string name="dial_details_random_episode">Random episode</string>
+    <string name="dial_bookmarks_title">Bookmarks</string>
+    <string name="dial_bookmarks_add">Bookmark this moment</string>
+    <string name="dial_bookmarks_jump">Jump to %1$s</string>
+    <string name="dial_bookmarks_clear">Remove all bookmarks</string>
+    <string name="dial_missed_title">What you missed</string>
+    <string name="dial_missed_subtitle">From the last day on your favourite channels · OK replays it</string>
+    <string name="dial_menu_frame_rate">Refresh rate: %1$s</string>
+    <string name="dial_frame_rate_default">as in Settings</string>
+    <string name="dial_frame_rate_match">match the picture</string>
+    <string name="dial_frame_rate_60">60 Hz</string>
+    <string name="dial_frame_rate_off">leave the TV alone</string>
 </resources>

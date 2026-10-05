@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -97,6 +98,9 @@ class ChannelMenuActions(
     val addToMultiview: (() -> Unit)? = null,
     val toggleGroup: (String) -> Unit = {},
     val createGroup: (String) -> Unit = {},
+    /** The channel's refresh-rate rule, and what OK does to it. */
+    val frameRate: FrameRateMode? = null,
+    val cycleFrameRate: (() -> Unit)? = null,
 )
 
 @Composable
@@ -179,6 +183,28 @@ fun ChannelMenu(
         }
         actions.askClaude?.let {
             add(MenuEntry(stringResource(R.string.dial_menu_ask_claude), Icons.Rounded.AutoAwesome, run(it)))
+        }
+        val frameRate = actions.frameRate
+        val cycleFrameRate = actions.cycleFrameRate
+        if (frameRate != null && cycleFrameRate != null) {
+            add(
+                MenuEntry(
+                    label = stringResource(
+                        R.string.dial_menu_frame_rate,
+                        stringResource(
+                            when (frameRate) {
+                                FrameRateMode.Default -> R.string.dial_frame_rate_default
+                                FrameRateMode.Match -> R.string.dial_frame_rate_match
+                                FrameRateMode.Hz60 -> R.string.dial_frame_rate_60
+                                FrameRateMode.Off -> R.string.dial_frame_rate_off
+                            }
+                        ),
+                    ),
+                    icon = Icons.Rounded.Speed,
+                    // Stays open: the label shows the new rule straight away.
+                    onClick = cycleFrameRate,
+                )
+            )
         }
         actions.hide?.let {
             add(MenuEntry(stringResource(R.string.dial_menu_hide_channel), Icons.Rounded.VisibilityOff, run(it)))

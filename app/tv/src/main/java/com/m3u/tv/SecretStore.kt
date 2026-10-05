@@ -38,6 +38,7 @@ enum class SecretName(val key: String) {
     Omdb("omdb_api_key"),
     MdbList("mdblist_api_key"),
     FanartTv("fanart_tv_api_key"),
+    MediaServerToken("media_server_token"),
 }
 
 /**

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -224,6 +225,15 @@ fun DetailsScreen(
                                     primaryFocus = primaryFocus,
                                     onContinueSeries = onContinueSeries,
                                     onPlayEpisode = onPlayEpisode,
+                                )
+                            }
+                            // Any episode at all: for the shows you've seen a hundred times.
+                            val allEpisodes = series?.seasons?.flatMap { it.episodes }.orEmpty()
+                            if (allEpisodes.size > 1) {
+                                TvActionButton(
+                                    text = stringResource(R.string.dial_details_random_episode),
+                                    icon = Icons.Rounded.Shuffle,
+                                    onClick = { onPlayEpisode(allEpisodes.random()) },
                                 )
                             }
                             TvActionButton(

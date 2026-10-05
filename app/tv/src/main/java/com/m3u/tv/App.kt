@@ -119,6 +119,9 @@ private const val SETTINGS_TAB_ADDONS = 4
 private const val REMOTE_IDLE_AFTER_MS = 3_000L
 private const val REMOTE_IDLE_CHECK_MS = 1_000L
 
+/** How often a Jellyfin/Emby server hears where playback has got to. */
+private const val SERVER_PROGRESS_MS = 10_000L
+
 /** How often the scrobbler is told where playback has got to. */
 private const val SCROBBLE_TICK_MS = 60_000L
 
@@ -156,6 +159,8 @@ fun App(
     accounts: XtreamAccountViewModel = hiltViewModel(),
     multiview: MultiviewViewModel = hiltViewModel(),
     party: WatchPartyViewModel = hiltViewModel(),
+    server: MediaServerViewModel = hiltViewModel(),
+    universal: UniversalSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -299,6 +304,10 @@ fun App(
     val partyHosting by party.hosting.collectAsStateWithLifecycle()
     val partyGuest = partyGuestState
     val skipMarkers by dial.skipMarkers.collectAsStateWithLifecycle()
+    val bookmarks by dial.bookmarks.collectAsStateWithLifecycle()
+    val frameRateVersion by dial.frameRateVersion.collectAsStateWithLifecycle()
+    val frameRateMode = remember(playingId, frameRateVersion) { playingId?.let(dial::frameRateMode) ?: FrameRateMode.Default }
+    LaunchedEffect(playingId, live) { dial.loadBookmarks(playingId.takeIf { !live }) }
     LaunchedEffect(currentChannel, nowPlaying, live, player?.currentMediaItem?.mediaId) {
         val channel = currentChannel
         val url = player?.currentMediaItem?.localConfiguration?.uri?.toString() ?: channel?.url
@@ -357,6 +366,32 @@ fun App(
         onLeave = party::leave,
     )
 
+    // Search beyond the playlists, and YouTube results that open in the YouTube app.
+    val universalResults by universal.results.collectAsStateWithLifecycle()
+    val noYouTubeApp = stringResource(R.string.dial_search_no_youtube)
+    val openVideo: (VideoResult) -> Unit = { video ->
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.url))
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(context, noYouTubeApp, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // A Jellyfin/Emby item: the server hears where playback is, so its own apps resume there too.
+    val serverPlaying = (surface == TvSurface.Player || surface == TvSurface.Mini) &&
+        currentChannel?.playlistUrl == MediaServerViewModel.PLAYLIST_URL
+    LaunchedEffect(serverPlaying, playingId, isPlaying) {
+        if (!serverPlaying) {
+            server.reportProgress(player?.currentPosition ?: 0L, paused = true, stopped = true)
+            return@LaunchedEffect
+        }
+        while (true) {
+            server.reportProgress(player?.currentPosition ?: 0L, paused = !isPlaying, stopped = false)
+            delay(SERVER_PROGRESS_MS)
+        }
+    }
+
     // Up next: when an episode finishes, the following one starts after a short countdown.
     val upNext = if (
         surface == TvSurface.Player &&
@@ -380,10 +415,17 @@ fun App(
     val notInPlaylists = stringResource(R.string.dial_trending_not_found)
     val traktRows by metadata.traktRows.collectAsStateWithLifecycle()
     val traktAccount by metadata.traktAccount.collectAsStateWithLifecycle()
-    LaunchedEffect(destination, traktAccount) {
+    val missed by dial.missed.collectAsStateWithLifecycle()
+    LaunchedEffect(destination, traktAccount, state.favorites.size) {
         if (destination == TvDestination.Home) {
             metadata.loadTrending()
             metadata.loadTraktRows()
+            dial.loadMissed(
+                state.favorites.filter { channel ->
+                    val playlist = state.playlists.firstOrNull { it.url == channel.playlistUrl }
+                    playlist == null || !(playlist.isVod || playlist.isSeries)
+                }
+            )
         }
     }
     // Scrobbling: Trakt hears when a film or episode starts, pauses and stops, and how far in.
@@ -766,7 +808,13 @@ fun App(
                     onSubmitProviderSubscription = viewModel::submitProviderSubscription,
                     continueWatching = continueWatching,
                     onSelectCategory = viewModel::selectCategory,
-                    onSearch = viewModel::search,
+                    onSearch = { query ->
+                        viewModel.search(query)
+                        universal.search(query)
+                    },
+                    universal = universalResults,
+                    onOpenVideo = { video -> openVideo(video) },
+                    onPlayServer = { item -> server.play(item) { surface = TvSurface.Player } },
                     guideContent = {
                         GuideScreen(
                             state = state,
@@ -805,6 +853,15 @@ fun App(
                     onOpenTrending = { entry -> openTmdbTitle(entry.title, entry.channel) },
                     traktRows = traktRows,
                     onOpenTitle = { title -> openTmdbTitle(title, null) },
+                    missed = missed,
+                    onOpenMissed = { item ->
+                        if (dial.playsExternally(item.channel)) {
+                            dial.playCatchUp(item.channel, item.programme, external = true)
+                        } else {
+                            dial.playCatchUp(item.channel, item.programme)
+                            surface = TvSurface.Player
+                        }
+                    },
                     myLibraryContent = {
                         MyLibraryScreen(
                             state = state,
@@ -938,6 +995,8 @@ fun App(
                     } else null,
                     toggleGroup = { groupId -> dial.toggleInGroup(groupId, channel.id) },
                     createGroup = { name -> dial.createGroup(name, channel.id) },
+                    frameRate = frameRateVersion.let { dial.frameRateMode(channel.id) },
+                    cycleFrameRate = { dial.cycleFrameRateMode(channel.id) },
                 ),
                 onDismiss = { menuChannel = null },
             )
@@ -993,6 +1052,10 @@ fun App(
                 onStartParty = startParty,
                 onStopParty = party::stopHosting,
                 onLeaveParty = party::leave,
+                bookmarks = bookmarks,
+                onAddBookmark = if (!live && playingId != null) dial::addBookmark else null,
+                onClearBookmarks = dial::clearBookmarks,
+                frameRateMode = frameRateMode,
             )
         }
 

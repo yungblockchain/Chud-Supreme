@@ -94,6 +94,9 @@ data class DialPreferences(
 
 enum class MiniCorner { BottomRight, BottomLeft, TopRight, TopLeft }
 
+/** A channel's own refresh-rate rule, overriding the Settings default. */
+enum class FrameRateMode { Default, Match, Hz60, Off }
+
 /**
  * The pictures along the progress bar come from a second connection to the film. Many Xtream
  * accounts allow one connection, and a second can get the stream itself cut off, so by default
@@ -389,6 +392,30 @@ class DialSettingsStore @Inject constructor(
             .apply()
     }
 
+    /** A channel's own refresh-rate rule; [FrameRateMode.Default] follows Settings. */
+    fun frameRateMode(channelId: Int): FrameRateMode =
+        prefs.getString("$KEY_AFR_PREFIX$channelId", null)
+            ?.let { name -> FrameRateMode.entries.firstOrNull { it.name == name } } ?: FrameRateMode.Default
+
+    fun saveFrameRateMode(channelId: Int, mode: FrameRateMode) {
+        val editor = prefs.edit()
+        if (mode == FrameRateMode.Default) editor.remove("$KEY_AFR_PREFIX$channelId")
+        else editor.putString("$KEY_AFR_PREFIX$channelId", mode.name)
+        editor.apply()
+    }
+
+    /** Bookmarks inside a film or episode, by channel id, as positions in milliseconds. */
+    fun bookmarks(channelId: Int): List<Long> =
+        prefs.getString("$KEY_BOOKMARK_PREFIX$channelId", null)
+            ?.split(',')?.mapNotNull { it.toLongOrNull() }?.sorted().orEmpty()
+
+    fun saveBookmarks(channelId: Int, bookmarks: List<Long>) {
+        val editor = prefs.edit()
+        if (bookmarks.isEmpty()) editor.remove("$KEY_BOOKMARK_PREFIX$channelId")
+        else editor.putString("$KEY_BOOKMARK_PREFIX$channelId", bookmarks.sorted().take(MAX_BOOKMARKS).joinToString(","))
+        editor.apply()
+    }
+
     /** Intro and credits markers for a series (by its channel id). */
     fun skipMarkers(seriesChannelId: Int): SkipMarkers {
         val raw = prefs.getString("$KEY_SKIP_PREFIX$seriesChannelId", null) ?: return SkipMarkers()
@@ -559,6 +586,9 @@ class DialSettingsStore @Inject constructor(
         const val KEY_SUBTITLE_BACKDROP = "subtitle_backdrop"
         const val KEY_SUBTITLE_RAISE = "subtitle_raise"
         const val KEY_SKIP_PREFIX = "skip_markers_"
+        const val KEY_BOOKMARK_PREFIX = "bookmarks_"
+        const val KEY_AFR_PREFIX = "frame_rate_"
+        const val MAX_BOOKMARKS = 20
         const val KEY_TRAKT_SCROBBLE = "trakt_scrobble"
         const val KEY_TRAKT_ROWS_HIDDEN = "trakt_rows_hidden"
         const val KEY_LAST_CHANNEL = "last_channel"

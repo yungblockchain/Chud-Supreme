@@ -36,8 +36,8 @@ android {
         applicationId = "app.dial.supreme"
         minSdk = 26
         targetSdk = 33
-        versionCode = 4
-        versionName = "Supreme 4"
+        versionCode = 5
+        versionName = "Supreme 5"
 
         // Crash reports go to GitHub with this token (the CHUD_GITHUB_TOKEN repository secret on
         // GitHub Actions). Never in the source: GitHub cancels tokens it finds in public repos.

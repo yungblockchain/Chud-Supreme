@@ -498,10 +498,14 @@ fun CatalogTile(
                 .fillMaxWidth()
                 .aspectRatio(if (poster) 2f / 3f else 16f / 10f)
         ) {
-            PosterArt(
-                model = channel.cover,
-                modifier = Modifier.fillMaxSize()
-            )
+            Box(Modifier.fillMaxSize()) {
+                PosterArt(
+                    model = channel.cover,
+                    modifier = Modifier.fillMaxSize()
+                )
+                val badges = remember(channel.title) { qualityBadges(channel.title) }
+                QualityBadgeRow(badges, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+            }
         }
         Text(
             text = channel.title.title(),
@@ -587,6 +591,10 @@ fun SearchScreen(
     state: TvUiState,
     onSearch: (String) -> Unit,
     onPlay: (Channel) -> Unit,
+    universal: UniversalResults = UniversalResults(),
+    onOpenTitle: (TmdbTitle) -> Unit = {},
+    onOpenVideo: (VideoResult) -> Unit = {},
+    onPlayServer: (ServerItem) -> Unit = {},
 ) {
     val fieldFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -660,6 +668,24 @@ fun SearchScreen(
                             onPlay = onPlay,
                             firstItemFocus = firstResultFocus.takeIf { kind == firstKind },
                         )
+                    }
+                }
+            }
+            // The same words elsewhere: the media server, films and series anywhere, YouTube.
+            if (universal.query == query) {
+                if (universal.server.isNotEmpty()) {
+                    item(key = "universal-server") {
+                        ServerResultRow(stringResource(R.string.dial_search_on_server), universal.server, onPlayServer)
+                    }
+                }
+                if (universal.titles.isNotEmpty()) {
+                    item(key = "universal-titles") {
+                        TmdbResultRow(stringResource(R.string.dial_search_on_tmdb), universal.titles, onOpenTitle)
+                    }
+                }
+                if (universal.videos.isNotEmpty()) {
+                    item(key = "universal-videos") {
+                        VideoRow(stringResource(R.string.dial_search_on_youtube), universal.videos, onOpenVideo)
                     }
                 }
             }

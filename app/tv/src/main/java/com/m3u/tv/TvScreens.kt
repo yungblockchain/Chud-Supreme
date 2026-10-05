@@ -172,6 +172,9 @@ fun TvBrowsePane(
     continueWatching: List<Channel> = emptyList(),
     onSelectCategory: (String?) -> Unit = {},
     onSearch: (String) -> Unit = {},
+    universal: UniversalResults = UniversalResults(),
+    onOpenVideo: (VideoResult) -> Unit = {},
+    onPlayServer: (ServerItem) -> Unit = {},
     guideContent: @Composable () -> Unit = {},
     claudeContent: @Composable () -> Unit = {},
     dialSettingsContent: @Composable () -> Unit = {},
@@ -182,6 +185,8 @@ fun TvBrowsePane(
     onOpenTrending: (TrendingEntry) -> Unit = {},
     traktRows: List<TraktRow> = emptyList(),
     onOpenTitle: (TmdbTitle) -> Unit = {},
+    missed: List<MissedProgramme> = emptyList(),
+    onOpenMissed: (MissedProgramme) -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
     servicesSettingsContent: @Composable () -> Unit = {},
     /** Live TV, Films or Series should show a source of its kind. */
@@ -214,6 +219,7 @@ fun TvBrowsePane(
             destination != TvDestination.Games &&
             destination != TvDestination.Claude &&
             destination != TvDestination.Infinite &&
+            destination != TvDestination.Server &&
             destination != TvDestination.MatchCentre &&
             destination != TvDestination.News &&
             destination != TvDestination.Account
@@ -228,6 +234,7 @@ fun TvBrowsePane(
             destination != TvDestination.Games &&
             destination != TvDestination.Claude &&
             destination != TvDestination.Infinite &&
+            destination != TvDestination.Server &&
             destination != TvDestination.MatchCentre &&
             destination != TvDestination.News &&
             destination != TvDestination.Account
@@ -258,12 +265,18 @@ fun TvBrowsePane(
                         onShowCatalog = onShowCatalog,
                         traktRows = traktRows,
                         onOpenTitle = onOpenTitle,
+                        missed = missed,
+                        onOpenMissed = onOpenMissed,
                     )
 
                     TvDestination.Search -> SearchScreen(
                         state = state,
                         onSearch = onSearch,
                         onPlay = onPlay,
+                        universal = universal,
+                        onOpenTitle = onOpenTitle,
+                        onOpenVideo = onOpenVideo,
+                        onPlayServer = onPlayServer,
                     )
 
                     TvDestination.Live, TvDestination.Films, TvDestination.Series -> CatalogScreen(
@@ -285,6 +298,8 @@ fun TvBrowsePane(
                         onPlaying = onPlayResolved,
                         onManageAddons = onManageAddons,
                     )
+
+                    TvDestination.Server -> MediaServerScreen(onPlaying = onPlayResolved)
 
                     TvDestination.MatchCentre -> MatchCentreScreen(onWatch = onWatchFixture)
 
@@ -424,6 +439,8 @@ private fun HomeScreen(
     onShowCatalog: (CatalogKind) -> Unit = {},
     traktRows: List<TraktRow> = emptyList(),
     onOpenTitle: (TmdbTitle) -> Unit = {},
+    missed: List<MissedProgramme> = emptyList(),
+    onOpenMissed: (MissedProgramme) -> Unit = {},
 ) {
     // The last ten things watched (live, films, episodes); before anything's been watched, a
     // taste of the selected playlist.
@@ -532,6 +549,9 @@ private fun HomeScreen(
                     )
                 }
             }
+        }
+        if (missed.isNotEmpty()) {
+            item(key = "missed") { MissedRow(items = missed, onOpen = onOpenMissed) }
         }
         item(key = "followed-clubs") {
             FollowedClubsRow()
