@@ -97,6 +97,7 @@ fun DetailsScreen(
     onSetWatched: (List<String>, Boolean) -> Unit = { _, _ -> },
 ) {
     BackHandler(enabled = active, onBack = onBack)
+    var markedHere by remember(state.channel.id) { mutableStateOf(emptySet<String>()) }
     val primaryFocus = remember { FocusRequester() }
     LaunchedEffect(active, state.loading, state.channel.id) {
         if (active) {
@@ -345,7 +346,8 @@ fun DetailsScreen(
                             )
                         }
                     }
-                    val shownEpisodes = season?.episodes.orEmpty().filter { !hideWatched || it.id !in state.watched }
+                    val shownEpisodes = season?.episodes.orEmpty()
+                        .filter { !hideWatched || it.id !in state.watched || it.id in markedHere }
                     items(shownEpisodes, key = { "episode-${it.id}" }) { episode ->
                         EpisodeRow(
                             episode = episode,
@@ -353,7 +355,11 @@ fun DetailsScreen(
                             onClick = { onPlayEpisode(episode) },
                             progress = state.episodeProgress[episode.id],
                             watched = episode.id in state.watched,
-                            onToggleWatched = { onSetWatched(listOf(episode.id), episode.id !in state.watched) },
+                            onToggleWatched = {
+                                // Stays on the page until it's reopened, so focus isn't lost.
+                                markedHere = markedHere + episode.id
+                                onSetWatched(listOf(episode.id), episode.id !in state.watched)
+                            },
                         )
                     }
                     if (hideWatched && shownEpisodes.isEmpty() && seasonIds.isNotEmpty()) {

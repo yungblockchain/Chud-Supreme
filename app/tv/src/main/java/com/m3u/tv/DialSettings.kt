@@ -97,7 +97,7 @@ data class DialPreferences(
     val audioLanguage: String = "",
     val subtitleLanguage: String = "",
     /** Turn subtitles on by themselves when the audio isn't in the preferred language. */
-    val foreignAudioSubtitles: Boolean = true,
+    val foreignAudioSubtitles: Boolean = false,
     /** Fetch subtitles from OpenSubtitles when a film or episode has none. */
     val autoSubtitles: Boolean = false,
     /** Evens out loud and quiet parts (late-night viewing). */

@@ -92,6 +92,7 @@ import androidx.compose.material.icons.rounded.LiveTv
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.compose.runtime.withFrameNanos
 import java.util.Locale
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
@@ -256,6 +257,10 @@ fun TvPlayerScreen(
     /** Other copies of this channel (HD, FHD, 4K…), and switching to one. */
     variants: List<Channel> = emptyList(),
     onPlayVariant: (Channel) -> Unit = {},
+    /** Counts Menu presses (App handles the key so it can tell a press from a hold). */
+    menuPresses: Int = 0,
+    /** Bumped when an overlay over the player (quick settings) closes: focus comes back here. */
+    refocus: Int = 0,
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -593,12 +598,6 @@ fun TvPlayerScreen(
     val displayHz = remember(activity) { activity?.let { displayRefreshRate(it) } ?: 0f }
     val stats by rememberPlaybackStats(player, statsVisible, displayHz)
 
-    // Night mode and the dialogue boost, on the player's own sound.
-    val enhancer = remember(player) { (player as? ExoPlayer)?.let { AudioEnhancer(it) } }
-    DisposableEffect(enhancer) { onDispose { enhancer?.release() } }
-    LaunchedEffect(enhancer, preferences.nightMode, preferences.dialogueBoost) {
-        enhancer?.set(night = preferences.nightMode, dialogue = preferences.dialogueBoost)
-    }
     // Language rules: the preferred audio, and subtitles when the sound is in another language.
     DisposableEffect(player, preferences.audioLanguage, preferences.subtitleLanguage, preferences.foreignAudioSubtitles) {
         val target = player ?: return@DisposableEffect onDispose { }
@@ -633,11 +632,28 @@ fun TvPlayerScreen(
     // "What's going on?": the last couple of minutes of subtitles go to Claude with the title.
     val sceneViewModel: SceneExplainerViewModel = hiltViewModel()
     val sceneAnswer by sceneViewModel.answer.collectAsStateWithLifecycle()
-    val dialogue = remember(player) { RecentDialogue() }
+    val dialogue = remember(player) { player?.let { RecentDialogue(it) } }
     DisposableEffect(player, dialogue) {
         val target = player ?: return@DisposableEffect onDispose { }
-        target.addListener(dialogue)
-        onDispose { target.removeListener(dialogue) }
+        val listener = dialogue ?: return@DisposableEffect onDispose { }
+        target.addListener(listener)
+        onDispose { target.removeListener(listener) }
+    }
+    // An explanation belongs to this video: gone when the player closes or the channel changes.
+    DisposableEffect(channel?.id) { onDispose { sceneViewModel.dismiss() } }
+    LaunchedEffect(refocus) {
+        if (refocus == 0) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { playPauseFocusRequester.requestFocus() }
+        showControls()
+    }
+    // Menu (let go without holding): the options panel.
+    val startMenuPresses = remember { menuPresses }
+    LaunchedEffect(menuPresses) {
+        if (menuPresses == startMenuPresses) return@LaunchedEffect
+        showControls()
+        optionsOpen = !optionsOpen
+        if (!optionsOpen) restoreOptionsFocus = true
     }
     val sceneNoKey = stringResource(R.string.dial_scene_no_key)
     val sceneFailed = stringResource(R.string.dial_scene_failed)
@@ -1165,7 +1181,7 @@ fun TvPlayerScreen(
                 onExplainScene = if (!live && channel != null) {
                     {
                         optionsOpen = false
-                        controlsVisible = false
+                        restoreOptionsFocus = true
                         val episodeLabel = subtitleTarget?.let { target ->
                             if (target.season != null && target.episode != null) "S${target.season} E${target.episode}" else null
                         }
@@ -1173,7 +1189,7 @@ fun TvPlayerScreen(
                             title = subtitleTarget?.title ?: channel.title,
                             episode = episodeLabel,
                             positionMs = player?.currentPosition ?: position,
-                            dialogue = dialogue.recent(),
+                            dialogue = dialogue?.recent().orEmpty(),
                             noKey = sceneNoKey,
                             failed = sceneFailed,
                         )

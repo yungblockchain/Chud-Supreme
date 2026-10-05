@@ -101,31 +101,36 @@ class AudioEnhancer(private val player: ExoPlayer) {
             night,
         ).build()
         val effect = DynamicsProcessing(0, session, config)
-        if (dialogue) {
-            val eq = DynamicsProcessing.Eq(true, true, PRE_EQ_BANDS)
-            eq.setBand(0, DynamicsProcessing.EqBand(true, 180f, -4f))
-            eq.setBand(1, DynamicsProcessing.EqBand(true, 900f, 2f))
-            eq.setBand(2, DynamicsProcessing.EqBand(true, 4_000f, 5f))
-            eq.setBand(3, DynamicsProcessing.EqBand(true, 20_000f, 0f))
-            effect.setPreEqAllChannelsTo(eq)
+        try {
+            if (dialogue) {
+                val eq = DynamicsProcessing.Eq(true, true, PRE_EQ_BANDS)
+                eq.setBand(0, DynamicsProcessing.EqBand(true, 180f, -4f))
+                eq.setBand(1, DynamicsProcessing.EqBand(true, 900f, 2f))
+                eq.setBand(2, DynamicsProcessing.EqBand(true, 4_000f, 5f))
+                eq.setBand(3, DynamicsProcessing.EqBand(true, 20_000f, 0f))
+                effect.setPreEqAllChannelsTo(eq)
+            }
+            if (night) {
+                val mbc = DynamicsProcessing.Mbc(true, true, 1)
+                mbc.setBand(
+                    0,
+                    DynamicsProcessing.MbcBand(
+                        true, 20_000f,
+                        3f, 120f, // attack, release (ms)
+                        4f, -32f, 8f, // ratio, threshold (dB), knee (dB)
+                        -90f, 1f, // noise gate threshold, expander ratio
+                        0f, 9f, // pre-gain, post-gain (dB)
+                    ),
+                )
+                effect.setMbcAllChannelsTo(mbc)
+                effect.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -2f, 0f))
+            }
+            effect.enabled = true
+            return effect
+        } catch (e: RuntimeException) {
+            effect.release()
+            throw e
         }
-        if (night) {
-            val mbc = DynamicsProcessing.Mbc(true, true, 1)
-            mbc.setBand(
-                0,
-                DynamicsProcessing.MbcBand(
-                    true, 20_000f,
-                    3f, 120f, // attack, release (ms)
-                    4f, -32f, 8f, // ratio, threshold (dB), knee (dB)
-                    -90f, 1f, // noise gate threshold, expander ratio
-                    0f, 9f, // pre-gain, post-gain (dB)
-                ),
-            )
-            effect.setMbcAllChannelsTo(mbc)
-            effect.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -2f, 0f))
-        }
-        effect.enabled = true
-        return effect
     }
 
     private companion object {

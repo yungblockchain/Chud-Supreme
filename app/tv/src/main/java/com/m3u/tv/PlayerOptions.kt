@@ -236,6 +236,7 @@ class PlayerOptionsViewModel @Inject constructor(
         val once = "${target.title}|${target.season}|${target.episode}"
         if (once == autoFetched) return
         autoFetched = once
+        val startedOn = playerManager.player.value?.currentMediaItem?.localConfiguration?.uri
         viewModelScope.launch {
             val results = runCatching { OpenSubtitles.search(key, target) }.getOrNull().orEmpty()
             val best = results
@@ -244,6 +245,8 @@ class PlayerOptionsViewModel @Inject constructor(
                 .firstOrNull() ?: return@launch
             runCatching {
                 val file = OpenSubtitles.download(context, key, best)
+                // Something else started meanwhile: these subtitles aren't for it.
+                if (playerManager.player.value?.currentMediaItem?.localConfiguration?.uri != startedOn) return@launch
                 playerManager.addSubtitle(
                     uri = Uri.fromFile(file),
                     mimeType = MimeTypes.APPLICATION_SUBRIP,

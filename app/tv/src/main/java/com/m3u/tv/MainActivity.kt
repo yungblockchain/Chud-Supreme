@@ -19,9 +19,28 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    /** A Back press that was held: its release must not count as another Back. */
+    private var backHeld = false
+
     /** Game controller buttons arrive as the remote keys they stand for (see [Gamepad]). */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
-        super.dispatchKeyEvent(Gamepad.translate(event) ?: event)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val translated = Gamepad.translate(event)
+        val key = translated ?: event
+        if (key.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (key.action == KeyEvent.ACTION_DOWN && key.repeatCount >= 1) backHeld = true
+            if (key.action == KeyEvent.ACTION_UP && backHeld) {
+                backHeld = false
+                return true
+            }
+        }
+        // A translated button is used up either way, so the system's own fallback for that
+        // controller button (some fall back to OK) never fires as well.
+        if (translated != null) {
+            super.dispatchKeyEvent(translated)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

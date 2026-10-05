@@ -72,6 +72,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.tv.material3.Text
 import com.m3u.data.database.model.Channel
 import com.m3u.data.database.model.isSeries
@@ -379,7 +380,7 @@ fun App(
     }
     LaunchedEffect(playingId, live, playingPlaylist != null) {
         if (playingId != null && live && playingPlaylist != null && !onDemandSource) dial.rememberLastChannel(playingId)
-        if (live || catchUp) dial.clearNowPlaying()
+        if (live || catchUp || audioSource || currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL) dial.clearNowPlaying()
     }
 
     // Menus at the fastest refresh rate the Fire TV offers at this resolution.
@@ -468,6 +469,7 @@ fun App(
         }
     }
     val openVideo: (VideoResult) -> Unit = { video ->
+        dial.clearNowPlaying()
         youtube.play(
             YouTubeVideo(id = video.id, title = video.title, channel = video.channel, thumbnail = video.thumbnail),
             onPlaying = { surface = TvSurface.Player },
@@ -523,10 +525,17 @@ fun App(
     val upNext = if (
         surface == TvSurface.Player &&
         playbackState == Player.STATE_ENDED &&
-        preferences.autoplayNextEpisode
+        (preferences.autoplayNextEpisode || preferences.bingeMode)
     ) {
         remember(playingId, nowPlaying) { dial.nextEpisode() }
     } else null
+    // Night mode and the dialogue boost, on the player's sound wherever it shows (full screen,
+    // the corner, behind a details page).
+    val enhancer = remember(player) { (player as? ExoPlayer)?.let { AudioEnhancer(it) } }
+    DisposableEffect(enhancer) { onDispose { enhancer?.release() } }
+    LaunchedEffect(enhancer, preferences.nightMode, preferences.dialogueBoost) {
+        enhancer?.set(night = preferences.nightMode, dialogue = preferences.dialogueBoost)
+    }
     // Binge mode: the next episode starts straight away, no countdown card.
     LaunchedEffect(upNext, preferences.bingeMode) {
         val (series, episode) = upNext ?: return@LaunchedEffect
@@ -823,7 +832,9 @@ fun App(
     // The ambient screensaver, after the menus sit untouched for the time set in Settings.
     var screensaverOn by remember { mutableStateOf(false) }
     var quickSettingsOpen by remember { mutableStateOf(false) }
-    var swallowBackUp by remember { mutableStateOf(false) }
+    var menuHeld by remember { mutableStateOf(false) }
+    var playerMenuPresses by remember { mutableIntStateOf(0) }
+    var playerRefocus by remember { mutableIntStateOf(0) }
     val screensaverMs by rememberUpdatedState(preferences.screensaverMinutes * 60_000L)
     val screensaverAllowed by rememberUpdatedState(
         surface == TvSurface.Browse && details == null && person == null && !showSplash && !overlayUp
@@ -916,43 +927,46 @@ fun App(
                     return@onPreviewKeyEvent true
                 }
                 val repeat = event.nativeKeyEvent.repeatCount
-                // Holding Menu: quick settings, from anywhere.
-                if (event.key == Key.Menu && event.type == KeyEventType.KeyDown && repeat == LONG_PRESS_REPEAT &&
-                    !showSplash && !overlayUp
-                ) {
-                    quickSettingsOpen = true
-                    return@onPreviewKeyEvent true
-                }
-                // Holding Back: out of the player completely (not to the corner), or back to Home.
-                if (event.key == Key.Back) {
-                    if (event.type == KeyEventType.KeyDown && repeat == LONG_PRESS_REPEAT && !showSplash && !overlayUp) {
-                        swallowBackUp = true
-                        when {
-                            surface == TvSurface.Player || surface == TvSurface.Mini -> closePlayer()
-                            details == null && person == null -> destination = TvDestination.Home
+                // Menu: a press acts when it's let go (the side menu, the mini player back to full
+                // screen, the player's options), so that holding it can mean quick settings instead.
+                if (event.key == Key.Menu && !showSplash && !overlayUp) {
+                    when {
+                        event.type == KeyEventType.KeyDown && repeat == 0 -> menuHeld = false
+                        event.type == KeyEventType.KeyDown -> if (repeat >= LONG_PRESS_REPEAT && !menuHeld) {
+                            menuHeld = true
+                            quickSettingsOpen = true
                         }
-                        return@onPreviewKeyEvent true
+                        event.type == KeyEventType.KeyUp -> if (menuHeld) {
+                            menuHeld = false
+                        } else when {
+                            quickSettingsOpen -> {
+                                quickSettingsOpen = false
+                                if (surface == TvSurface.Player) playerRefocus++
+                            }
+                            surface == TvSurface.Mini -> surface = TvSurface.Player
+                            surface == TvSurface.Player -> playerMenuPresses++
+                            surface == TvSurface.Browse && details == null && menuChannel == null && menuCategory == null ->
+                                runCatching { menuFocus.requestFocus() }
+                        }
                     }
-                    if (swallowBackUp) {
-                        if (event.type == KeyEventType.KeyUp) swallowBackUp = false
-                        return@onPreviewKeyEvent true
-                    }
-                }
-                // The Menu key opens the side menu while browsing (it may be hidden to a strip).
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Menu &&
-                    surface == TvSurface.Browse && details == null && !showSplash && !overlayUp &&
-                    menuChannel == null && menuCategory == null
-                ) {
-                    runCatching { menuFocus.requestFocus() }
                     return@onPreviewKeyEvent true
                 }
-                // Mini player: Menu brings it back full screen; play/pause works from anywhere.
+                // Holding Back: out of the player completely (not to the corner), off a details
+                // page, or back to Home. The release is swallowed by MainActivity.
+                if (event.key == Key.Back && event.type == KeyEventType.KeyDown && repeat == LONG_PRESS_REPEAT &&
+                    !showSplash && !overlayUp && !quickSettingsOpen
+                ) {
+                    when {
+                        surface == TvSurface.Player || surface == TvSurface.Mini -> closePlayer()
+                        person != null -> metadata.closePerson()
+                        details != null -> dial.closeDetails()
+                        else -> destination = TvDestination.Home
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                // Mini player: play/pause works from anywhere.
                 if (surface != TvSurface.Mini || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
-                    Key.Menu -> {
-                        surface = TvSurface.Player
-                        true
-                    }
                     Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
                         viewModel.pauseOrContinue(!isPlaying)
                         true
@@ -1208,6 +1222,9 @@ fun App(
                 onTraktComment = metadata::postComment,
                 onTraktWatched = metadata::markWatched,
                 onTrailer = { key ->
+                    // A trailer isn't the film: nothing of a previous episode (markers, up next,
+                    // watched marks, scrobbling) may apply to it.
+                    dial.clearNowPlaying()
                     youtube.play(
                         YouTubeVideo(id = key, title = trailerTitle.format(current.channel.title), channel = null, thumbnail = null),
                         onPlaying = { surface = TvSurface.Player },
@@ -1345,6 +1362,8 @@ fun App(
                     { scope.launch { dial.channelById(playingId)?.let(viewModel::play) } }
                 } else null,
                 variants = playingId?.let { id -> state.variants.values.firstOrNull { copies -> copies.any { it.id == id } } }.orEmpty(),
+                menuPresses = playerMenuPresses,
+                refocus = playerRefocus,
                 onPlayVariant = { copy -> viewModel.play(copy) },
             )
         }
@@ -1466,7 +1485,10 @@ fun App(
             QuickSettingsPanel(
                 preferences = preferences,
                 onUpdate = dial::updatePreferences,
-                onClose = { quickSettingsOpen = false },
+                onClose = {
+                    quickSettingsOpen = false
+                    if (surface == TvSurface.Player) playerRefocus++
+                },
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         }

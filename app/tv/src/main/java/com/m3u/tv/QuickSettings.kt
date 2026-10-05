@@ -18,8 +18,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.yield
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 
 /* -------------------------------------------------------------------------------------------------
  * Quick settings: hold Menu anywhere (or Y / Triangle on a controller) and the switches people
@@ -37,11 +39,8 @@ fun QuickSettingsPanel(
     BackHandler(onBack = onClose)
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        repeat(8) {
-            yield()
-            if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect
-            delay(40)
-        }
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
     }
     val on = stringResource(R.string.dial_value_on)
     val off = stringResource(R.string.dial_value_off)
@@ -53,6 +52,8 @@ fun QuickSettingsPanel(
             .fillMaxHeight()
             .width(520.dp)
             .background(TvColors.Background.copy(alpha = 0.96f))
+            // Left and Right would wander onto the screen underneath: the panel keeps them.
+            .onPreviewKeyEvent { it.key == Key.DirectionLeft || it.key == Key.DirectionRight }
             .focusGroup(),
     ) {
         item {

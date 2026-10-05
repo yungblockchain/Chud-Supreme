@@ -50,30 +50,31 @@ sealed interface SceneAnswer {
     data class Failed(val reason: String) : SceneAnswer
 }
 
-/** The subtitles shown lately, kept so Claude can read what was said. */
-class RecentDialogue : Player.Listener {
+/** The subtitles shown lately, by where they were in the video, so Claude can read what was said. */
+class RecentDialogue(private val player: Player) : Player.Listener {
     private val lines = ArrayDeque<Pair<Long, String>>()
 
     override fun onCues(cueGroup: CueGroup) {
         val text = cueGroup.cues.mapNotNull { it.text?.toString()?.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
         if (text.isEmpty()) return
+        val at = player.currentPosition
         synchronized(lines) {
             if (lines.peekLast()?.second == text) return
-            lines.addLast(System.currentTimeMillis() to text)
+            lines.addLast(at to text)
             while (lines.size > MAX_LINES) lines.removeFirst()
         }
     }
 
-    /** What was said in the last [windowMs], oldest first. */
+    /** What was said in the [windowMs] before the current position, in order; nothing from later on. */
     fun recent(windowMs: Long = WINDOW_MS): List<String> {
-        val since = System.currentTimeMillis() - windowMs
-        return synchronized(lines) { lines.filter { it.first >= since }.map { it.second } }
+        val now = player.currentPosition
+        return synchronized(lines) {
+            lines.filter { it.first in (now - windowMs)..now }.sortedBy { it.first }.map { it.second }.distinct()
+        }
     }
 
-    fun clear() = synchronized(lines) { lines.clear() }
-
     private companion object {
-        const val MAX_LINES = 60
+        const val MAX_LINES = 200
         const val WINDOW_MS = 150_000L
     }
 }
