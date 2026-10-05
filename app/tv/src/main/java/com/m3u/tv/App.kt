@@ -81,6 +81,7 @@ import com.m3u.tv.stremio.StremioIds
 import com.m3u.data.tv.model.keyCode
 import com.m3u.i18n.R.string
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -389,7 +390,9 @@ fun App(
     }
     LaunchedEffect(playingId, live, playingPlaylist != null) {
         if (playingId != null && live && playingPlaylist != null && !onDemandSource) dial.rememberLastChannel(playingId)
-        if (live || catchUp || audioSource || currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL) dial.clearNowPlaying()
+        if (live || catchUp || audioSource || currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL ||
+            currentChannel?.playlistUrl == FilesViewModel.PLAYLIST_URL
+        ) dial.clearNowPlaying()
     }
 
     // Menus at the fastest refresh rate the Fire TV offers at this resolution.
@@ -487,6 +490,7 @@ fun App(
     val youTubeFallback = stringResource(R.string.dial_youtube_fallback)
     val trailerTitle = stringResource(R.string.dial_trailer_title)
     val noTrailer = stringResource(R.string.dial_trailer_none)
+    var trailerJob by remember { mutableStateOf<Job?>(null) }
     LaunchedEffect(youtube) {
         youtube.events.collect { event ->
             when (event) {
@@ -497,6 +501,10 @@ fun App(
                 is YouTubeEvent.Message -> Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+    val filesError = stringResource(R.string.dial_files_error)
+    LaunchedEffect(files) {
+        files.failures.collect { reason -> Toast.makeText(context, filesError.format(reason), Toast.LENGTH_LONG).show() }
     }
     // A YouTube stream the player couldn't play (YouTube changed something): the YouTube app, once.
     val sponsorSegments by youtube.segments.collectAsStateWithLifecycle()
@@ -623,7 +631,7 @@ fun App(
     val anime by discover.anime.collectAsStateWithLifecycle()
     // New episodes for the series in favourites and "continue watching"; anime for everyone
     // except kids profiles (AniList's chart isn't sorted for age).
-    LaunchedEffect(destination, state.favorites.size, continueWatching.size, kidsProfile) {
+    LaunchedEffect(destination, state.favorites.size, continueWatching.size, kidsProfile, state.playlists.size) {
         if (destination != TvDestination.Home) return@LaunchedEffect
         val seriesUrls = state.playlists.filter { it.isSeries }.map { it.url }.toSet()
         discover.loadNewEpisodes((continueWatching + state.favorites).filter { it.playlistUrl in seriesUrls })
@@ -1250,21 +1258,26 @@ fun App(
                 onTraktComment = metadata::postComment,
                 onTraktWatched = metadata::markWatched,
                 onTrailer = { key ->
-                    // A trailer isn't the film: nothing of a previous episode (markers, up next,
-                    // watched marks, scrobbling) may apply to it.
-                    dial.clearNowPlaying()
                     val name = trailerTitle.format(current.channel.title)
-                    scope.launch {
+                    if (trailerJob?.isActive != true) trailerJob = scope.launch {
                         // Apple's preview plays straight away; YouTube's needs the extractor.
                         val preview = if (current.kind == DetailsKind.Film) {
                             ItunesTrailers.find(OpenSubtitles.cleanTitle(current.channel.title), OpenSubtitles.yearIn(current.channel.title))
                         } else null
+                        // A trailer isn't the film: nothing of a previous episode (markers, up next,
+                        // watched marks, scrobbling) may apply to it.
                         when {
-                            preview != null -> youtube.playDirect(preview, name, current.channel.cover) { surface = TvSurface.Player }
-                            key != null -> youtube.play(
-                                YouTubeVideo(id = key, title = name, channel = null, thumbnail = null),
-                                onPlaying = { surface = TvSurface.Player },
-                            )
+                            preview != null -> {
+                                dial.clearNowPlaying()
+                                youtube.playDirect(preview, name, current.channel.cover) { surface = TvSurface.Player }
+                            }
+                            key != null -> {
+                                dial.clearNowPlaying()
+                                youtube.play(
+                                    YouTubeVideo(id = key, title = name, channel = null, thumbnail = null),
+                                    onPlaying = { surface = TvSurface.Player },
+                                )
+                            }
                             else -> Toast.makeText(context, noTrailer, Toast.LENGTH_SHORT).show()
                         }
                     }

@@ -202,7 +202,9 @@ fun XtreamSignInScreen(
                     icon = Icons.Rounded.Link,
                     supportingText = stringResource(R.string.dial_signin_free_channels_hint),
                     onClick = {
+                        // iptv-org names the United Kingdom "uk", not its ISO code.
                         val country = Locale.getDefault().country.ifBlank { "GB" }.lowercase(Locale.ROOT)
+                            .let { if (it == "gb") "uk" else it }
                         viewModel.updatePlaylistUrl("https://iptv-org.github.io/iptv/countries/$country.m3u")
                         viewModel.updateEpgUrl("")
                     },

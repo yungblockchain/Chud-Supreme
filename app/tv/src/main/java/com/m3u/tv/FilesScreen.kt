@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -65,18 +66,22 @@ fun FilesScreen(
     when {
         state.adding -> AddShareForm(viewModel)
         state.share != null -> FolderPage(state, viewModel, onPlaying)
-        else -> SharesPage(shares, viewModel)
+        else -> SharesPage(shares, state.focusPath, viewModel)
     }
 }
 
 @Composable
-private fun SharesPage(shares: List<FileShare>, viewModel: FilesViewModel) {
+private fun SharesPage(shares: List<FileShare>, focusId: String?, viewModel: FilesViewModel) {
     val first = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val target = shares.indexOfFirst { it.id == focusId }.coerceAtLeast(0)
     LaunchedEffect(Unit) {
+        if (shares.isNotEmpty()) listState.scrollToItem(target + 1)
         withFrameNanos { }
         runCatching { first.requestFocus() }
     }
     LazyColumn(
+        state = listState,
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(start = 48.dp, top = 32.dp, end = 64.dp, bottom = 48.dp),
         modifier = Modifier
@@ -102,7 +107,7 @@ private fun SharesPage(shares: List<FileShare>, viewModel: FilesViewModel) {
                 subtitle = if (share.kind == ShareKind.Smb) "SMB · ${share.address}/${share.share}" else "WebDAV · ${share.address}",
                 onClick = { viewModel.open(share) },
                 onLongClick = { viewModel.remove(share) },
-                focusRequester = first.takeIf { index == 0 },
+                focusRequester = first.takeIf { index == target },
             )
         }
         item {
@@ -125,11 +130,17 @@ private fun SharesPage(shares: List<FileShare>, viewModel: FilesViewModel) {
 private fun FolderPage(state: FilesState, viewModel: FilesViewModel, onPlaying: () -> Unit) {
     val share = state.share ?: return
     val first = remember(state.path) { FocusRequester() }
-    LaunchedEffect(state.path, state.entries.isNotEmpty()) {
+    val listState = rememberLazyListState()
+    val target = state.entries.indexOfFirst { it.path == state.focusPath }.coerceAtLeast(0)
+    // Once a folder has loaded (or failed): its first row, or the folder just stepped out of.
+    LaunchedEffect(state.path, state.loading, state.error != null) {
+        if (state.loading) return@LaunchedEffect
+        if (state.entries.isNotEmpty()) listState.scrollToItem(target + 1)
         withFrameNanos { }
         runCatching { first.requestFocus() }
     }
     LazyColumn(
+        state = listState,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(start = 48.dp, top = 32.dp, end = 64.dp, bottom = 48.dp),
         modifier = Modifier
@@ -173,7 +184,7 @@ private fun FolderPage(state: FilesState, viewModel: FilesViewModel, onPlaying: 
                         entry.playable -> viewModel.play(entry, onPlaying)
                     }
                 },
-                focusRequester = first.takeIf { index == 0 },
+                focusRequester = first.takeIf { index == target && !state.loading },
                 dimmed = !entry.folder && !entry.playable,
             )
         }
@@ -183,7 +194,7 @@ private fun FolderPage(state: FilesState, viewModel: FilesViewModel, onPlaying: 
                     text = stringResource(R.string.dial_files_retry),
                     icon = Icons.Rounded.Check,
                     onClick = { viewModel.open(share, state.path) },
-                    focusRequester = first,
+                    focusRequester = first.takeIf { state.entries.isEmpty() },
                 )
             }
         }
@@ -309,7 +320,7 @@ private fun AddShareForm(viewModel: FilesViewModel) {
                     label = stringResource(if (kind == ShareKind.Smb) R.string.dial_files_host else R.string.dial_files_url),
                     value = address,
                     onValueChange = { address = it },
-                    placeholder = if (kind == ShareKind.Smb) "192.168.1.20" else "http://nas.local:5005/video",
+                    placeholder = if (kind == ShareKind.Smb) "192.168.1.20" else "http://192.168.1.20:5005/video",
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Next,
                     readOnly = false,

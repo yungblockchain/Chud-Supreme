@@ -10,8 +10,10 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.security.SecureRandom
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
+import java.util.Collections
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,17 +37,23 @@ class LocalMediaServer @Inject constructor() {
     private class Document(val type: String, val bytes: ByteArray)
     private class Stream(val type: String, val length: Long, val opener: RangeOpener)
 
-    private val documents = ConcurrentHashMap<String, Document>()
-    private val streams = ConcurrentHashMap<String, Stream>()
+    // Least recently used goes first when full, so whatever is playing now stays served.
+    private val documents: MutableMap<String, Document> = Collections.synchronizedMap(lru(MAX_DOCUMENTS))
+    private val streams: MutableMap<String, Stream> = Collections.synchronizedMap(lru(MAX_STREAMS))
     private val random = SecureRandom()
     private var server: ServerSocket? = null
-    private val pool = Executors.newFixedThreadPool(WORKERS)
+
+    // A thread for each request (players open several at once while seeking), up to a cap.
+    private val pool = ThreadPoolExecutor(0, MAX_WORKERS, 60L, TimeUnit.SECONDS, SynchronousQueue())
+
+    private fun <V> lru(capacity: Int) = object : LinkedHashMap<String, V>(capacity, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V>?): Boolean = size > capacity
+    }
 
     /** Puts [body] up and returns its address. Old documents are dropped so nothing piles up. */
     @Synchronized
     fun publish(body: String, contentType: String, extension: String): String? {
         val socket = ensureServer() ?: return null
-        if (documents.size >= MAX_DOCUMENTS) documents.clear()
         val token = ByteArray(12).also(random::nextBytes).joinToString("") { "%02x".format(it) }
         documents["/$token.$extension"] = Document(contentType, body.toByteArray(Charsets.UTF_8))
         return "http://127.0.0.1:${socket.localPort}/$token.$extension"
@@ -59,7 +67,6 @@ class LocalMediaServer @Inject constructor() {
     fun publishStream(key: String, extension: String, contentType: String, length: Long, opener: RangeOpener): String? {
         val socket = ensureServer() ?: return null
         val path = "/f/${Integer.toHexString(key.hashCode())}${key.length.toString(16)}.$extension"
-        if (streams.size >= MAX_STREAMS && !streams.containsKey(path)) streams.clear()
         streams[path] = Stream(contentType, length, opener)
         return "http://127.0.0.1:${socket.localPort}$path"
     }
@@ -73,9 +80,14 @@ class LocalMediaServer @Inject constructor() {
         } ?: return null
         server = socket
         Thread({
-            while (!socket.isClosed) {
-                val client = runCatching { socket.accept() }.getOrNull() ?: break
-                runCatching { pool.execute { runCatching { serve(client) } } }.onFailure { client.close() }
+            try {
+                while (!socket.isClosed) {
+                    val client = runCatching { socket.accept() }.getOrNull() ?: break
+                    runCatching { pool.execute { runCatching { serve(client) } } }.onFailure { runCatching { client.close() } }
+                }
+            } finally {
+                // A broken listener is closed, so the next publish starts a fresh one.
+                runCatching { socket.close() }
             }
         }, "local-media").apply { isDaemon = true }.start()
         return socket
@@ -125,12 +137,19 @@ class LocalMediaServer @Inject constructor() {
                 start = from.toLongOrNull() ?: 0L
                 if (to.isNotEmpty()) end = (to.toLongOrNull() ?: end).coerceAtMost(length - 1)
             }
-            if (start >= length) {
+            if (start >= length || end < start) {
                 output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$length\r\nConnection: close\r\n\r\n".toByteArray())
+                output.flush()
                 return
             }
         }
         val count = end - start + 1
+        // Open the file before answering, so a share that's gone gives an error, not an empty 200.
+        val source = if (head) null else try {
+            stream.opener.open(start)
+        } catch (e: Exception) {
+            return status(output, 502)
+        }
         head(
             output,
             if (partial) 206 else 200,
@@ -138,11 +157,11 @@ class LocalMediaServer @Inject constructor() {
             count,
             extra = "Accept-Ranges: bytes\r\n" + (if (partial) "Content-Range: bytes $start-$end/$length\r\n" else ""),
         )
-        if (head) {
+        if (source == null) {
             output.flush()
             return
         }
-        stream.opener.open(start).use { source ->
+        source.use {
             val buffer = ByteArray(BUFFER)
             var left = count
             try {
@@ -186,7 +205,7 @@ class LocalMediaServer @Inject constructor() {
 
     private companion object {
         const val PREFERRED_PORT = 8790
-        const val WORKERS = 6
+        const val MAX_WORKERS = 16
         const val MAX_DOCUMENTS = 16
         const val MAX_STREAMS = 64
         const val BUFFER = 64 * 1024

@@ -32,11 +32,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /* -------------------------------------------------------------------------------------------------
@@ -143,10 +147,31 @@ object Hue {
         }
     }
 
-    /** Lights in [group] to [percent] (0 switches them off; 100 back to full). */
+    /** How a room's lights were before playback dimmed them. */
+    data class GroupState(val anyOn: Boolean, val on: Boolean, val bri: Int)
+
+    suspend fun groupState(ip: String, user: String, group: String): GroupState? = withContext(Dispatchers.IO) {
+        val root = request("http://$ip/api/$user/groups/$group", "GET", null) as? JsonObject ?: return@withContext null
+        val state = root["state"] as? JsonObject
+        val action = root["action"] as? JsonObject
+        GroupState(
+            anyOn = state?.get("any_on")?.jsonPrimitive?.booleanOrNull ?: false,
+            on = action?.get("on")?.jsonPrimitive?.booleanOrNull ?: false,
+            bri = action?.get("bri")?.jsonPrimitive?.intOrNull ?: 254,
+        )
+    }
+
+    /** Lights in [group] to [percent] (0 switches them off). */
     suspend fun setGroup(ip: String, user: String, group: String, percent: Int) = withContext(Dispatchers.IO) {
         val body = if (percent <= 0) """{"on":false,"transitiontime":20}"""
         else """{"on":true,"bri":${(percent * 254 / 100).coerceIn(1, 254)},"transitiontime":20}"""
+        request("http://$ip/api/$user/groups/$group/action", "PUT", body)
+    }
+
+    /** Puts [group] back the way [state] found it. */
+    suspend fun restore(ip: String, user: String, group: String, state: GroupState) = withContext(Dispatchers.IO) {
+        val body = if (!state.anyOn) """{"on":false,"transitiontime":20}"""
+        else """{"on":true,"bri":${state.bri.coerceIn(1, 254)},"transitiontime":20}"""
         request("http://$ip/api/$user/groups/$group/action", "PUT", body)
     }
 
@@ -215,6 +240,10 @@ class SmartHomeViewModel @Inject constructor(
     // Starts as "not playing", so opening the app never touches the lights.
     private var lastPlaying: Boolean? = false
 
+    // The room as playback found it (null: it was dark, or nothing was dimmed), to put it back after.
+    private var hueBefore: Hue.GroupState? = null
+    private val lights = Mutex()
+
     fun update(transform: (SmartHomeSettings) -> SmartHomeSettings) = store.update(transform)
 
     val hasHaToken: Boolean get() = secrets.has(SecretName.HomeAssistant)
@@ -242,7 +271,11 @@ class SmartHomeViewModel @Inject constructor(
                     store.update { it.copy(hueIp = ip) }
                     _status.value = messages.pressButton
                 }
-                Hue.PairResult.Failed -> _status.value = messages.failed
+                Hue.PairResult.Failed -> {
+                    // The bridge may have moved address: look for it afresh next time.
+                    store.update { it.copy(hueIp = null) }
+                    _status.value = messages.failed
+                }
             }
         }
     }
@@ -273,14 +306,33 @@ class SmartHomeViewModel @Inject constructor(
         lastPlaying = playing
         val current = store.settings.value
         viewModelScope.launch {
-            if (current.hueReady) {
-                Hue.setGroup(current.hueIp!!, current.hueUser!!, current.hueGroup!!, if (playing) current.hueDimPercent else 100)
-            }
+            lights.withLock { hue(current, playing) }
             val token = secrets.get(SecretName.HomeAssistant)
             if (current.haUrl.isNotBlank() && token != null) {
                 val entity = if (playing) current.haPlaying else current.haStopped
                 if (entity.isNotBlank()) HomeAssistant.run(current.haUrl, token, entity)
             }
+        }
+    }
+
+    /** Dims the room only if its lights were on, and afterwards puts it back how it was. */
+    private suspend fun hue(current: SmartHomeSettings, playing: Boolean) {
+        if (!current.hueReady) return
+        val ip = current.hueIp ?: return
+        val user = current.hueUser ?: return
+        val group = current.hueGroup ?: return
+        if (playing) {
+            val before = Hue.groupState(ip, user, group)
+            if (before == null || !before.anyOn) {
+                hueBefore = null
+                return
+            }
+            hueBefore = before
+            Hue.setGroup(ip, user, group, current.hueDimPercent)
+        } else {
+            val before = hueBefore ?: return
+            hueBefore = null
+            Hue.restore(ip, user, group, before)
         }
     }
 
@@ -329,6 +381,14 @@ fun SmartHomeRows(viewModel: SmartHomeViewModel = hiltViewModel()) {
             else stringResource(R.string.dial_hue_pair),
             onClick = { if (settings.huePaired) viewModel.forgetHue() else viewModel.pairHue(messages) },
         )
+        if (!settings.huePaired && settings.hueIp != null) {
+            // Found but not paired yet: a way to stop using that bridge's address.
+            SettingRow(
+                label = stringResource(R.string.dial_hue_forget),
+                value = settings.hueIp.orEmpty(),
+                onClick = viewModel::forgetHue,
+            )
+        }
         if (settings.huePaired) {
             SettingRow(
                 label = stringResource(R.string.dial_hue_room),
@@ -348,7 +408,7 @@ fun SmartHomeRows(viewModel: SmartHomeViewModel = hiltViewModel()) {
             label = stringResource(R.string.dial_ha_url),
             value = haUrl,
             onValueChange = { haUrl = it },
-            placeholder = "http://homeassistant.local:8123",
+            placeholder = "http://192.168.1.20:8123",
             keyboardType = KeyboardType.Uri,
             imeAction = ImeAction.Done,
             readOnly = false,

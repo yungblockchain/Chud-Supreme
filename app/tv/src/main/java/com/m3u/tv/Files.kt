@@ -24,7 +24,6 @@ import com.m3u.data.service.PlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.InputStream
-import java.net.URI
 import java.util.EnumSet
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -34,8 +33,11 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -49,6 +51,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Credentials
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -162,18 +166,20 @@ class FilesStore @Inject constructor(
 /* ------------------------------------------------------------------------------------ SMB */
 
 object SmbShares {
+    // No socket read timeout: smbj's reader thread would drop an idle connection with it.
     private val client by lazy {
         SMBClient(
             SmbConfig.builder()
                 .withTimeout(15, TimeUnit.SECONDS)
-                .withSoTimeout(30, TimeUnit.SECONDS)
                 .build()
         )
     }
     private val open = ConcurrentHashMap<String, DiskShare>()
 
+    @Synchronized
     private fun connect(share: FileShare, password: String): DiskShare {
-        open[share.id]?.takeIf { it.isConnected }?.let { return it }
+        open[share.id]?.takeIf { it.isConnected && it.treeConnect.session.connection.isConnected }?.let { return it }
+        open.remove(share.id)?.let { stale -> runCatching { stale.close() } }
         val connection = client.connect(share.address)
         val auth = if (share.user.isBlank()) AuthenticationContext.guest()
         else AuthenticationContext(share.user, password.toCharArray(), share.domain.ifBlank { null })
@@ -183,9 +189,16 @@ object SmbShares {
         return disk
     }
 
-    fun list(share: FileShare, password: String, path: String): List<FileEntry> {
-        val disk = connect(share, password)
-        return disk.list(path.replace('/', '\\')).mapNotNull { info ->
+    /** Runs [block] on the share, reconnecting once if the kept connection had gone stale. */
+    private fun <T> withShare(share: FileShare, password: String, block: (DiskShare) -> T): T = try {
+        block(connect(share, password))
+    } catch (e: Exception) {
+        open.remove(share.id)?.let { stale -> runCatching { stale.close() } }
+        block(connect(share, password))
+    }
+
+    fun list(share: FileShare, password: String, path: String): List<FileEntry> = withShare(share, password) { disk ->
+        disk.list(path.replace('/', '\\')).mapNotNull { info ->
             val name = info.fileName
             if (name == "." || name == ".." || name.startsWith(".")) return@mapNotNull null
             val folder = (info.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
@@ -193,38 +206,54 @@ object SmbShares {
         }
     }
 
-    fun length(share: FileShare, password: String, path: String): Long {
-        val disk = connect(share, password)
-        return disk.openFile(
+    fun length(share: FileShare, password: String, path: String): Long = withShare(share, password) { disk ->
+        disk.openFile(
             path.replace('/', '\\'),
             EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, null,
         ).use { it.getFileInformation(FileStandardInformation::class.java).endOfFile }
     }
 
-    /** The file from [offset] on, read in pieces. */
+    /** The file from [offset] on, read ahead in large pieces (one round trip per megabyte, not per 8 KB). */
     fun open(share: FileShare, password: String, path: String, offset: Long): InputStream {
-        val disk = connect(share, password)
-        val file = disk.openFile(
-            path.replace('/', '\\'),
-            EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, null,
-        )
+        val file = withShare(share, password) { disk ->
+            disk.openFile(
+                path.replace('/', '\\'),
+                EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, null,
+            )
+        }
         return object : InputStream() {
             private var position = offset
+            private val chunk = ByteArray(READ_AHEAD)
+            private var chunkStart = 0
+            private var chunkEnd = 0
+
             override fun read(): Int {
                 val one = ByteArray(1)
                 return if (read(one, 0, 1) <= 0) -1 else one[0].toInt() and 0xff
             }
+
             override fun read(buffer: ByteArray, off: Int, len: Int): Int {
-                val count = file.read(buffer, position, off, len)
-                if (count <= 0) return -1
-                position += count
+                if (len == 0) return 0
+                if (chunkStart >= chunkEnd) {
+                    val count = file.read(chunk, position, 0, chunk.size)
+                    if (count <= 0) return -1
+                    position += count
+                    chunkStart = 0
+                    chunkEnd = count
+                }
+                val count = minOf(len, chunkEnd - chunkStart)
+                System.arraycopy(chunk, chunkStart, buffer, off, count)
+                chunkStart += count
                 return count
             }
+
             override fun close() {
                 runCatching { file.close() }
             }
         }
     }
+
+    private const val READ_AHEAD = 1 shl 20
 }
 
 /* --------------------------------------------------------------------------------- WebDAV */
@@ -241,28 +270,33 @@ object WebDav {
         if (share.user.isNotBlank()) header("Authorization", Credentials.basic(share.user, password))
     }
 
-    private fun urlFor(share: FileShare, path: String): String {
-        val base = share.address.trimEnd('/')
-        if (path.isEmpty()) return "$base/"
-        return base + "/" + path.split('/').joinToString("/") { segment -> URI(null, null, segment, null).rawPath }
+    private fun urlFor(share: FileShare, path: String): HttpUrl {
+        val builder = share.address.trimEnd('/').toHttpUrl().newBuilder()
+        path.split('/').filter { it.isNotEmpty() }.forEach { builder.addPathSegment(it) }
+        // Folders end in a slash; some servers redirect (and drop the PROPFIND body) without it.
+        if (path.isEmpty()) builder.addPathSegment("")
+        return builder.build()
     }
 
     fun list(share: FileShare, password: String, path: String): List<FileEntry> {
         val body = """<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:displayname/></d:prop></d:propfind>"""
             .toRequestBody("application/xml".toMediaType())
+        val url = urlFor(share, path)
         val request = Request.Builder()
-            .url(urlFor(share, path))
+            .url(url)
             .method("PROPFIND", body)
             .header("Depth", "1")
             .auth(share, password)
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("WebDAV answered ${response.code}")
-            val selfPath = URI(urlFor(share, path)).path.trimEnd('/')
+            val self = url.pathSegments.filter { it.isNotEmpty() }
             return parse(response.body.byteStream()).mapNotNull { (href, folder, size) ->
-                val hrefPath = runCatching { URI(href).path }.getOrDefault(href).trimEnd('/')
-                if (hrefPath == selfPath || hrefPath.isEmpty()) return@mapNotNull null
-                val name = hrefPath.substringAfterLast('/')
+                // Hrefs may be absolute paths or full addresses, and are percent-encoded.
+                val segments = response.request.url.resolve(href)?.pathSegments?.filter { it.isNotEmpty() }
+                    ?: return@mapNotNull null
+                if (segments.isEmpty() || segments == self) return@mapNotNull null
+                val name = segments.last()
                 if (name.startsWith(".")) return@mapNotNull null
                 FileEntry(name = name, path = if (path.isEmpty()) name else "$path/$name", folder = folder, size = size)
             }
@@ -271,7 +305,10 @@ object WebDav {
 
     fun length(share: FileShare, password: String, path: String): Long {
         val request = Request.Builder().url(urlFor(share, path)).head().auth(share, password).build()
-        return client.newCall(request).execute().use { it.header("Content-Length")?.toLongOrNull() ?: -1L }
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("WebDAV answered ${response.code}")
+            response.header("Content-Length")?.toLongOrNull() ?: -1L
+        }
     }
 
     fun open(share: FileShare, password: String, path: String, offset: Long): InputStream {
@@ -286,6 +323,24 @@ object WebDav {
             error("WebDAV answered ${response.code}")
         }
         val stream = response.body.byteStream()
+        // A server that ignores Range sends the whole file: skip to where the player asked.
+        if (offset > 0 && response.code != 206) {
+            try {
+                var left = offset
+                while (left > 0) {
+                    val skipped = stream.skip(left)
+                    if (skipped <= 0) {
+                        if (stream.read() < 0) error("WebDAV file ended early")
+                        left--
+                    } else {
+                        left -= skipped
+                    }
+                }
+            } catch (e: Exception) {
+                response.close()
+                throw e
+            }
+        }
         return object : InputStream() {
             override fun read(): Int = stream.read()
             override fun read(buffer: ByteArray, off: Int, len: Int): Int = stream.read(buffer, off, len)
@@ -335,10 +390,13 @@ data class FilesState(
     val loading: Boolean = false,
     val error: String? = null,
     val adding: Boolean = false,
+    /** The row to focus when the list arrives: the folder (or share) just stepped out of. */
+    val focusPath: String? = null,
 )
 
 @HiltViewModel
 class FilesViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val store: FilesStore,
     private val local: LocalMediaServer,
     private val playerManager: PlayerManager,
@@ -349,6 +407,10 @@ class FilesViewModel @Inject constructor(
     private val _state = MutableStateFlow(FilesState())
     val state: StateFlow<FilesState> = _state.asStateFlow()
     private var job: Job? = null
+    private val _failures = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** Why a file didn't play (shown as a message wherever the person started it from). */
+    val failures: SharedFlow<String> = _failures.asSharedFlow()
 
     fun startAdding() = _state.update { it.copy(adding = true, error = null) }
 
@@ -375,9 +437,19 @@ class FilesViewModel @Inject constructor(
         if (_state.value.share?.id == share.id) _state.value = FilesState()
     }
 
-    fun open(share: FileShare, path: String = "") {
+    fun open(share: FileShare, path: String = "", focus: String? = null) {
         job?.cancel()
-        _state.update { it.copy(share = share, path = path, entries = emptyList(), loading = true, error = null) }
+        // The old rows stay until the new ones arrive, so focus has somewhere to be meanwhile.
+        _state.update {
+            it.copy(
+                share = share,
+                path = path,
+                entries = if (it.share?.id == share.id) it.entries else emptyList(),
+                loading = true,
+                error = null,
+                focusPath = focus,
+            )
+        }
         job = viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -409,20 +481,17 @@ class FilesViewModel @Inject constructor(
         }
         val share = current.share ?: return false
         if (current.path.isEmpty()) {
-            _state.value = FilesState()
+            job?.cancel()
+            _state.value = FilesState(focusPath = share.id)
             return true
         }
-        open(share, current.path.substringBeforeLast('/', ""))
+        open(share, current.path.substringBeforeLast('/', ""), focus = current.path)
         return true
     }
 
     fun play(entry: FileEntry, onPlaying: () -> Unit) {
         val share = _state.value.share ?: return
-        viewModelScope.launch {
-            val channelId = withContext(Dispatchers.IO) { prepare(share, entry.path, entry.name, entry.size) } ?: return@launch
-            runCatching { playerManager.play(MediaCommand.Common(channelId), applyContinueWatching = true) }
-            onPlaying()
-        }
+        viewModelScope.launch { start(share, entry.path, entry.name, entry.size, onPlaying) }
     }
 
     /** A file from a list (recently played, favourites): served again, then played. */
@@ -430,22 +499,34 @@ class FilesViewModel @Inject constructor(
         val relation = channel.relationId?.removePrefix(RELATION_PREFIX) ?: return
         val shareId = relation.substringBefore(':')
         val path = relation.substringAfter(':')
-        val share = store.shares.value.firstOrNull { it.id == shareId } ?: return
-        viewModelScope.launch {
-            val channelId = withContext(Dispatchers.IO) { prepare(share, path, channel.title, -1L) } ?: return@launch
-            runCatching { playerManager.play(MediaCommand.Common(channelId), applyContinueWatching = true) }
-            onPlaying()
+        val share = store.shares.value.firstOrNull { it.id == shareId }
+        if (share == null) {
+            _failures.tryEmit(context.getString(R.string.dial_files_share_missing))
+            return
         }
+        viewModelScope.launch { start(share, path, channel.title, -1L, onPlaying) }
+    }
+
+    private suspend fun start(share: FileShare, path: String, title: String, size: Long, onPlaying: () -> Unit) {
+        val result = withContext(Dispatchers.IO) { runCatching { prepare(share, path, title, size) } }
+        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+        val channelId = result.getOrNull()
+        if (channelId == null) {
+            val reason = result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+                ?: context.getString(R.string.dial_files_unreadable)
+            _failures.tryEmit(reason)
+            return
+        }
+        runCatching { playerManager.play(MediaCommand.Common(channelId), applyContinueWatching = true) }
+        onPlaying()
     }
 
     private suspend fun prepare(share: FileShare, path: String, title: String, knownSize: Long): Int? {
         val password = store.password(share.id)
-        val length = knownSize.takeIf { it > 0 } ?: runCatching {
-            when (share.kind) {
-                ShareKind.Smb -> SmbShares.length(share, password, path)
-                ShareKind.WebDav -> WebDav.length(share, password, path)
-            }
-        }.getOrDefault(-1L)
+        val length = knownSize.takeIf { it > 0 } ?: when (share.kind) {
+            ShareKind.Smb -> SmbShares.length(share, password, path)
+            ShareKind.WebDav -> WebDav.length(share, password, path)
+        }
         if (length <= 0) return null
         val extension = path.substringAfterLast('.', "bin").lowercase(Locale.ROOT)
         val url = local.publishStream(

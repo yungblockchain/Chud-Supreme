@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.tv.material3.Text
+import com.m3u.core.foundation.util.basic.title
 import com.m3u.data.database.model.Channel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.HttpURLConnection
@@ -193,6 +194,7 @@ class DiscoverViewModel @Inject constructor() : ViewModel() {
     val anime: StateFlow<List<TmdbTitle>> = _anime.asStateFlow()
 
     private var episodesFor: Set<Int> = emptySet()
+    private var pendingFor: Set<Int> = emptySet()
     private var episodesAt = 0L
     private var episodesJob: Job? = null
     private var animeAt = 0L
@@ -205,8 +207,8 @@ class DiscoverViewModel @Inject constructor() : ViewModel() {
             return
         }
         if (ids == episodesFor && System.currentTimeMillis() - episodesAt < TTL_MS) return
-        episodesFor = ids
-        episodesAt = System.currentTimeMillis()
+        if (episodesJob?.isActive == true && ids == pendingFor) return
+        pendingFor = ids
         episodesJob?.cancel()
         episodesJob = viewModelScope.launch {
             val now = System.currentTimeMillis()
@@ -217,6 +219,9 @@ class DiscoverViewModel @Inject constructor() : ViewModel() {
                 _newEpisodes.value = found.sortedWith(compareBy<NewEpisode> { !it.aired }.thenBy { if (it.aired) -it.airsAt else it.airsAt })
                 delay(TVMAZE_SPACING_MS)
             }
+            // Only a finished pass counts as fresh (a failed or cut-short one is tried again).
+            episodesFor = ids
+            episodesAt = System.currentTimeMillis()
         }
     }
 

@@ -21,11 +21,16 @@ import java.net.URLEncoder
 import java.security.MessageDigest
 import java.time.Duration
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +41,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -578,14 +584,28 @@ object AltYouTube {
     private val PIPED = listOf("https://pipedapi.kavin.rocks", "https://api.piped.private.coffee", "https://pipedapi.adminforge.de")
     private val FALLBACK_INVIDIOUS = listOf("https://inv.nadeko.net", "https://invidious.nerdvpn.de", "https://yewtu.be")
 
-    suspend fun resolve(videoId: String, maxHeight: Int): ResolvedVideo? = withContext(Dispatchers.IO) {
-        for (base in invidiousServers().take(4)) {
-            fromInvidious(base, videoId, maxHeight)?.let { return@withContext it }
+    /**
+     * Asks a few Invidious and Piped servers at once and takes the first that answers with a
+     * stream; the slow ones are left to time out on their own in the background.
+     */
+    suspend fun resolve(videoId: String, maxHeight: Int): ResolvedVideo? {
+        val candidates: List<() -> ResolvedVideo?> = withContext(Dispatchers.IO) { invidiousServers() }.take(4)
+            .map { base -> { fromInvidious(base, videoId, maxHeight) } } +
+            PIPED.map { base -> { fromPiped(base, videoId, maxHeight) } }
+        val winner = CompletableDeferred<ResolvedVideo?>()
+        val left = AtomicInteger(candidates.size)
+        val race = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        candidates.forEach { candidate ->
+            race.launch {
+                runCatching { candidate() }.getOrNull()?.let { winner.complete(it) }
+                if (left.decrementAndGet() == 0) winner.complete(null)
+            }
         }
-        for (base in PIPED) {
-            fromPiped(base, videoId, maxHeight)?.let { return@withContext it }
+        return try {
+            withTimeoutOrNull(RACE_MS) { winner.await() }
+        } finally {
+            race.cancel()
         }
-        null
     }
 
     private fun invidiousServers(): List<String> {
@@ -667,8 +687,8 @@ object AltYouTube {
         var connection: HttpURLConnection? = null
         return try {
             connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8_000
-                readTimeout = 15_000
+                connectTimeout = 5_000
+                readTimeout = 8_000
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("User-Agent", "ChudSupreme/1.0 (Android TV)")
             }
@@ -682,6 +702,7 @@ object AltYouTube {
     }
 
     private const val DAY_MS = 24 * 60 * 60_000L
+    private const val RACE_MS = 12_000L
 }
 
 /* ------------------------------------------------------------------------ iTunes trailers */
@@ -944,17 +965,25 @@ class YouTubeViewModel @Inject constructor(
                         if (it is CancellationException) throw it
                         Log.w(TAG, "Could not get streams for ${video.id}: ${it.javaClass.simpleName}: ${it.message}")
                     }
+                suspend fun urlFor(r: ResolvedVideo): String? =
+                    r.manifest?.let { withContext(Dispatchers.IO) { local.publish(it, "application/dash+xml", "mpd") } } ?: r.hlsUrl ?: r.muxedUrl
+                var resolved = attempt.getOrNull()
+                var url = resolved?.let { urlFor(it) }
                 // YouTube turned the extractor away (it often asks datacentre and VPN addresses to
-                // sign in): an Invidious or Piped server fetches the video for the stick instead.
-                val resolved = attempt.getOrNull()
-                    ?: runCatching { AltYouTube.resolve(video.id, prefs.maxHeight) }
+                // sign in), or gave nothing playable: an Invidious or Piped server fetches the
+                // video for the stick instead.
+                if (url == null) {
+                    resolved?.let { Log.w(TAG, "No playable stream for ${video.id} (video-only ${it.videoOnly}, audio ${it.audio})") }
+                    val alternative = runCatching { AltYouTube.resolve(video.id, prefs.maxHeight) }
                         .onFailure { if (it is CancellationException) throw it }
                         .getOrNull()
-                val url = resolved?.let { r ->
-                    r.manifest?.let { withContext(Dispatchers.IO) { local.publish(it, "application/dash+xml", "mpd") } } ?: r.hlsUrl ?: r.muxedUrl
+                    val alternativeUrl = alternative?.let { urlFor(it) }
+                    if (alternative != null && alternativeUrl != null) {
+                        resolved = alternative
+                        url = alternativeUrl
+                    }
                 }
                 if (resolved == null || url == null) {
-                    if (resolved != null) Log.w(TAG, "No playable stream for ${video.id} (video-only ${resolved.videoOnly}, audio ${resolved.audio})")
                     store.addToHistory(video)
                     _events.tryEmit(YouTubeEvent.OpenExternally(video, reasonFor(attempt.exceptionOrNull())))
                     return@launch

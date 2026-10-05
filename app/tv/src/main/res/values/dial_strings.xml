@@ -1119,6 +1119,7 @@
     <string name="dial_smart_home_hint">The lights dim while a film or channel plays full screen and come back up when it stops. Philips Hue pairs with a press of the bridge\'s button; Home Assistant runs your own scenes or scripts.</string>
     <string name="dial_hue_bridge">Philips Hue bridge</string>
     <string name="dial_hue_pair">Find and pair</string>
+    <string name="dial_hue_forget">Forget this bridge</string>
     <string name="dial_hue_paired_value">Paired (%1$s) · OK forgets it</string>
     <string name="dial_hue_room">Room to dim</string>
     <string name="dial_hue_room_pick">OK to choose</string>
@@ -1144,6 +1145,8 @@
     <string name="dial_files_error">Couldn\'t open it: %1$s</string>
     <string name="dial_files_empty">This folder is empty.</string>
     <string name="dial_files_retry">Try again</string>
+    <string name="dial_files_share_missing">That shared folder isn\'t on this TV any more.</string>
+    <string name="dial_files_unreadable">The file couldn\'t be read.</string>
     <string name="dial_files_kind_smb">SMB (Windows sharing)</string>
     <string name="dial_files_kind_webdav">WebDAV</string>
     <string name="dial_files_smb_hint">The computer or NAS address and the shared folder\'s name. Leave the user empty for guest access.</string>
