@@ -357,7 +357,7 @@
     <string name="dial_options_picture_sound">Picture and sync</string>
     <string name="dial_options_speed">Speed</string>
     <string name="dial_options_adjust_hint">Left or Right to adjust, OK to reset</string>
-    <string name="dial_options_online_subtitles">OpenSubtitles</string>
+    <string name="dial_options_online_subtitles">Subtitles online</string>
     <string name="dial_options_searching">Searching…</string>
     <string name="dial_options_downloading">Downloading…</string>
     <string name="dial_options_downloads">%1$d downloads</string>
@@ -378,6 +378,11 @@
     <!-- Settings > Services -->
     <string name="dial_services_intro">Your own keys for extra features. Type them here or send them from the phone page. They stay encrypted on this Fire TV and only go to their own service.</string>
     <string name="dial_services_section_film">Film and TV info</string>
+    <string name="dial_services_extra_subtitles">Also search Subdl and SubSource</string>
+    <string name="dial_services_subdl">Subdl API key</string>
+    <string name="dial_services_subdl_hint">A free key from your own Subdl account. Leave it blank and subtitle search stays as it was.</string>
+    <string name="dial_services_subsource">SubSource API key</string>
+    <string name="dial_services_subsource_hint">A free key from your own SubSource account. Leave it blank and subtitle search stays as it was.</string>
     <string name="dial_services_section_debrid">Debrid</string>
     <string name="dial_services_realdebrid">Real-Debrid API token</string>
     <string name="dial_services_realdebrid_hint">Token from real-debrid.com/apitoken</string>

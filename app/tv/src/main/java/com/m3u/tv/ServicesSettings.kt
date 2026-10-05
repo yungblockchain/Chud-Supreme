@@ -73,6 +73,7 @@ class ServicesSettingsViewModel @Inject constructor(
     fun traktCancel() = trakt.cancelSignIn()
     fun traktSignOut() = trakt.signOut()
     fun toggleScrobble() = store.update { it.copy(traktScrobble = !it.traktScrobble) }
+    fun toggleExtraSubtitles() = store.update { it.copy(extraSubtitleSources = !it.extraSubtitleSources) }
     val phonePage: StateFlow<CompanionInfo?> = companion.info
     val phoneMessages: SharedFlow<PhoneMessage> = companion.messages
     val preferences: StateFlow<DialPreferences> = store.preferences
@@ -190,6 +191,15 @@ fun ServicesSettingsScreen(
         }
         item { SettingsSection(stringResource(R.string.dial_services_section_film)) }
         item { KeyRow(SecretName.Tmdb, R.string.dial_services_tmdb, R.string.dial_services_tmdb_hint) }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_services_extra_subtitles),
+                value = stringResource(if (preferences.extraSubtitleSources) R.string.dial_value_on else R.string.dial_value_off),
+                onClick = viewModel::toggleExtraSubtitles,
+            )
+        }
+        item { KeyRow(SecretName.Subdl, R.string.dial_services_subdl, R.string.dial_services_subdl_hint) }
+        item { KeyRow(SecretName.SubSource, R.string.dial_services_subsource, R.string.dial_services_subsource_hint) }
         item {
             KeyRow(SecretName.TraktClientId, R.string.dial_services_trakt, R.string.dial_services_trakt_hint)
         }

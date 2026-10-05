@@ -42,6 +42,10 @@ data class SubtitleResult(
     val release: String,
     val downloads: Int,
     val hearingImpaired: Boolean,
+    val provider: String = "OpenSubtitles",
+    /** Set for Subdl. SubSource keeps only [externalId] and downloads with the saved key. */
+    val downloadUrl: String? = null,
+    val externalId: String? = null,
 )
 
 sealed interface OpenSubtitlesFailure {

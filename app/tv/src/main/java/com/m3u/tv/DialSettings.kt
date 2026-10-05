@@ -100,6 +100,8 @@ data class DialPreferences(
     val foreignAudioSubtitles: Boolean = false,
     /** Fetch subtitles from OpenSubtitles when a film or episode has none. */
     val autoSubtitles: Boolean = false,
+    /** Also ask Subdl and SubSource, when those keys are saved. Off leaves the picker unchanged. */
+    val extraSubtitleSources: Boolean = true,
     /** Evens out loud and quiet parts (late-night viewing). */
     val nightMode: Boolean = false,
     /** Lifts speech above music and effects. */
@@ -467,6 +469,7 @@ class DialSettingsStore @Inject constructor(
             .putString(KEY_SUBTITLE_LANGUAGE, next.subtitleLanguage)
             .putBoolean(KEY_FOREIGN_SUBTITLES, next.foreignAudioSubtitles)
             .putBoolean(KEY_AUTO_SUBTITLES, next.autoSubtitles)
+            .putBoolean(KEY_EXTRA_SUBTITLES, next.extraSubtitleSources)
             .putBoolean(KEY_NIGHT_MODE, next.nightMode)
             .putBoolean(KEY_DIALOGUE_BOOST, next.dialogueBoost)
             .putBoolean(KEY_HIDE_WATCHED, next.hideWatched)
@@ -670,6 +673,7 @@ class DialSettingsStore @Inject constructor(
             subtitleLanguage = prefs.getString(KEY_SUBTITLE_LANGUAGE, null) ?: defaults.subtitleLanguage,
             foreignAudioSubtitles = prefs.getBoolean(KEY_FOREIGN_SUBTITLES, defaults.foreignAudioSubtitles),
             autoSubtitles = prefs.getBoolean(KEY_AUTO_SUBTITLES, defaults.autoSubtitles),
+            extraSubtitleSources = prefs.getBoolean(KEY_EXTRA_SUBTITLES, defaults.extraSubtitleSources),
             nightMode = prefs.getBoolean(KEY_NIGHT_MODE, defaults.nightMode),
             dialogueBoost = prefs.getBoolean(KEY_DIALOGUE_BOOST, defaults.dialogueBoost),
             hideWatched = prefs.getBoolean(KEY_HIDE_WATCHED, defaults.hideWatched),
@@ -736,6 +740,7 @@ class DialSettingsStore @Inject constructor(
         const val KEY_SUBTITLE_LANGUAGE = "subtitle_language"
         const val KEY_FOREIGN_SUBTITLES = "foreign_audio_subtitles"
         const val KEY_AUTO_SUBTITLES = "auto_subtitles"
+        const val KEY_EXTRA_SUBTITLES = "extra_subtitle_sources"
         const val KEY_NIGHT_MODE = "night_mode"
         const val KEY_DIALOGUE_BOOST = "dialogue_boost"
         const val KEY_HIDE_WATCHED = "hide_watched"

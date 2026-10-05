@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
 /** The keys and tokens people add on the Fire TV (or from their phone). None ship with the app. */
 enum class SecretName(val key: String) {
     OpenSubtitles("opensubtitles_api_key"),
+    Subdl("subdl_api_key"),
+    SubSource("subsource_api_key"),
     Tmdb("tmdb_api_key"),
     RealDebrid("real_debrid_token"),
     TorBox("torbox_api_key"),

@@ -63,6 +63,7 @@ import com.m3u.data.service.currentTracks
 import com.m3u.data.service.tracks
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import java.io.IOException
 import java.util.Locale
 import javax.inject.Inject
@@ -114,6 +115,7 @@ class PlayerOptionsViewModel @Inject constructor(
     private val settings: Settings,
     private val secrets: SecretStore,
     private val outputs: AudioOutputMonitor,
+    private val dial: DialSettingsStore,
 ) : ViewModel() {
 
     val tracks: StateFlow<PlayerOptionsState> = combine(
@@ -147,7 +149,11 @@ class PlayerOptionsViewModel @Inject constructor(
 
     private var searchJob: Job? = null
 
-    fun hasOpenSubtitlesKey(): Boolean = secrets.has(SecretName.OpenSubtitles)
+    fun hasSubtitleSource(): Boolean {
+        if (secrets.has(SecretName.OpenSubtitles)) return true
+        if (!dial.preferences.value.extraSubtitleSources) return false
+        return secrets.has(SecretName.Subdl) || secrets.has(SecretName.SubSource)
+    }
 
     fun chooseTrack(track: PlayerTrack) = playerManager.chooseTrack(track.group, track.index)
 
@@ -185,38 +191,92 @@ class PlayerOptionsViewModel @Inject constructor(
     fun resetSubtitleDelay() = viewModelScope.launch { settings[PreferencesKeys.SUBTITLE_DELAY_MS] = 0 }
 
     fun searchSubtitles(target: SubtitleTarget) {
-        val key = secrets.get(SecretName.OpenSubtitles)
-        if (key == null) {
+        val osKey = secrets.get(SecretName.OpenSubtitles)
+        val extraOn = dial.preferences.value.extraSubtitleSources
+        val subdlKey = secrets.get(SecretName.Subdl)?.takeIf { extraOn }
+        val subsourceKey = secrets.get(SecretName.SubSource)?.takeIf { extraOn }
+        if (osKey == null && subdlKey == null && subsourceKey == null) {
             _search.value = SubtitleSearch.Failed(OpenSubtitlesFailure.NoKey)
             return
         }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _search.value = SubtitleSearch.Searching
-            _search.value = try {
-                SubtitleSearch.Results(OpenSubtitles.search(key, target))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: OpenSubtitlesException) {
-                SubtitleSearch.Failed(e.failure)
-            } catch (e: Exception) {
-                SubtitleSearch.Failed(if (e is IOException) OpenSubtitlesFailure.Offline else OpenSubtitlesFailure.Other(null))
+            var osFailure: OpenSubtitlesFailure? = null
+            val opens = if (osKey == null) {
+                emptyList()
+            } else {
+                try {
+                    OpenSubtitles.search(osKey, target)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: OpenSubtitlesException) {
+                    osFailure = e.failure
+                    emptyList()
+                } catch (e: Exception) {
+                    osFailure = if (e is IOException) OpenSubtitlesFailure.Offline else OpenSubtitlesFailure.Other(null)
+                    emptyList()
+                }
+            }
+            val extra = runCatching {
+                SubtitleSources.search(
+                    target = target,
+                    languages = listOf(Locale.getDefault().language, "en"),
+                    subdlKey = subdlKey,
+                    subsourceKey = subsourceKey,
+                )
+            }.getOrDefault(emptyList()).map { hit ->
+                SubtitleResult(
+                    fileId = subtitleListId(hit.provider, hit.id),
+                    language = hit.language,
+                    release = hit.release,
+                    downloads = 0,
+                    hearingImpaired = hit.hearingImpaired,
+                    provider = hit.provider,
+                    downloadUrl = hit.downloadUrl,
+                    externalId = hit.id,
+                )
+            }
+            _search.value = if (opens.isEmpty() && extra.isEmpty() && osFailure != null) {
+                SubtitleSearch.Failed(osFailure)
+            } else {
+                SubtitleSearch.Results(opens + extra)
             }
         }
     }
 
     fun addSubtitle(result: SubtitleResult) {
-        val key = secrets.get(SecretName.OpenSubtitles) ?: return
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _search.value = SubtitleSearch.Loading(result.fileId)
             _search.value = try {
-                val file = OpenSubtitles.download(context, key, result)
+                val file = if (result.provider == "OpenSubtitles") {
+                    val key = secrets.get(SecretName.OpenSubtitles) ?: return@launch
+                    OpenSubtitles.download(context, key, result)
+                } else {
+                    val key = when (result.provider) {
+                        SubtitleSources.PROVIDER_SUBDL -> secrets.get(SecretName.Subdl)
+                        SubtitleSources.PROVIDER_SUBSOURCE -> secrets.get(SecretName.SubSource)
+                        else -> null
+                    }
+                    SubtitleSources.download(
+                        context,
+                        SubtitleHit(
+                            provider = result.provider,
+                            id = result.externalId ?: result.downloadUrl.orEmpty(),
+                            language = result.language,
+                            release = result.release,
+                            hearingImpaired = result.hearingImpaired,
+                            downloadUrl = result.downloadUrl,
+                        ),
+                        key,
+                    )
+                }
                 playerManager.addSubtitle(
                     uri = Uri.fromFile(file),
-                    mimeType = MimeTypes.APPLICATION_SUBRIP,
+                    mimeType = subtitleMime(file),
                     language = result.language.ifBlank { null },
-                    label = "OpenSubtitles · ${languageName(result.language)}",
+                    label = "${result.provider} · ${languageName(result.language)}",
                 )
                 SubtitleSearch.Added(result.language)
             } catch (e: CancellationException) {
@@ -278,6 +338,18 @@ class PlayerOptionsViewModel @Inject constructor(
 
 private const val FOCUS_ATTEMPTS = 10
 private const val FOCUS_RETRY_MS = 32L
+
+private fun subtitleListId(provider: String, id: String): Long {
+    var hash = 1125899906842597L
+    for (c in "$provider:$id") hash = 31 * hash + c.code
+    return hash or Long.MIN_VALUE
+}
+
+private fun subtitleMime(file: File): String = when (file.extension.lowercase(Locale.ROOT)) {
+    "vtt" -> MimeTypes.TEXT_VTT
+    "ass", "ssa" -> MimeTypes.TEXT_SSA
+    else -> MimeTypes.APPLICATION_SUBRIP
+}
 
 internal fun languageName(code: String?): String {
     if (code.isNullOrBlank() || code == "und") return ""
@@ -453,7 +525,7 @@ fun PlayerOptionsPanel(
                 item(key = "find-subtitles") {
                     OptionRow(
                         label = stringResource(R.string.dial_options_find_subtitles),
-                        value = if (viewModel.hasOpenSubtitlesKey()) null
+                        value = if (viewModel.hasSubtitleSource()) null
                         else stringResource(R.string.dial_options_needs_key),
                         onClick = { viewModel.searchSubtitles(subtitleTarget) },
                     )
@@ -766,7 +838,11 @@ private fun LazyListScope.subtitleSearchItems(
                     label = listOf(languageName(result.language), result.release)
                         .filter { it.isNotBlank() }
                         .joinToString(" · "),
-                    value = stringResource(R.string.dial_options_downloads, result.downloads),
+                    value = if (result.provider == "OpenSubtitles") {
+                        stringResource(R.string.dial_options_downloads, result.downloads)
+                    } else {
+                        result.provider
+                    },
                     onClick = { viewModel.addSubtitle(result) },
                     focusRequester = firstRow.takeIf { result == search.items.first() },
                 )
