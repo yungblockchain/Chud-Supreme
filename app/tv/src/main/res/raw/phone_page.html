@@ -113,6 +113,15 @@
   </details>
 
   <details>
+    <summary>Backup and restore</summary>
+    <p><a href="#" id="backup-link">Download a backup</a> of settings, skins and favourites (<label><input type="checkbox" id="backup-keys"> include API keys</label>).</p>
+    <form data-action="restore">
+      <label>Paste a backup file<textarea name="backup" rows="6" required spellcheck="false" placeholder='{"format":"chud-backup/1", …}'></textarea></label>
+      <button>Restore on TV</button><div class="status"></div>
+    </form>
+  </details>
+
+  <details>
     <summary>Watch party</summary>
     <form data-action="party">
       <label>Party code<input name="code" required maxlength="6" autocapitalize="characters" autocomplete="off" placeholder="K7PQ2X"></label>
@@ -125,7 +134,12 @@
   const pin = document.getElementById('pin');
   try { pin.value = sessionStorage.getItem('pin') || ''; } catch (e) {}
   pin.addEventListener('input', () => { try { sessionStorage.setItem('pin', pin.value); } catch (e) {} });
-  const messages = { pin: 'Wrong PIN. Check the TV.', locked: 'Too many wrong PINs. Wait a minute.', missing: 'Fill in every field.', too_large: 'That is too long.', not_a_skin: 'That is not a skin file.' };
+  document.getElementById('backup-link').addEventListener('click', (event) => {
+    event.preventDefault();
+    const keys = document.getElementById('backup-keys').checked ? '1' : '0';
+    window.location = '/backup.json?pin=' + encodeURIComponent(pin.value) + '&keys=' + keys;
+  });
+  const messages = { pin: 'Wrong PIN. Check the TV.', locked: 'Too many wrong PINs. Wait a minute.', missing: 'Fill in every field.', too_large: 'That is too long.', not_a_skin: 'That is not a skin file.', not_a_backup: 'That is not a backup file.' };
   document.querySelectorAll('form[data-action]').forEach(form => {
     form.addEventListener('submit', async event => {
       event.preventDefault();

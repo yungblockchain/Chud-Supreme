@@ -205,6 +205,8 @@ fun TvNavigationRail(
     modifier: Modifier = Modifier,
     /** Asking this for focus opens the menu on the open tab (the Menu key). */
     focusRequester: FocusRequester? = null,
+    /** The entries shown (a kids profile sees fewer). */
+    destinations: List<TvDestination> = TvDestination.entries,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val hidden = TvShapes.menu == SkinMenu.Hidden
@@ -286,8 +288,8 @@ fun TvNavigationRail(
                         // than jumping into the screen behind it).
                         .onPreviewKeyEvent { event ->
                             event.type == KeyEventType.KeyDown && when (event.key) {
-                                Key.DirectionUp -> focusedEntry[0] == TvDestination.entries.first()
-                                Key.DirectionDown -> focusedEntry[0] == TvDestination.entries.last()
+                                Key.DirectionUp -> focusedEntry[0] == destinations.first()
+                                Key.DirectionDown -> focusedEntry[0] == destinations.last()
                                 else -> false
                             }
                         }
@@ -295,7 +297,7 @@ fun TvNavigationRail(
                         .focusRestorer(requesters.getValue(selected))
                         .focusGroup()
                 ) {
-                    TvDestination.entries.forEach { destination ->
+                    destinations.forEach { destination ->
                         RailItem(
                             destination = destination,
                             selected = destination == selected,

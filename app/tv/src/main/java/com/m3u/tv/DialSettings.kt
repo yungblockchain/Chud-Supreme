@@ -1,6 +1,7 @@
 package com.m3u.tv
 
 import android.content.Context
+import java.time.LocalDate
 import androidx.compose.runtime.Immutable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -354,6 +355,15 @@ class DialSettingsStore @Inject constructor(
     /** Films and series opened most recently first, as channel ids. */
     val history: StateFlow<List<Int>> = _history.asStateFlow()
 
+    /** Re-reads everything from disk (after a restore wrote the files directly). */
+    fun reload() {
+        _preferences.value = readPreferences()
+        _history.value = readHistory()
+        _favouriteGroups.value = readGroups()
+        _categoryLayouts.value = readCategoryLayouts()
+        _watchlist.value = prefs.getString(KEY_WATCHLIST, null)?.split("\n")?.filter { it.isNotBlank() }.orEmpty()
+    }
+
     fun update(transform: (DialPreferences) -> DialPreferences) {
         val next = transform(_preferences.value)
         _preferences.value = next
@@ -390,6 +400,16 @@ class DialSettingsStore @Inject constructor(
             .putBoolean(KEY_TRAKT_SCROBBLE, next.traktScrobble)
             .putStringSet(KEY_TRAKT_ROWS_HIDDEN, next.traktRowsHidden)
             .apply()
+    }
+
+    /** Adds [deltaMs] to today's play time for a kids profile and returns the day's total. */
+    fun addKidsPlayTime(profileId: String, deltaMs: Long): Long {
+        val day = LocalDate.now().toString()
+        val key = "$KEY_KIDS_PLAY_PREFIX$profileId"
+        val stored = prefs.getString(key, null)?.split('|')
+        val total = (if (stored?.getOrNull(0) == day) stored.getOrNull(1)?.toLongOrNull() ?: 0L else 0L) + deltaMs
+        prefs.edit().putString(key, "$day|$total").apply()
+        return total
     }
 
     /** A channel's own refresh-rate rule; [FrameRateMode.Default] follows Settings. */
@@ -588,6 +608,7 @@ class DialSettingsStore @Inject constructor(
         const val KEY_SKIP_PREFIX = "skip_markers_"
         const val KEY_BOOKMARK_PREFIX = "bookmarks_"
         const val KEY_AFR_PREFIX = "frame_rate_"
+        const val KEY_KIDS_PLAY_PREFIX = "kids_play_"
         const val MAX_BOOKMARKS = 20
         const val KEY_TRAKT_SCROBBLE = "trakt_scrobble"
         const val KEY_TRAKT_ROWS_HIDDEN = "trakt_rows_hidden"

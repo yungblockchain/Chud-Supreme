@@ -173,6 +173,10 @@ if check "launch"; then
         press $BACK; sleep 1
         # Media server sign-in page, and a search that also looks beyond the playlists.
         open_tab server 8; shot 42-media-server
+        # Profiles tab (last settings tab) and the backup/weather rows at the end of the first tab.
+        open_tab settings 8; for _ in 1 2 3 4 5 6 7; do press $RIGHT; done; press $OK; sleep 2; shot 44-settings-profiles
+        press $DOWN $OK; sleep 2; shot 45-settings-profiles-add
+        open_tab settings 8; press $RIGHT; for _ in $(seq 1 60); do press $DOWN; done; sleep 1; shot 46-settings-backup
         open_tab search 8; type_text "Film%s12345"; sleep 5; shot 43-search-universal
         # The Menu key opens the hidden side menu with its labels; Left from the hero does too.
         press $UP; adb shell input keyevent 82; sleep 1; shot 26-menu-open

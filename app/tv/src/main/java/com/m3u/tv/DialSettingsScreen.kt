@@ -483,6 +483,12 @@ fun DialSettingsScreen(
             }
         }
 
+        item { SettingsSection(stringResource(R.string.dial_settings_section_weather)) }
+        item { WeatherRows() }
+
+        item { SettingsSection(stringResource(R.string.dial_settings_section_backup)) }
+        item { BackupRows() }
+
         // The phone-remote pairing code lives here rather than on every screen.
         if (pairingCode != null) {
             item { SettingsSection(stringResource(R.string.dial_settings_section_phone_remote)) }

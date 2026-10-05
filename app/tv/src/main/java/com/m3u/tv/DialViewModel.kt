@@ -117,6 +117,9 @@ class DialViewModel @Inject constructor(
     private val _skipMarkers = MutableStateFlow(SkipMarkers())
     val skipMarkers: StateFlow<SkipMarkers> = _skipMarkers.asStateFlow()
 
+    /** A kids profile's play time today, after adding [deltaMs]. */
+    fun addKidsPlayTime(profileId: String, deltaMs: Long): Long = store.addKidsPlayTime(profileId, deltaMs)
+
     /** Per-channel refresh-rate rules; a version counter so the player re-reads after a change. */
     private val _frameRateVersion = MutableStateFlow(0)
     val frameRateVersion: StateFlow<Int> = _frameRateVersion.asStateFlow()

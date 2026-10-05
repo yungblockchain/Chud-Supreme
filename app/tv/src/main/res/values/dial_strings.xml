@@ -870,4 +870,55 @@
     <string name="dial_frame_rate_match">match the picture</string>
     <string name="dial_frame_rate_60">60 Hz</string>
     <string name="dial_frame_rate_off">leave the TV alone</string>
+    <!-- Profiles (stage 4) -->
+    <string name="dial_settings_tab_profiles">Profiles</string>
+    <string name="dial_profile_default_name">Me</string>
+    <string name="dial_profiles_who">Who’s watching?</string>
+    <string name="dial_profiles_pin_for">PIN for %1$s</string>
+    <string name="dial_profiles_wrong_pin">That PIN isn’t right.</string>
+    <string name="dial_profiles_kids_badge">Kids</string>
+    <string name="dial_profiles_intro">Profiles decide what each person can reach. A kids profile keeps to live TV, films, series, the guide and favourites, hides adult categories, and can stop after a set time. A PIN keeps a profile to its owner.</string>
+    <string name="dial_profiles_add">Add a profile</string>
+    <string name="dial_profiles_switch">Switch profile</string>
+    <string name="dial_profiles_name">Name</string>
+    <string name="dial_profiles_pin_optional">PIN (optional, 4–8 digits)</string>
+    <string name="dial_profiles_kids">Kids profile</string>
+    <string name="dial_profiles_timer">Stops after</string>
+    <string name="dial_profiles_no_limit">No limit</string>
+    <string name="dial_profiles_minutes">%1$d min</string>
+    <string name="dial_profiles_create">Create</string>
+    <string name="dial_profiles_current">in use</string>
+    <string name="dial_profiles_pin">PIN</string>
+    <string name="dial_profiles_pin_set">Set</string>
+    <string name="dial_profiles_pin_none">None</string>
+    <string name="dial_profiles_pin_new">New PIN (4–8 digits), OK to save</string>
+    <string name="dial_profiles_pin_remove">Remove PIN</string>
+    <string name="dial_profiles_remove">Remove this profile</string>
+    <string name="dial_profiles_time_up">Time’s up for today</string>
+    <string name="dial_profiles_time_up_hint">Playback has stopped for this profile. A grown-up can pick another profile.</string>
+    <!-- Backup (stage 4) -->
+    <string name="dial_settings_section_backup">Backup and restore</string>
+    <string name="dial_backup_hint">A backup holds every setting, your skins and your favourites. Keep one on this stick, or download it from the phone page and paste it back on another Fire TV.</string>
+    <string name="dial_backup_include_keys">Include API keys in backups</string>
+    <string name="dial_backup_save">Save a backup on this stick</string>
+    <string name="dial_backup_working">Working…</string>
+    <string name="dial_backup_restore_kept">Restore the backup kept on this stick</string>
+    <string name="dial_backup_kept_summary">%1$s · %2$d favourites</string>
+    <string name="dial_backup_saved">Saved: %1$d settings, %2$d skins, %3$d favourites.</string>
+    <string name="dial_backup_restored">Restored %1$d settings, %2$d skins and %3$d favourites. Some settings take effect after a restart.</string>
+    <string name="dial_backup_restored_phone">Restored %1$d settings and %2$d favourites from the phone.</string>
+    <string name="dial_backup_not_a_backup">That isn’t a backup file.</string>
+    <string name="dial_backup_failed">The backup didn’t work. Try again.</string>
+    <!-- Weather and notices (stage 4) -->
+    <string name="dial_settings_section_weather">Clock and weather</string>
+    <string name="dial_weather_show">Clock and weather on Home</string>
+    <string name="dial_weather_units">Temperature</string>
+    <string name="dial_weather_c">Celsius</string>
+    <string name="dial_weather_f">Fahrenheit</string>
+    <string name="dial_weather_town">Town (leave empty to use the network’s location)</string>
+    <string name="dial_weather_town_hint">London</string>
+    <string name="dial_notice_update">Build %1$d is out · install from Downloader</string>
+    <string name="dial_notice_trakt_upnext">%1$d new on Trakt this week</string>
+    <string name="dial_notice_missed">%1$d to catch up</string>
+    <string name="dial_notice_party">Party %1$s running</string>
 </resources>

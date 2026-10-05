@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runBlocking
 
 /* -------------------------------------------------------------------------------------------------
  * The phone page: while it's switched on, the Fire TV serves a small web page on the home
@@ -46,6 +47,7 @@ sealed interface PhoneMessage {
     data class KeySaved(val name: SecretName) : PhoneMessage
     data class SkinApplied(val name: String) : PhoneMessage
     data class JoinParty(val code: String) : PhoneMessage
+    data class Restored(val settings: Int, val favourites: Int) : PhoneMessage
 }
 
 @Singleton
@@ -53,6 +55,7 @@ class PhoneCompanion @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secrets: SecretStore,
     private val skins: SkinStore,
+    private val backup: BackupService,
 ) {
     private val _info = MutableStateFlow<CompanionInfo?>(null)
     val info: StateFlow<CompanionInfo?> = _info.asStateFlow()
@@ -129,6 +132,16 @@ class PhoneCompanion @Inject constructor(
                 // The current skin as a file, to share or edit.
                 method == "GET" && path == "/skin.json" ->
                     respond(output, 200, JSON, skins.current.value.toJson().toString())
+                // The backup file, for the phone to keep (the PIN guards it: it can hold keys).
+                method == "GET" && path == "/backup.json" -> {
+                    val form = parseForm(query)
+                    if (!pinMatches(form["pin"].orEmpty())) {
+                        respond(output, 403, JSON, """{"ok":false,"error":"pin"}""")
+                    } else {
+                        val text = runBlocking { backup.create(includeKeys = form["keys"] == "1") }
+                        respond(output, 200, JSON, text, download = "chud-supreme-backup.json")
+                    }
+                }
                 // A watch-party guest asking what's playing and where. The code is the key.
                 method == "GET" && path == "/party" -> {
                     val form = parseForm(query)
@@ -136,7 +149,8 @@ class PhoneCompanion @Inject constructor(
                     respond(output, status, JSON, json)
                 }
                 method == "POST" && path.startsWith("/api/") -> {
-                    if (length !in 0..MAX_BODY) return respond(output, 413, JSON, """{"ok":false,"error":"too_large"}""")
+                    val limit = if (path == "/api/restore") MAX_RESTORE else MAX_BODY
+                if (length !in 0..limit) return respond(output, 413, JSON, """{"ok":false,"error":"too_large"}""")
                     val body = readBytes(input, length).toString(Charsets.UTF_8)
                     val (status, json) = api(path.removePrefix("/api/"), parseForm(body))
                     respond(output, status, JSON, json)
@@ -199,6 +213,11 @@ class PhoneCompanion @Inject constructor(
                 PhoneMessage.KeySaved(name)
             }
             "party" -> PhoneMessage.JoinParty(field("code").ifEmpty { return 400 to BAD }.take(8))
+            "restore" -> {
+                val raw = form["backup"].orEmpty().trim().ifEmpty { return 400 to BAD }
+                val summary = runBlocking { backup.restore(raw) } ?: return 400 to """{"ok":false,"error":"not_a_backup"}"""
+                PhoneMessage.Restored(summary.settings, summary.favourites)
+            }
             "skin" -> {
                 val raw = form["skin"].orEmpty().trim().take(MAX_SKIN).ifEmpty { return 400 to BAD }
                 val skin = skins.importSkin(raw) ?: return 400 to """{"ok":false,"error":"not_a_skin"}"""
@@ -216,7 +235,7 @@ class PhoneCompanion @Inject constructor(
     private fun page(): String =
         context.resources.openRawResource(R.raw.phone_page).bufferedReader().use { it.readText() }
 
-    private fun respond(output: OutputStream, status: Int, type: String, body: String) {
+    private fun respond(output: OutputStream, status: Int, type: String, body: String, download: String? = null) {
         val bytes = body.toByteArray(Charsets.UTF_8)
         val reason = when (status) {
             200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"
@@ -225,6 +244,7 @@ class PhoneCompanion @Inject constructor(
         }
         output.write(
             ("HTTP/1.1 $status $reason\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\n" +
+                (download?.let { "Content-Disposition: attachment; filename=\"$it\"\r\n" }.orEmpty()) +
                 "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n")
                 .toByteArray(Charsets.US_ASCII)
         )
@@ -279,6 +299,7 @@ class PhoneCompanion @Inject constructor(
         private const val WORKERS = 2
         private const val SOCKET_TIMEOUT_MS = 10_000
         private const val MAX_BODY = 16 * 1024
+        private const val MAX_RESTORE = 2 * 1024 * 1024
         private const val MAX_LINE = 8 * 1024
         private const val MAX_FIELD = 2_048
         private const val MAX_SKIN = 8_192

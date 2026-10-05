@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -120,6 +121,9 @@ private const val SETTINGS_TAB_ADDONS = 4
 private const val REMOTE_IDLE_AFTER_MS = 3_000L
 private const val REMOTE_IDLE_CHECK_MS = 1_000L
 
+/** How often a kids profile's play time is counted. */
+private const val KIDS_TICK_MS = 30_000L
+
 /** How often a Jellyfin/Emby server hears where playback has got to. */
 private const val SERVER_PROGRESS_MS = 10_000L
 
@@ -162,6 +166,9 @@ fun App(
     party: WatchPartyViewModel = hiltViewModel(),
     server: MediaServerViewModel = hiltViewModel(),
     universal: UniversalSearchViewModel = hiltViewModel(),
+    profilesVm: ProfilesViewModel = hiltViewModel(),
+    weather: WeatherViewModel = hiltViewModel(),
+    notices: NoticesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -276,6 +283,36 @@ fun App(
     // Launch screen with the spinning mascot, once per app start (not on rotation or resume).
     var splashDone by rememberSaveable { mutableStateOf(false) }
     val showSplash = !splashDone && preferences.launchAnimation
+
+    // Who's watching: the picker before anything else when there's a choice; a kids profile sees
+    // fewer tabs and no adult categories, and its play time can be capped.
+    val profileList by profilesVm.profiles.collectAsStateWithLifecycle()
+    val activeProfile by profilesVm.active.collectAsStateWithLifecycle()
+    val needsPicker = activeProfile == null && (profileList.size > 1 || profileList.any { it.hasPin })
+    val kidsProfile = activeProfile?.kids == true
+    val destinations = remember(kidsProfile) {
+        if (kidsProfile) TvDestination.entries.filter { it in KIDS_DESTINATIONS || it == TvDestination.Status }
+        else TvDestination.entries
+    }
+    LaunchedEffect(kidsProfile, destination) {
+        if (kidsProfile && destination !in destinations) destination = TvDestination.Home
+    }
+    var timeUp by remember { mutableStateOf(false) }
+    val kidsLimitMs = (activeProfile?.takeIf { it.kids }?.kidsMinutes ?: 0) * 60_000L
+    LaunchedEffect(activeProfile?.id, kidsLimitMs, isPlaying) {
+        val profile = activeProfile ?: return@LaunchedEffect
+        if (kidsLimitMs <= 0L || !isPlaying) return@LaunchedEffect
+        while (true) {
+            delay(KIDS_TICK_MS)
+            val played = dial.addKidsPlayTime(profile.id, KIDS_TICK_MS)
+            if (played >= kidsLimitMs) {
+                viewModel.releasePlayer()
+                surface = TvSurface.Browse
+                timeUp = true
+                break
+            }
+        }
+    }
 
     var startupHandled by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -479,6 +516,7 @@ fun App(
     // The phone page: what's typed on the phone lands here.
     val keySaved = stringResource(R.string.dial_phone_key_saved)
     val skinSaved = stringResource(R.string.dial_phone_skin_saved)
+    val restoredFromPhone = stringResource(R.string.dial_backup_restored_phone)
     LaunchedEffect(services) {
         services.phoneMessages.collect { message ->
             when (message) {
@@ -507,6 +545,8 @@ fun App(
                 is PhoneMessage.SkinApplied ->
                     Toast.makeText(context, skinSaved.format(message.name), Toast.LENGTH_SHORT).show()
                 is PhoneMessage.JoinParty -> party.join(message.code)
+                is PhoneMessage.Restored ->
+                    Toast.makeText(context, restoredFromPhone.format(message.settings, message.favourites), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -866,6 +906,13 @@ fun App(
                     onOpenTrending = { entry -> openTmdbTitle(entry.title, entry.channel) },
                     traktRows = traktRows,
                     onOpenTitle = { title -> openTmdbTitle(title, null) },
+                    kidsProfile = kidsProfile,
+                    onSwitchProfile = {
+                        viewModel.releasePlayer()
+                        surface = TvSurface.Browse
+                        destination = TvDestination.Home
+                        profilesVm.lock()
+                    },
                     missed = missed,
                     onOpenMissed = { item ->
                         if (dial.playsExternally(item.channel)) {
@@ -908,6 +955,7 @@ fun App(
                     selected = destination,
                     onSelect = { destination = it },
                     focusRequester = menuFocus,
+                    destinations = destinations,
                 )
             }
         }
@@ -1119,6 +1167,45 @@ fun App(
             )
         }
 
+        // Top right of Home: notices, then the clock and the weather.
+        val weatherNow by weather.now.collectAsStateWithLifecycle()
+        val weatherOn by weather.enabled.collectAsStateWithLifecycle()
+        val fahrenheit by weather.fahrenheit.collectAsStateWithLifecycle()
+        val updateBuild by notices.updateBuild.collectAsStateWithLifecycle()
+        if (onBrowse && destination == TvDestination.Home && details == null && person == null && !showSplash && !needsPicker) {
+            val noticeList = listOfNotNull(
+                updateBuild?.let { Notice.Update(it) },
+                traktRows.firstOrNull { it.kind == TraktRowKind.UpNext }?.titles?.size?.takeIf { it > 0 }?.let { Notice.TraktUpNext(it) },
+                missed.size.takeIf { it > 0 }?.let { Notice.Missed(it) },
+                partyHosting?.let { Notice.Party(it.code) },
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 20.dp, end = 32.dp),
+            ) {
+                NoticeStrip(noticeList)
+                if (weatherOn) ClockWeatherStrip(now = weatherNow, fahrenheit = fahrenheit)
+            }
+        }
+        if (timeUp) {
+            TimeUpCard(
+                onSwitchProfile = {
+                    timeUp = false
+                    profilesVm.lock()
+                },
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        if (needsPicker && !showSplash) {
+            ProfilePickerScreen(
+                profiles = profileList,
+                lastUsedId = profilesVm.lastUsedId,
+                onPick = { profile, pin -> profilesVm.select(profile, pin) },
+            )
+        }
         if (showSplash) {
             BrandSplash(onFinished = { splashDone = true })
         }

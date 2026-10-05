@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.SwitchAccount
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Extension
@@ -187,6 +188,8 @@ fun TvBrowsePane(
     onOpenTitle: (TmdbTitle) -> Unit = {},
     missed: List<MissedProgramme> = emptyList(),
     onOpenMissed: (MissedProgramme) -> Unit = {},
+    kidsProfile: Boolean = false,
+    onSwitchProfile: () -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
     servicesSettingsContent: @Composable () -> Unit = {},
     /** Live TV, Films or Series should show a source of its kind. */
@@ -320,7 +323,13 @@ fun TvBrowsePane(
                     TvDestination.Account -> XtreamAccountScreen()
 
                     TvDestination.Status -> DialSettingsPane(
-                        tabs = listOf(
+                        tabs = if (kidsProfile) listOf(
+                            SettingsTab(
+                                label = stringResource(R.string.dial_settings_tab_profiles),
+                                icon = Icons.Rounded.SwitchAccount,
+                                content = { ProfilesSettingsScreen(onSwitchProfile = onSwitchProfile) },
+                            ),
+                        ) else listOf(
                             SettingsTab(
                                 label = stringResource(R.string.dial_settings_tab_dial),
                                 icon = Icons.Rounded.Tune,
@@ -372,6 +381,11 @@ fun TvBrowsePane(
                                 onSubmitProviderSubscription = onSubmitProviderSubscription,
                             )
                                 },
+                            ),
+                            SettingsTab(
+                                label = stringResource(R.string.dial_settings_tab_profiles),
+                                icon = Icons.Rounded.SwitchAccount,
+                                content = { ProfilesSettingsScreen(onSwitchProfile = onSwitchProfile) },
                             ),
                         ),
                         selectedTab = settingsTab,

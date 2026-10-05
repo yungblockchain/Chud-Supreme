@@ -133,6 +133,7 @@ class TvHomeViewModel @Inject constructor(
     private val subscriptionProviderRepository: SubscriptionProviderRepository,
     private val settings: Settings,
     private val dialStore: DialSettingsStore,
+    private val profiles: ProfileStore,
     private val programmes: ProgrammeRepository,
     tvRepository: TvRepository,
     dPadReactionService: DPadReactionService
@@ -314,6 +315,7 @@ class TvHomeViewModel @Inject constructor(
             _state.update { it.copy(searching = true) }
             delay(SEARCH_DEBOUNCE_MS)
             val results = channelRepository.searchUnhidden(trimmed, SEARCH_LIMIT)
+                .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.category) || isAdultCategory(it.title) } else all }
             _state.update { state ->
                 if (state.searchQuery.trim() == trimmed) {
                     state.copy(searchResults = results, searching = false)
@@ -1041,7 +1043,9 @@ class TvHomeViewModel @Inject constructor(
         loadChannelsJob?.cancel()
         loadChannelsJob = viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(loadingChannels = true) }
+            // A kids profile never sees adult categories, whatever the playlist calls them.
             val providerCategories = channelRepository.getCategoryCounts(url)
+                .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.name) } else all }
             rawCategories = providerCategories
             rawCategoriesUrl = url
             val layout = dialStore.categoryLayouts.value[url] ?: CategoryLayout()
@@ -1059,6 +1063,7 @@ class TvHomeViewModel @Inject constructor(
             // Films and series read best A to Z; live channels keep the provider's numbering.
             val byTitle = playlist != null && (playlist.isVod || playlist.isSeries)
             val channels = channelRepository.getUnhidden(url, category, byTitle)
+                .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.category) } else all }
             _state.update { state ->
                 if (state.selectedPlaylist?.url == url) {
                     state.copy(
