@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -81,6 +82,9 @@ fun GuideGrid(
     onPlayLive: (Channel) -> Unit,
     onPlayCatchUp: (Channel, GuideProgramme) -> Unit,
     modifier: Modifier = Modifier,
+    /** Reminders set, as [reminderKey]s; OK on a programme still to come sets or clears one. */
+    reminderKeys: Set<String> = emptySet(),
+    onRemind: (Channel, GuideProgramme) -> Unit = { _, _ -> },
 ) {
     val gridStart = remember { floorToHalfHour(System.currentTimeMillis() - PAST_RANGE_MS) }
     val gridEnd = remember { floorToHalfHour(System.currentTimeMillis() + FUTURE_RANGE_MS) }
@@ -145,6 +149,9 @@ fun GuideGrid(
                         },
                         onPlayLive = { onPlayLive(channel) },
                         onPlayCatchUp = { programme -> onPlayCatchUp(channel, programme) },
+                        onRemind = { programme -> onRemind(channel, programme) },
+                        reminderKeys = reminderKeys,
+                        channelId = channel.id,
                     )
                 }
             }
@@ -297,6 +304,9 @@ private fun GridRow(
     onFocusProgramme: (GuideProgramme?) -> Unit,
     onPlayLive: () -> Unit,
     onPlayCatchUp: (GuideProgramme) -> Unit,
+    onRemind: (GuideProgramme) -> Unit = {},
+    reminderKeys: Set<String> = emptySet(),
+    channelId: Int = 0,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -342,9 +352,11 @@ private fun GridRow(
                                     programme.isOnAt(current) -> onPlayLive()
                                     programme.hasEndedBy(current) && programme.hasArchive ->
                                         onPlayCatchUp(programme)
+                                    !programme.hasEndedBy(current) -> onRemind(programme)
                                     else -> Unit
                                 }
                             },
+                            reminded = reminderKey(channelId, programme.startMillis) in reminderKeys,
                         )
                     }
                 }
@@ -400,6 +412,7 @@ private fun ProgrammeCell(
     now: Long,
     onFocus: () -> Unit,
     onClick: () -> Unit,
+    reminded: Boolean = false,
 ) {
     val onNow = programme.isOnAt(now)
     val ended = programme.hasEndedBy(now)
@@ -449,9 +462,9 @@ private fun ProgrammeCell(
                 .fillMaxSize()
                 .padding(start = 10.dp + hiddenStart, end = 10.dp)
         ) {
-            if (replayable) {
+            if (replayable || reminded) {
                 Icon(
-                    imageVector = Icons.Rounded.History,
+                    imageVector = if (reminded) Icons.Rounded.Notifications else Icons.Rounded.History,
                     contentDescription = null,
                     tint = if (focused) TvColors.OnFocus else TvColors.Focus,
                     modifier = Modifier.size(16.dp)

@@ -80,6 +80,8 @@ import com.m3u.tv.stremio.StremioIds
 import com.m3u.data.tv.model.keyCode
 import com.m3u.i18n.R.string
 import kotlinx.coroutines.delay
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,6 +132,11 @@ private const val SERVER_PROGRESS_MS = 10_000L
 /** How often the scrobbler is told where playback has got to. */
 private const val SCROBBLE_TICK_MS = 60_000L
 
+/** Reminders: how early the card shows, and how often the clock is checked. */
+private const val REMINDER_LEAD_MS = 2 * 60_000L
+private const val REMINDER_CHECK_MS = 20_000L
+private const val NOTICE_REMINDER_WINDOW_MS = 6 * 60 * 60_000L
+
 /** How long the "press Back again" hint waits for the second press. */
 private const val EXIT_WINDOW_MS = 2_500L
 
@@ -169,6 +176,8 @@ fun App(
     profilesVm: ProfilesViewModel = hiltViewModel(),
     weather: WeatherViewModel = hiltViewModel(),
     notices: NoticesViewModel = hiltViewModel(),
+    youtube: YouTubeViewModel = hiltViewModel(),
+    radio: RadioViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -218,9 +227,14 @@ fun App(
     val catchUp = currentChannel?.url?.contains("/timeshift/") == true
     // A watch-party guest follows the host's kind of stream, whatever playlist its own copy is in.
     val partyGuestLive = (partyGuestState as? GuestState.InParty)?.live
-    // Media-server and addon items are films and episodes, whatever their stand-in playlist says.
+    // Media-server, addon, YouTube and podcast items are on demand, whatever their stand-in
+    // playlist says; radio stations are live.
     val onDemandSource = currentChannel?.playlistUrl == MediaServerViewModel.PLAYLIST_URL ||
-        currentChannel?.playlistUrl == StremioIds.PLAYLIST_URL
+        currentChannel?.playlistUrl == StremioIds.PLAYLIST_URL ||
+        currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL ||
+        currentChannel?.playlistUrl == RadioViewModel.PODCASTS_URL
+    val audioSource = currentChannel?.playlistUrl == RadioViewModel.STATIONS_URL ||
+        currentChannel?.playlistUrl == RadioViewModel.PODCASTS_URL
     val live = partyGuestLive ?: (!catchUp && !onDemandSource &&
         (playingPlaylist == null || !(playingPlaylist.isVod || playingPlaylist.isSeries)))
     val zapChannels = when {
@@ -428,16 +442,50 @@ fun App(
         onLeave = party::leave,
     )
 
-    // Search beyond the playlists, and YouTube results that open in the YouTube app.
+    // Search beyond the playlists. YouTube results from search play through the YouTube tab's
+    // player; anything that player can't take goes to the YouTube app.
     val universalResults by universal.results.collectAsStateWithLifecycle()
     val noYouTubeApp = stringResource(R.string.dial_search_no_youtube)
-    val openVideo: (VideoResult) -> Unit = { video ->
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.url))
+    val openInYouTubeApp: (String) -> Unit = { url ->
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         try {
             context.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(context, noYouTubeApp, Toast.LENGTH_LONG).show()
         }
+    }
+    val openVideo: (VideoResult) -> Unit = { video ->
+        youtube.play(
+            YouTubeVideo(id = video.id, title = video.title, channel = video.channel, thumbnail = video.thumbnail),
+            onPlaying = { surface = TvSurface.Player },
+        )
+    }
+    val youTubeFallback = stringResource(R.string.dial_youtube_fallback)
+    LaunchedEffect(youtube) {
+        youtube.events.collect { event ->
+            when (event) {
+                is YouTubeEvent.OpenExternally -> {
+                    Toast.makeText(context, youTubeFallback, Toast.LENGTH_SHORT).show()
+                    openInYouTubeApp(event.video.url)
+                }
+                is YouTubeEvent.Message -> Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    // A YouTube stream the player couldn't play (YouTube changed something): the YouTube app, once.
+    val sponsorSegments by youtube.segments.collectAsStateWithLifecycle()
+    LaunchedEffect(playingId) {
+        youtube.onPlayingChannel(playingId)
+        radio.onPlayingChannel(playingId)
+    }
+    var youTubeFallbackFor by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(playbackFailed, playingId) {
+        if (!playbackFailed || playingId == null || youTubeFallbackFor == playingId) return@LaunchedEffect
+        val video = youtube.playing?.takeIf { currentChannel?.playlistUrl == YouTubeViewModel.PLAYLIST_URL } ?: return@LaunchedEffect
+        youTubeFallbackFor = playingId
+        closePlayer()
+        Toast.makeText(context, youTubeFallback, Toast.LENGTH_SHORT).show()
+        openInYouTubeApp(video.url)
     }
 
     // A Jellyfin/Emby item: the server hears where playback is, so its own apps resume there too.
@@ -480,6 +528,36 @@ fun App(
     val traktRows by metadata.traktRows.collectAsStateWithLifecycle()
     val traktAccount by metadata.traktAccount.collectAsStateWithLifecycle()
     val missed by dial.missed.collectAsStateWithLifecycle()
+    val tonight by dial.tonight.collectAsStateWithLifecycle()
+    val reminders by dial.reminders.collectAsStateWithLifecycle()
+    val reminderKeys = remember(reminders) { reminders.map { it.key }.toSet() }
+    val reminderSet = stringResource(R.string.dial_reminder_set)
+    val reminderCleared = stringResource(R.string.dial_reminder_cleared)
+    val reminderGone = stringResource(R.string.dial_reminder_gone)
+    val onOpenTonight: (TonightProgramme) -> Unit = { item ->
+        if (item.programme.isOnAt(System.currentTimeMillis())) {
+            openOrPlay(item.channel)
+        } else {
+            val set = dial.toggleReminder(item.channel, item.programme)
+            Toast.makeText(context, if (set) reminderSet.format(item.programme.title) else reminderCleared, Toast.LENGTH_SHORT).show()
+        }
+    }
+    // When a reminded programme is about to start, a card offers to switch over.
+    var dueReminder by remember { mutableStateOf<Reminder?>(null) }
+    val shownReminders = remember { mutableSetOf<String>() }
+    val reminderBlocked by rememberUpdatedState(showSplash || overlayUp)
+    LaunchedEffect(reminders) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            dial.purgeReminders()
+            val due = reminders.firstOrNull { it.key !in shownReminders && it.startMs - now <= REMINDER_LEAD_MS && it.endMs > now }
+            if (due != null && dueReminder == null && !reminderBlocked) {
+                shownReminders += due.key
+                dueReminder = due
+            }
+            delay(REMINDER_CHECK_MS)
+        }
+    }
     LaunchedEffect(destination, traktAccount, state.favorites.size) {
         if (destination == TvDestination.Home) {
             metadata.loadTrending()
@@ -934,6 +1012,9 @@ fun App(
                         destination = TvDestination.Home
                         profilesVm.lock()
                     },
+                    tonight = tonight,
+                    reminderKeys = reminderKeys,
+                    onOpenTonight = onOpenTonight,
                     missed = missed,
                     onOpenMissed = { item ->
                         if (dial.playsExternally(item.channel)) {
@@ -1138,6 +1219,8 @@ fun App(
                 onAddBookmark = if (!live && playingId != null) dial::addBookmark else null,
                 onClearBookmarks = dial::clearBookmarks,
                 frameRateMode = frameRateMode,
+                skipSegments = sponsorSegments,
+                artwork = if (audioSource) (radio.playingArtwork ?: currentChannel?.cover) else null,
             )
         }
 
@@ -1199,6 +1282,9 @@ fun App(
                 traktRows.firstOrNull { it.kind == TraktRowKind.UpNext }?.titles?.size?.takeIf { it > 0 }?.let { Notice.TraktUpNext(it) },
                 missed.size.takeIf { it > 0 }?.let { Notice.Missed(it) },
                 partyHosting?.let { Notice.Party(it.code) },
+                reminders.firstOrNull { it.startMs - System.currentTimeMillis() < NOTICE_REMINDER_WINDOW_MS }?.let {
+                    Notice.Reminder(it.title, DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it.startMs)))
+                },
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1210,6 +1296,26 @@ fun App(
                 NoticeStrip(noticeList)
                 if (weatherOn) ClockWeatherStrip(now = weatherNow, fahrenheit = fahrenheit)
             }
+        }
+        dueReminder?.let { reminder ->
+            ReminderCard(
+                reminder = reminder,
+                onWatch = {
+                    dueReminder = null
+                    dial.dismissReminder(reminder)
+                    scope.launch {
+                        val channel = dial.channelById(reminder.channelId)
+                        if (channel != null) openOrPlay(channel) else Toast.makeText(context, reminderGone, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onDismiss = {
+                    dueReminder = null
+                    dial.dismissReminder(reminder)
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 48.dp, bottom = 48.dp),
+            )
         }
         if (timeUp) {
             TimeUpCard(

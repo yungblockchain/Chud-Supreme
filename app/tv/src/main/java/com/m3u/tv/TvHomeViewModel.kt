@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
@@ -136,6 +137,7 @@ class TvHomeViewModel @Inject constructor(
     private val dialStore: DialSettingsStore,
     private val profiles: ProfileStore,
     private val programmes: ProgrammeRepository,
+    private val edits: ChannelEditStore,
     tvRepository: TvRepository,
     dPadReactionService: DPadReactionService
 ) : ViewModel() {
@@ -181,7 +183,10 @@ class TvHomeViewModel @Inject constructor(
             ).joinToString("    ·    ").ifBlank { null }
         }
     }
-    val currentChannel: StateFlow<Channel?> = playerManager.channel
+    /** What's playing, under its custom name when the editor gave it one. */
+    val currentChannel: StateFlow<Channel?> = combine(playerManager.channel, edits.names) { channel, names ->
+        channel?.let { current -> names[current.url]?.let { current.copy(title = it) } ?: current }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, playerManager.channel.value)
     val isPlaying: StateFlow<Boolean> = playerManager.isPlaying
     val playbackState: StateFlow<Int> = playerManager.playbackState
     val reconnecting: StateFlow<Boolean> = playerManager.reconnecting
@@ -269,6 +274,19 @@ class TvHomeViewModel @Inject constructor(
                 _state.value.searchQuery.takeIf { it.isNotBlank() }?.let(::search)
             }
         }
+        // A channel renamed or moved in the editor: every list shows it that way.
+        viewModelScope.launch {
+            edits.version.drop(1).collect {
+                _state.value.selectedPlaylist?.url?.let { url -> loadChannels(url) }
+                _state.update { state ->
+                    state.copy(
+                        favorites = edits.applyNames(state.favorites),
+                        recentlyPlayed = edits.applyNames(state.recentlyPlayed),
+                        searchResults = edits.applyNames(state.searchResults),
+                    )
+                }
+            }
+        }
     }
 
     fun selectPlaylist(playlist: Playlist) {
@@ -327,7 +345,7 @@ class TvHomeViewModel @Inject constructor(
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(searching = true) }
             delay(SEARCH_DEBOUNCE_MS)
-            val results = channelRepository.searchUnhidden(trimmed, SEARCH_LIMIT)
+            val results = edits.applyNames(channelRepository.searchUnhidden(trimmed, SEARCH_LIMIT))
                 .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.category) || isAdultCategory(it.title) } else all }
             _state.update { state ->
                 if (state.searchQuery.trim() == trimmed) {
@@ -975,7 +993,7 @@ class TvHomeViewModel @Inject constructor(
     private fun observeFavorites() {
         viewModelScope.launch {
             channelRepository.observeAllFavorite().distinctUntilChanged().collect { favorites ->
-                val shown = if (profiles.kidsActive) favorites.filterNot { isAdultCategory(it.category) } else favorites
+                val shown = edits.applyNames(if (profiles.kidsActive) favorites.filterNot { isAdultCategory(it.category) } else favorites)
                 _state.update { it.copy(favorites = shown) }
             }
         }
@@ -997,7 +1015,7 @@ class TvHomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val recent = runCatching { channelRepository.getPlayedRecently(RECENTLY_PLAYED_LIMIT) }
                 .getOrDefault(emptyList())
-            _state.update { it.copy(recentlyPlayed = recent) }
+            _state.update { it.copy(recentlyPlayed = edits.applyNames(recent)) }
         }
     }
 
@@ -1078,6 +1096,7 @@ class TvHomeViewModel @Inject constructor(
             val byTitle = playlist != null && (playlist.isVod || playlist.isSeries)
             val channels = channelRepository.getUnhidden(url, category, byTitle)
                 .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.category) } else all }
+                .let { all -> if (byTitle) edits.applyNames(all) else edits.arrange(url, all) }
             _state.update { state ->
                 if (state.selectedPlaylist?.url == url) {
                     state.copy(

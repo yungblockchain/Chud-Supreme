@@ -25,6 +25,8 @@
   .status { min-height:20px; font-size:14px; }
   .ok { color:var(--ok); } .bad { color:var(--bad); }
   small { color:var(--muted); }
+  button.secondary { background:var(--raised); color:var(--text); border:1px solid rgba(25,240,255,.3); }
+  button.secondary.listening { border-color:var(--pink); color:var(--pink); }
 </style>
 </head>
 <body>
@@ -43,7 +45,9 @@
     <summary>Search</summary>
     <form data-action="search">
       <label>Channel, film or series<input name="text" required></label>
-      <button>Search on TV</button><div class="status"></div>
+      <button>Search on TV</button>
+      <button type="button" id="voice" class="secondary">🎤 Say it instead</button>
+      <div class="status"></div>
     </form>
   </details>
 
@@ -138,6 +142,34 @@
     event.preventDefault();
     const keys = document.getElementById('backup-keys').checked ? '1' : '0';
     window.location = '/backup.json?pin=' + encodeURIComponent(pin.value) + '&keys=' + keys;
+  });
+  // Voice search: the phone listens (the browser's own speech recognition) and sends the words.
+  const voice = document.getElementById('voice');
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { voice.disabled = true; voice.textContent = '🎤 Voice needs Chrome or Safari'; }
+  voice.addEventListener('click', () => {
+    const form = voice.closest('form');
+    const status = form.querySelector('.status');
+    const field = form.querySelector('input[name=text]');
+    let recognition;
+    try { recognition = new Recognition(); } catch (e) { status.className = 'status bad'; status.textContent = 'Voice is not available in this browser.'; return; }
+    recognition.lang = navigator.language || 'en-GB';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    voice.classList.add('listening'); voice.textContent = '🎤 Listening…';
+    status.className = 'status'; status.textContent = 'Say a channel, film or series.';
+    recognition.onresult = (event) => {
+      const words = event.results[0][0].transcript;
+      field.value = words;
+      status.textContent = 'Heard: ' + words;
+      form.requestSubmit();
+    };
+    recognition.onerror = (event) => {
+      status.className = 'status bad';
+      status.textContent = event.error === 'not-allowed' ? 'The microphone was not allowed. Type instead.' : 'Did not catch that. Try again.';
+    };
+    recognition.onend = () => { voice.classList.remove('listening'); voice.textContent = '🎤 Say it instead'; };
+    try { recognition.start(); } catch (e) { status.className = 'status bad'; status.textContent = 'Voice is not available in this browser.'; }
   });
   const messages = { pin: 'Wrong PIN. Check the TV.', locked: 'Too many wrong PINs. Wait a minute.', missing: 'Fill in every field.', too_large: 'That is too long.', not_a_skin: 'That is not a skin file.', not_a_backup: 'That is not a backup file.' };
   document.querySelectorAll('form[data-action]').forEach(form => {

@@ -925,4 +925,107 @@
     <string name="dial_profiles_gate">Profile settings are kept behind a grown-up’s PIN.</string>
     <string name="dial_profiles_gate_pin">A grown-up’s PIN</string>
     <string name="dial_profiles_kids_needs_adult">Off · add a grown-up profile first</string>
+
+    <!-- Stage 4b: YouTube tab -->
+    <string name="dial_nav_youtube">YouTube</string>
+    <string name="dial_youtube_section_live">Live now</string>
+    <string name="dial_youtube_section_trending">Trending</string>
+    <string name="dial_youtube_section_music">Music</string>
+    <string name="dial_youtube_section_gaming">Gaming</string>
+    <string name="dial_youtube_section_trailers">Films &amp; trailers</string>
+    <string name="dial_youtube_section_podcasts">Podcasts</string>
+    <string name="dial_youtube_section_history">Watched here</string>
+    <string name="dial_youtube_options">Options</string>
+    <string name="dial_youtube_loading">Asking YouTube…</string>
+    <string name="dial_youtube_failed">YouTube didn\'t answer. Try again in a moment.</string>
+    <string name="dial_youtube_hint">OK plays. Hold OK to follow the channel.</string>
+    <string name="dial_youtube_history_empty">Nothing watched here yet.</string>
+    <string name="dial_youtube_refresh">Refresh</string>
+    <string name="dial_youtube_clear_history">Clear history</string>
+    <string name="dial_youtube_unfollow">Unfollow</string>
+    <string name="dial_youtube_follow">Follow</string>
+    <string name="dial_youtube_following">Following</string>
+    <string name="dial_youtube_followed">Following %1$s</string>
+    <string name="dial_youtube_unfollowed">Unfollowed %1$s</string>
+    <string name="dial_youtube_channels">Channels</string>
+    <string name="dial_youtube_search_label">Search YouTube</string>
+    <string name="dial_youtube_search_placeholder">Video, channel, topic…</string>
+    <string name="dial_youtube_live">LIVE</string>
+    <string name="dial_youtube_opening">Opening…</string>
+    <string name="dial_youtube_fallback">Opening in the YouTube app</string>
+    <string name="dial_youtube_play_in">YouTube videos play</string>
+    <string name="dial_youtube_play_here">In Chud Supreme</string>
+    <string name="dial_youtube_play_app">In the YouTube app</string>
+    <string name="dial_youtube_quality">Picture quality up to</string>
+    <string name="dial_youtube_sponsorblock">Skip sponsors (SponsorBlock)</string>
+    <string name="dial_youtube_sponsorblock_hint">Viewers mark the sponsor reads, self-promotion and other skippable bits of videos; with this on, the player jumps over the kinds ticked below.</string>
+    <string name="dial_sponsor_sponsor">Sponsor reads</string>
+    <string name="dial_sponsor_selfpromo">Self-promotion</string>
+    <string name="dial_sponsor_interaction">Like &amp; subscribe reminders</string>
+    <string name="dial_sponsor_intro">Intros</string>
+    <string name="dial_sponsor_outro">Outros</string>
+    <string name="dial_sponsor_preview">Previews and recaps</string>
+    <string name="dial_sponsor_music">Non-music parts of music videos</string>
+    <string name="dial_sponsor_filler">Filler</string>
+    <string name="dial_sponsor_skipped">Skipped %1$s</string>
+
+    <!-- Stage 4b: Radio and podcasts -->
+    <string name="dial_nav_radio">Radio</string>
+    <string name="dial_radio_popular">Popular</string>
+    <string name="dial_radio_near">Near you</string>
+    <string name="dial_radio_genres">By genre</string>
+    <string name="dial_radio_search_stations">Find a station</string>
+    <string name="dial_radio_recent">Recently played</string>
+    <string name="dial_radio_podcasts_heading">PODCASTS</string>
+    <string name="dial_radio_top_podcasts">Top podcasts</string>
+    <string name="dial_radio_my_podcasts">My podcasts</string>
+    <string name="dial_radio_search_podcasts">Find a podcast</string>
+    <string name="dial_radio_search_placeholder">Name or words…</string>
+    <string name="dial_radio_loading">Loading…</string>
+    <string name="dial_radio_failed">Nothing came back. Check the connection and try again.</string>
+    <string name="dial_radio_recent_empty">Stations you play show up here.</string>
+    <string name="dial_radio_my_podcasts_empty">Hold OK on a podcast to follow it.</string>
+    <string name="dial_radio_podcasts_hint">OK opens the episodes. Hold OK to follow.</string>
+    <string name="dial_radio_stations_hint">OK plays. In the player, the heart adds it to favourites.</string>
+    <string name="dial_radio_played">Played</string>
+    <string name="dial_radio_following">Following</string>
+    <string name="dial_radio_follow">Follow</string>
+    <string name="dial_radio_back_hint">Back returns to the list.</string>
+    <string name="dial_radio_no_episodes">No episodes listed.</string>
+    <string name="dial_radio_episodes">%1$d episodes, newest first</string>
+
+    <!-- Stage 4b: On tonight and reminders -->
+    <string name="dial_tonight_title">On tonight</string>
+    <string name="dial_tonight_subtitle">This evening on your favourite channels. OK sets a reminder.</string>
+    <string name="dial_tonight_reminded">Reminder · %1$s</string>
+    <string name="dial_reminder_set">Reminder set: %1$s</string>
+    <string name="dial_reminder_cleared">Reminder removed</string>
+    <string name="dial_reminder_title">Starting at %1$s</string>
+    <string name="dial_reminder_watch">Watch</string>
+    <string name="dial_reminder_dismiss">Not now</string>
+    <string name="dial_reminder_gone">That channel isn\'t in the playlist any more.</string>
+    <string name="dial_notice_reminder">Reminder: %1$s at %2$s</string>
+    <string name="dial_guide_reminder_badge">Reminder set</string>
+    <string name="dial_guide_remind_hint">OK · Remind me</string>
+
+    <!-- Stage 4b: Channel editor -->
+    <string name="dial_settings_tab_channels">Channels</string>
+    <string name="dial_channels_title">Channel editor</string>
+    <string name="dial_channels_intro">Rename channels, put them in your order and hide the ones you never watch. Changes stay through playlist refreshes.</string>
+    <string name="dial_channels_hidden">Hidden</string>
+    <string name="dial_channels_hidden_hint">OK brings a channel back.</string>
+    <string name="dial_channels_empty">No channels here.</string>
+    <string name="dial_channels_keys_hint">OK renames · Left and Right move up and down · hold OK hides</string>
+    <string name="dial_channels_rename_label">New name</string>
+    <string name="dial_channels_rename_save">Save</string>
+    <string name="dial_channels_rename_reset">Provider\'s name</string>
+    <string name="dial_channels_rename_cancel">Cancel</string>
+    <string name="dial_channels_renamed">Renamed</string>
+    <string name="dial_channels_reset_order">Reset this category\'s order</string>
+    <string name="dial_channels_reset_all">Undo every edit</string>
+
+    <!-- Stage 4b: Voice search -->
+    <string name="dial_voice_search">Voice search</string>
+    <string name="dial_voice_prompt">Say a channel, film or series</string>
+    <string name="dial_voice_use_phone">This TV keeps its microphone for its own assistant. Open the phone page (Settings › Services) and tap Say it there.</string>
 </resources>

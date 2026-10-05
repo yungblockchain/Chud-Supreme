@@ -86,6 +86,8 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.tv.material3.Text
 import androidx.media3.ui.compose.PlayerSurface
@@ -117,6 +119,8 @@ private val SLEEP_STEPS_MINUTES = listOf(30, 60, 90, 120)
 
 /** How long the "+30 s" bubble stays after the last scrub step. */
 private const val SCRUB_BUBBLE_MS = 900L
+private const val SEGMENT_CHECK_MS = 400L
+private const val SEGMENT_NOTICE_MS = 2_500L
 
 /** How often the "still watching?" clock is checked. */
 private const val STILL_WATCHING_CHECK_MS = 30_000L
@@ -224,6 +228,10 @@ fun TvPlayerScreen(
     onClearBookmarks: () -> Unit = {},
     /** This channel's own refresh-rate rule (Default follows Settings). */
     frameRateMode: FrameRateMode = FrameRateMode.Default,
+    /** SponsorBlock segments to jump over (YouTube videos). */
+    skipSegments: List<SkipSegment> = emptyList(),
+    /** Artwork to show in place of a picture (radio, podcasts). */
+    artwork: String? = null,
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -482,6 +490,30 @@ fun TvPlayerScreen(
         takeSkip(kind)
     }
 
+    // SponsorBlock: as playback enters a segment it jumps to the segment's end, once per segment.
+    var segmentSkipped by remember { mutableStateOf<String?>(null) }
+    val segmentsDone = remember(mediaKey) { mutableSetOf<Long>() }
+    LaunchedEffect(player, skipSegments, isPlaying, mediaKey) {
+        val target = player ?: return@LaunchedEffect
+        if (skipSegments.isEmpty() || !isPlaying) return@LaunchedEffect
+        while (true) {
+            val at = target.currentPosition
+            val segment = skipSegments.firstOrNull { at >= it.startMs && at < it.endMs - 500L && it.startMs !in segmentsDone }
+            if (segment != null) {
+                segmentsDone += segment.startMs
+                target.seekTo(segment.endMs)
+                position = segment.endMs
+                segmentSkipped = segment.category
+            }
+            delay(SEGMENT_CHECK_MS)
+        }
+    }
+    LaunchedEffect(segmentSkipped) {
+        if (segmentSkipped == null) return@LaunchedEffect
+        delay(SEGMENT_NOTICE_MS)
+        segmentSkipped = null
+    }
+
     // "Still watching?" after hours of a film or series running untouched.
     val stillWatchingMs = preferences.stillWatchingHours * 3_600_000L
     LaunchedEffect(player, live, stillWatchingMs, isPlaying) {
@@ -619,6 +651,25 @@ fun TvPlayerScreen(
             )
         }
 
+        // Radio and podcasts: the artwork where the picture would be.
+        if (artwork != null) {
+            AudioArtwork(artwork = artwork, title = channel?.title.orEmpty(), modifier = Modifier.align(Alignment.Center))
+        }
+        segmentSkipped?.let { category ->
+            Text(
+                text = stringResource(R.string.dial_sponsor_skipped, category.replace('_', ' ')),
+                color = TvColors.TextPrimary,
+                fontFamily = TvFonts.Body,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 56.dp, bottom = 120.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+            )
+        }
         // With the controls open, the same state shows under the channel name instead.
         val stateNotice = when {
             reconnecting -> stringResource(R.string.dial_player_reconnecting)
@@ -1073,6 +1124,41 @@ private fun ChannelNumber(number: Int, fontSize: Int) {
         maxLines = 1,
         modifier = Modifier.clearAndSetSemantics { contentDescription = description }
     )
+}
+
+/** A square of artwork with the title under it, for streams that have sound but no picture. */
+@Composable
+private fun AudioArtwork(artwork: String, title: String, modifier: Modifier = Modifier) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .requiredSize(320.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(TvColors.Surface),
+        ) {
+            AsyncImage(
+                model = artwork,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+            )
+        }
+        Text(
+            text = title,
+            color = TvColors.TextPrimary,
+            fontFamily = TvFonts.Body,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 22.sp,
+            maxLines = 2,
+            modifier = Modifier.widthIn(max = 720.dp),
+        )
+    }
 }
 
 @Composable

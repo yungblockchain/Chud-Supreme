@@ -628,18 +628,26 @@ fun SearchScreen(
                     fontWeight = FontWeight.Bold,
                     fontSize = 30.sp,
                 )
-                Box(Modifier.widthIn(max = 720.dp)) {
-                    DialTextField(
-                        label = stringResource(R.string.dial_search_hint),
-                        value = state.searchQuery,
-                        onValueChange = onSearch,
-                        placeholder = stringResource(R.string.dial_library_search_placeholder),
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Done,
-                        readOnly = false,
-                        focusRequester = fieldFocus,
-                        downFocus = firstResultFocus.takeIf { firstKind != null },
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.widthIn(max = 800.dp),
+                ) {
+                    Box(Modifier.weight(1f)) {
+                        DialTextField(
+                            label = stringResource(R.string.dial_search_hint),
+                            value = state.searchQuery,
+                            onValueChange = onSearch,
+                            placeholder = stringResource(R.string.dial_library_search_placeholder),
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Done,
+                            readOnly = false,
+                            focusRequester = fieldFocus,
+                            downFocus = firstResultFocus.takeIf { firstKind != null },
+                        )
+                    }
+                    // Say it: the TV's own listener where there is one, else the phone page's.
+                    VoiceSearchButton(onWords = onSearch)
                 }
             }
         }

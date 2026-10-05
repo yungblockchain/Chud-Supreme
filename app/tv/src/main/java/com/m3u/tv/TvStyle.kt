@@ -7,6 +7,8 @@ import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -104,6 +106,10 @@ enum class TvDestination(
     Infinite(Icons.Rounded.AllInclusive),
     /** Jellyfin or Emby on the home network. */
     Server(Icons.Rounded.Dns),
+    /** YouTube through NewPipe's extractor, played in the app. */
+    YouTube(Icons.Rounded.SmartDisplay),
+    /** Radio stations and podcasts. */
+    Radio(Icons.Rounded.Radio),
     Guide(Icons.Rounded.DateRange),
     /** Live scores, fixtures, lineups. */
     MatchCentre(Icons.Rounded.SportsSoccer),

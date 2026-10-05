@@ -81,6 +81,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // NewPipe Extractor uses java.time and java.nio.file, which Fire OS 7 (API 28) lacks.
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -162,6 +164,8 @@ dependencies {
     implementation(libs.io.coil.kt.compose)
     implementation(libs.io.coil.kt.gif)
     implementation(libs.zxing.core)
+    implementation(libs.newpipe.extractor)
+    coreLibraryDesugaring(libs.android.desugar.jdk.libs.nio)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.ui.compose)
     implementation(libs.androidx.media3.exoplayer)

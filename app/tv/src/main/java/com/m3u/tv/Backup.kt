@@ -81,6 +81,10 @@ class BackupService @Inject constructor(
     private val addons: StremioAddonStore,
     private val layout: InfinityLayoutStore,
     private val mediaServer: MediaServerStore,
+    private val youtube: YouTubeStore,
+    private val radio: RadioStore,
+    private val reminders: ReminderStore,
+    private val channelEdits: ChannelEditStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -131,6 +135,10 @@ class BackupService @Inject constructor(
             addons.reload()
             layout.reload()
             mediaServer.reload()
+            youtube.reload()
+            radio.reload()
+            reminders.reload()
+            channelEdits.reload()
             skins.reload()
         }
         val skinList = (root["skins"] as? JsonArray).orEmpty()
@@ -239,7 +247,7 @@ class BackupService @Inject constructor(
         private const val KEPT_NAME = "last-backup.json"
         val PREF_FILES = listOf(
             "dial_settings", "appearance", "infinity_layout", "stremio_addons", "profiles",
-            "media_server", "infinity_shelf",
+            "media_server", "infinity_shelf", "youtube", "radio", "reminders", "channel_edits",
         )
     }
 }

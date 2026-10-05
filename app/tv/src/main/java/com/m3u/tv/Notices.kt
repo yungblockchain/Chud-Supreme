@@ -44,6 +44,8 @@ sealed interface Notice {
     data class TraktUpNext(val count: Int) : Notice
     data class Missed(val count: Int) : Notice
     data class Party(val code: String) : Notice
+    /** The next reminded programme, when it's within a few hours. */
+    data class Reminder(val title: String, val time: String) : Notice
 }
 
 object UpdateCheck {
@@ -102,6 +104,7 @@ fun NoticeStrip(notices: List<Notice>, modifier: Modifier = Modifier) {
                     is Notice.TraktUpNext -> stringResource(R.string.dial_notice_trakt_upnext, notice.count)
                     is Notice.Missed -> stringResource(R.string.dial_notice_missed, notice.count)
                     is Notice.Party -> stringResource(R.string.dial_notice_party, notice.code)
+                    is Notice.Reminder -> stringResource(R.string.dial_notice_reminder, notice.title, notice.time)
                 },
                 color = if (notice is Notice.Update) TvColors.OnFocus else TvColors.TextPrimary,
                 fontFamily = TvFonts.Body,

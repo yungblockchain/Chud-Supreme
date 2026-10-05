@@ -284,3 +284,10 @@
 
 # Addon screens are first reached from Settings. Keep them so R8 cannot strip the page and crash on open.
 -keep class com.m3u.tv.stremio.** { *; }
+
+## NewPipe Extractor (YouTube): Rhino runs YouTube's player JavaScript by reflection.
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.ClassFileWriter
+-dontwarn org.mozilla.javascript.tools.**
+-dontwarn javax.annotation.**
+-keep class org.schabi.newpipe.extractor.** { *; }

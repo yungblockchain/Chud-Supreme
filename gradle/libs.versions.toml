@@ -37,6 +37,8 @@ lottie-compose = "6.7.1"
 nextLib = "1.9.1-0.10.1"
 libass-android = "0.5.1"
 zxing = "3.5.3"
+newpipe-extractor = "v0.26.5"
+desugar-jdk-libs = "2.1.5"
 rtmpClientPage16k = "16647b19d51a08625d9ed32bf6aa31734747c4a9"
 slf4j-api = "2.0.17"
 snakeyaml = "2.3"
@@ -189,6 +191,10 @@ nextlib-mediainfo = { module = "io.github.anilbeesetti:nextlib-mediainfo", versi
 libass-media = { module = "io.github.peerless2012:ass-media", version.ref = "libass-android" }
 # QR codes (phone page, IMDb links)
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+# YouTube streams without the Data API quota (NewPipe's extractor, JitPack)
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe-extractor" }
+# java.time / java.nio for NewPipe Extractor below API 33
+android-desugar-jdk-libs-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar-jdk-libs" }
 rtmp-client-page16k = { module = "com.github.anenasa:LibRtmp-Client-for-Android", version.ref = "rtmpClientPage16k" }
 
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j-api" }

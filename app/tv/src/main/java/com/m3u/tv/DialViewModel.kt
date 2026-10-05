@@ -81,6 +81,7 @@ class DialViewModel @Inject constructor(
     private val channelRepository: ChannelRepository,
     private val playlistRepository: PlaylistRepository,
     private val programmeRepository: ProgrammeRepository,
+    private val reminderStore: ReminderStore,
 ) : ViewModel() {
 
     val preferences: StateFlow<DialPreferences> = store.preferences
@@ -620,9 +621,27 @@ class DialViewModel @Inject constructor(
     private var missedLoadedAt = 0L
     private var missedJob: Job? = null
 
+    /** This evening's programmes on favourite channels (loaded alongside "what you missed"). */
+    private val _tonight = MutableStateFlow<List<TonightProgramme>>(emptyList())
+    val tonight: StateFlow<List<TonightProgramme>> = _tonight.asStateFlow()
+
+    /** Programme reminders still to come. */
+    val reminders: StateFlow<List<Reminder>> = reminderStore.reminders
+
+    /** Sets or clears a reminder; true when it's now set. */
+    fun toggleReminder(channel: Channel, programme: GuideProgramme): Boolean = reminderStore.toggle(channel, programme)
+
+    fun dismissReminder(reminder: Reminder) = reminderStore.remove(reminder)
+
+    /** The channel a reminder points at (null if it has gone from the playlist). */
+    suspend fun channelById(id: Int): Channel? = channelRepository.get(id)
+
+    fun purgeReminders() = reminderStore.purge()
+
     fun loadMissed(favourites: List<Channel>) {
         if (favourites.isEmpty()) {
             _missed.value = emptyList()
+            _tonight.value = emptyList()
             return
         }
         if (System.currentTimeMillis() - missedLoadedAt < MISSED_TTL_MS) return
@@ -630,19 +649,31 @@ class DialViewModel @Inject constructor(
         missedJob?.cancel()
         missedJob = viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val window = tonightWindow(now)
             val found = mutableListOf<MissedProgramme>()
+            val evening = mutableListOf<TonightProgramme>()
             for (channel in favourites.take(MISSED_CHANNELS)) {
-                val credentials = credentialsFor(channel.playlistUrl) ?: continue
-                val streamId = XtreamCatalog.idFromUrl(channel.url) ?: continue
-                val programmes = guideRequests.withPermit {
-                    runCatching { XtreamCatalog.fullEpg(credentials, streamId) }.getOrDefault(emptyList())
+                val credentials = credentialsFor(channel.playlistUrl)
+                val programmes = if (credentials != null) {
+                    val streamId = XtreamCatalog.idFromUrl(channel.url) ?: continue
+                    guideRequests.withPermit {
+                        runCatching { XtreamCatalog.fullEpg(credentials, streamId) }.getOrDefault(emptyList())
+                    }
+                } else {
+                    xmltvProgrammes(channel, now - MISSED_WINDOW_MS, window.last) ?: continue
                 }
                 programmes
                     .filter { it.hasArchive && it.hasEndedBy(now) && it.endMillis > now - MISSED_WINDOW_MS }
                     .sortedByDescending { it.endMillis }
                     .take(MISSED_PER_CHANNEL)
                     .forEach { found += MissedProgramme(channel, it) }
+                programmes
+                    .filter { !it.hasEndedBy(now) && it.startMillis <= window.last && it.endMillis > window.first }
+                    .sortedBy { it.startMillis }
+                    .take(TONIGHT_PER_CHANNEL)
+                    .forEach { evening += TonightProgramme(channel, it) }
                 _missed.value = found.sortedByDescending { it.programme.endMillis }.take(MISSED_MAX)
+                _tonight.value = evening.sortedBy { it.programme.startMillis }.take(TONIGHT_MAX)
             }
         }
     }
@@ -730,6 +761,8 @@ class DialViewModel @Inject constructor(
         const val MISSED_CHANNELS = 12
         const val MISSED_PER_CHANNEL = 2
         const val MISSED_MAX = 20
+        const val TONIGHT_PER_CHANNEL = 3
+        const val TONIGHT_MAX = 24
         const val FUTURE_WINDOW_MS = 24 * 60 * 60_000L
         const val LISTING_TTL_MS = 30 * 60_000L
         const val MAX_LISTINGS = 300

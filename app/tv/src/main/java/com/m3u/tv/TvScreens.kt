@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.SwitchAccount
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Extension
@@ -188,6 +189,9 @@ fun TvBrowsePane(
     onOpenTitle: (TmdbTitle) -> Unit = {},
     missed: List<MissedProgramme> = emptyList(),
     onOpenMissed: (MissedProgramme) -> Unit = {},
+    tonight: List<TonightProgramme> = emptyList(),
+    reminderKeys: Set<String> = emptySet(),
+    onOpenTonight: (TonightProgramme) -> Unit = {},
     kidsProfile: Boolean = false,
     onSwitchProfile: () -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
@@ -223,6 +227,8 @@ fun TvBrowsePane(
             destination != TvDestination.Claude &&
             destination != TvDestination.Infinite &&
             destination != TvDestination.Server &&
+            destination != TvDestination.YouTube &&
+            destination != TvDestination.Radio &&
             destination != TvDestination.MatchCentre &&
             destination != TvDestination.News &&
             destination != TvDestination.Account
@@ -238,6 +244,8 @@ fun TvBrowsePane(
             destination != TvDestination.Claude &&
             destination != TvDestination.Infinite &&
             destination != TvDestination.Server &&
+            destination != TvDestination.YouTube &&
+            destination != TvDestination.Radio &&
             destination != TvDestination.MatchCentre &&
             destination != TvDestination.News &&
             destination != TvDestination.Account
@@ -270,6 +278,9 @@ fun TvBrowsePane(
                         onOpenTitle = onOpenTitle,
                         missed = missed,
                         onOpenMissed = onOpenMissed,
+                        tonight = tonight,
+                        reminderKeys = reminderKeys,
+                        onOpenTonight = onOpenTonight,
                     )
 
                     TvDestination.Search -> SearchScreen(
@@ -303,6 +314,10 @@ fun TvBrowsePane(
                     )
 
                     TvDestination.Server -> MediaServerScreen(onPlaying = onPlayResolved)
+
+                    TvDestination.YouTube -> YouTubeScreen(onPlaying = onPlayResolved)
+
+                    TvDestination.Radio -> RadioScreen(onPlaying = onPlayResolved)
 
                     TvDestination.MatchCentre -> MatchCentreScreen(onWatch = onWatchFixture)
 
@@ -383,6 +398,11 @@ fun TvBrowsePane(
                                 },
                             ),
                             SettingsTab(
+                                label = stringResource(R.string.dial_settings_tab_channels),
+                                icon = Icons.Rounded.EditNote,
+                                content = { ChannelEditorScreen() },
+                            ),
+                            SettingsTab(
                                 label = stringResource(R.string.dial_settings_tab_profiles),
                                 icon = Icons.Rounded.SwitchAccount,
                                 content = { ProfilesSettingsScreen(onSwitchProfile = onSwitchProfile) },
@@ -455,6 +475,9 @@ private fun HomeScreen(
     onOpenTitle: (TmdbTitle) -> Unit = {},
     missed: List<MissedProgramme> = emptyList(),
     onOpenMissed: (MissedProgramme) -> Unit = {},
+    tonight: List<TonightProgramme> = emptyList(),
+    reminderKeys: Set<String> = emptySet(),
+    onOpenTonight: (TonightProgramme) -> Unit = {},
 ) {
     // The last ten things watched (live, films, episodes); before anything's been watched, a
     // taste of the selected playlist.
@@ -563,6 +586,9 @@ private fun HomeScreen(
                     )
                 }
             }
+        }
+        if (tonight.isNotEmpty()) {
+            item(key = "tonight") { TonightRow(items = tonight, reminderKeys = reminderKeys, onOpen = onOpenTonight) }
         }
         if (missed.isNotEmpty()) {
             item(key = "missed") { MissedRow(items = missed, onOpen = onOpenMissed) }

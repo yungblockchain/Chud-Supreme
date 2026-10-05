@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.LiveTv
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +77,16 @@ fun GuideScreen(
 ) {
     val livePlaylists = remember(state.playlists) {
         state.playlists.filter { !it.isVod && !it.isSeries }
+    }
+    // Reminders: OK on a programme still to come sets one (and clears it on a second press).
+    val reminders by dial.reminders.collectAsStateWithLifecycle()
+    val reminderKeys = remember(reminders) { reminders.map { it.key }.toSet() }
+    val context = LocalContext.current
+    val reminderSet = stringResource(R.string.dial_reminder_set)
+    val reminderCleared = stringResource(R.string.dial_reminder_cleared)
+    val onRemind: (Channel, GuideProgramme) -> Unit = { channel, programme ->
+        val set = dial.toggleReminder(channel, programme)
+        Toast.makeText(context, if (set) reminderSet.format(programme.title) else reminderCleared, Toast.LENGTH_SHORT).show()
     }
     val selected = state.selectedPlaylist?.takeIf { playlist -> livePlaylists.any { it.url == playlist.url } }
 
@@ -183,7 +195,9 @@ fun GuideScreen(
                 onPlayCatchUp = onPlayCatchUp,
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxWidth(),
+                reminderKeys = reminderKeys,
+                onRemind = onRemind,
             )
         } else {
         Row(
@@ -249,6 +263,8 @@ fun GuideScreen(
                             now = now,
                             onPlayLive = onPlayLive,
                             onPlayCatchUp = onPlayCatchUp,
+                            onRemind = onRemind,
+                            reminderKeys = reminderKeys,
                         )
                     }
                 }
@@ -351,6 +367,8 @@ private fun ScheduleList(
     now: Long,
     onPlayLive: (Channel) -> Unit,
     onPlayCatchUp: (Channel, GuideProgramme) -> Unit,
+    onRemind: (Channel, GuideProgramme) -> Unit = { _, _ -> },
+    reminderKeys: Set<String> = emptySet(),
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(channel.id, programmes) {
@@ -383,9 +401,11 @@ private fun ScheduleList(
                         programme.isOnAt(System.currentTimeMillis()) -> onPlayLive(channel)
                         programme.hasEndedBy(System.currentTimeMillis()) && programme.hasArchive ->
                             onPlayCatchUp(channel, programme)
+                        !programme.hasEndedBy(System.currentTimeMillis()) -> onRemind(channel, programme)
                         else -> Unit
                     }
                 },
+                reminded = reminderKey(channel.id, programme.startMillis) in reminderKeys,
             )
         }
     }
@@ -396,14 +416,18 @@ private fun ProgrammeRow(
     programme: GuideProgramme,
     now: Long,
     onClick: () -> Unit,
+    reminded: Boolean = false,
 ) {
     val onNow = programme.isOnAt(now)
     val replayable = programme.hasEndedBy(now) && programme.hasArchive
     val badge = when {
         onNow -> stringResource(R.string.dial_guide_now)
         replayable -> stringResource(R.string.dial_guide_catch_up)
+        reminded -> stringResource(R.string.dial_guide_reminder_badge)
         else -> null
     }
+    // A programme still to come says what OK does, but only while it's the one in focus.
+    val remindHint = stringResource(R.string.dial_guide_remind_hint).takeIf { !onNow && !reminded && !programme.hasEndedBy(now) }
     val timeRange = stringResource(
         R.string.dial_guide_time_range,
         guideTime(programme.startMillis, now),
@@ -432,9 +456,10 @@ private fun ProgrammeRow(
                     fontFamily = TvFonts.Body,
                     fontSize = 14.sp,
                 )
-                if (badge != null) {
+                val shownBadge = badge ?: remindHint?.takeIf { focused }
+                if (shownBadge != null) {
                     Text(
-                        text = badge,
+                        text = shownBadge,
                         color = if (focused) TvColors.Focus else TvColors.OnFocus,
                         fontFamily = TvFonts.Body,
                         fontWeight = FontWeight.Bold,
