@@ -178,6 +178,7 @@ fun App(
     notices: NoticesViewModel = hiltViewModel(),
     youtube: YouTubeViewModel = hiltViewModel(),
     radio: RadioViewModel = hiltViewModel(),
+    liveBadges: LiveBadgesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasXtreamSession by accounts.hasSession.collectAsStateWithLifecycle()
@@ -652,6 +653,11 @@ fun App(
                 is PhoneMessage.JoinParty -> party.join(message.code)
                 is PhoneMessage.Restored ->
                     Toast.makeText(context, restoredFromPhone.format(message.settings, message.favourites), Toast.LENGTH_LONG).show()
+                is PhoneMessage.Key -> {
+                    // The phone page as a remote: the key lands exactly as one from the real remote.
+                    view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, message.code))
+                    view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, message.code))
+                }
             }
         }
     }
@@ -771,14 +777,32 @@ fun App(
     // Whether the remote was used in the last few seconds (LocalTvRemoteBusy). Only what reads it
     // (the menu's logo) redraws when it flips, never this whole screen.
     val remoteBusy = remember { mutableStateOf(false) }
-    val lastKeyAt = remember { longArrayOf(0L) }
+    val lastKeyAt = remember { longArrayOf(SystemClock.uptimeMillis()) }
+    // The ambient screensaver, after the menus sit untouched for the time set in Settings.
+    var screensaverOn by remember { mutableStateOf(false) }
+    val screensaverMs = preferences.screensaverMinutes * 60_000L
+    val screensaverAllowed = surface == TvSurface.Browse && details == null && person == null && !showSplash && !overlayUp
     LaunchedEffect(Unit) {
         while (true) {
             delay(REMOTE_IDLE_CHECK_MS)
-            if (remoteBusy.value && SystemClock.uptimeMillis() - lastKeyAt[0] >= REMOTE_IDLE_AFTER_MS) {
+            val idle = SystemClock.uptimeMillis() - lastKeyAt[0]
+            if (remoteBusy.value && idle >= REMOTE_IDLE_AFTER_MS) {
                 remoteBusy.value = false
             }
+            if (screensaverMs > 0L && screensaverAllowed && !screensaverOn && idle >= screensaverMs) screensaverOn = true
         }
+    }
+    LaunchedEffect(screensaverAllowed) { if (!screensaverAllowed) screensaverOn = false }
+
+    // Live-score badges on channel cards, while a live list is on screen, plus the count of
+    // merged copies behind a card.
+    val liveMatches by liveBadges.matches.collectAsStateWithLifecycle()
+    val liveListShowing = onBrowse && (destination == TvDestination.Live || destination == TvDestination.Favorites || destination == TvDestination.Home)
+    LaunchedEffect(liveListShowing, preferences.liveBadges) { liveBadges.watch(liveListShowing && preferences.liveBadges) }
+    val channelBadges = remember(liveMatches, state.channels, state.favorites, state.variants, preferences.liveBadges) {
+        val scores = if (preferences.liveBadges) liveBadges.badgesFor(state.channels + state.favorites) else emptyMap()
+        val ids = scores.keys + state.variants.keys
+        ids.associateWith { id -> ChannelBadge(live = scores[id], variants = state.variants[id]?.size ?: 0) }
     }
 
     LaunchedEffect(exitArmedAt) {
@@ -840,6 +864,11 @@ fun App(
                 // Note the remote being used (decorative motion waits for it to rest).
                 lastKeyAt[0] = SystemClock.uptimeMillis()
                 if (!remoteBusy.value) remoteBusy.value = true
+                // Any key wakes the screensaver, and goes no further.
+                if (screensaverOn) {
+                    if (event.type == KeyEventType.KeyUp) screensaverOn = false
+                    return@onPreviewKeyEvent true
+                }
                 // The Menu key opens the side menu while browsing (it may be hidden to a strip).
                 if (event.type == KeyEventType.KeyDown && event.key == Key.Menu &&
                     surface == TvSurface.Browse && details == null && !showSplash && !overlayUp &&
@@ -880,6 +909,7 @@ fun App(
             LocalChannelMenu provides openChannelMenu.takeIf { browsing },
             LocalCategoryMenu provides openCategoryMenu.takeIf { browsing },
             LocalTvRemoteBusy provides remoteBusy,
+            LocalChannelBadges provides channelBadges,
         ) {
             // The menu folds to a strip of icons at the left edge and opens over the screen, so
             // screens start just after the strip and never re-flow when it opens.
@@ -1021,6 +1051,8 @@ fun App(
                     tonight = tonight,
                     reminderKeys = reminderKeys,
                     onOpenTonight = onOpenTonight,
+                    homeRows = preferences.homeRows,
+                    hiddenRows = preferences.homeRowsHidden,
                     missed = missed,
                     onOpenMissed = { item ->
                         if (dial.playsExternally(item.channel)) {
@@ -1227,6 +1259,14 @@ fun App(
                 frameRateMode = frameRateMode,
                 skipSegments = sponsorSegments,
                 artwork = if (audioSource) (radio.playingArtwork ?: currentChannel?.cover) else null,
+                onResumeLiveFrom = currentChannel?.takeIf { live && dial.mayHaveCatchUp(it) }?.let { channel ->
+                    { pausedAt -> dial.resumeLiveFrom(channel, pausedAt) }
+                },
+                onBackToLive = if (catchUp && playingId != null) {
+                    { scope.launch { dial.channelById(playingId)?.let(viewModel::play) } }
+                } else null,
+                variants = playingId?.let { state.variants[it] }.orEmpty(),
+                onPlayVariant = { copy -> viewModel.play(copy) },
             )
         }
 
@@ -1342,6 +1382,16 @@ fun App(
         }
         if (showSplash) {
             BrandSplash(onFinished = { splashDone = true })
+        }
+        if (screensaverOn) {
+            val slides = remember(trending, state.recentlyPlayed) {
+                trending.mapNotNull { entry ->
+                    entry.title.backdrop?.let { AmbientSlide(it, entry.title.title, entry.title.overview?.take(90)) }
+                }.ifEmpty {
+                    state.recentlyPlayed.mapNotNull { channel -> channel.cover?.let { AmbientSlide(it, channel.title, channel.category) } }
+                }
+            }
+            AmbientScreensaver(slides = slides)
         }
 
         AnimatedVisibility(

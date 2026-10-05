@@ -1,6 +1,7 @@
 package com.m3u.tv
 
 import android.content.Context
+import android.view.KeyEvent
 import androidx.compose.runtime.Immutable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.BufferedInputStream
@@ -48,7 +49,25 @@ sealed interface PhoneMessage {
     data class SkinApplied(val name: String) : PhoneMessage
     data class JoinParty(val code: String) : PhoneMessage
     data class Restored(val settings: Int, val favourites: Int) : PhoneMessage
+    /** A remote-control key pressed on the phone page (an Android key code from [REMOTE_KEYS]). */
+    data class Key(val code: Int) : PhoneMessage
 }
+
+/** The keys the phone page may press, by the names its buttons send. */
+val REMOTE_KEYS: Map<String, Int> = mapOf(
+    "up" to KeyEvent.KEYCODE_DPAD_UP,
+    "down" to KeyEvent.KEYCODE_DPAD_DOWN,
+    "left" to KeyEvent.KEYCODE_DPAD_LEFT,
+    "right" to KeyEvent.KEYCODE_DPAD_RIGHT,
+    "ok" to KeyEvent.KEYCODE_DPAD_CENTER,
+    "back" to KeyEvent.KEYCODE_BACK,
+    "menu" to KeyEvent.KEYCODE_MENU,
+    "play" to KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+    "rewind" to KeyEvent.KEYCODE_MEDIA_REWIND,
+    "forward" to KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+    "chup" to KeyEvent.KEYCODE_CHANNEL_UP,
+    "chdown" to KeyEvent.KEYCODE_CHANNEL_DOWN,
+)
 
 @Singleton
 class PhoneCompanion @Inject constructor(
@@ -220,6 +239,7 @@ class PhoneCompanion @Inject constructor(
                 PhoneMessage.KeySaved(name)
             }
             "party" -> PhoneMessage.JoinParty(field("code").ifEmpty { return 400 to BAD }.take(8))
+            "key" -> PhoneMessage.Key(REMOTE_KEYS[field("key")] ?: return 400 to BAD)
             "restore" -> {
                 val raw = form["backup"].orEmpty().trim().ifEmpty { return 400 to BAD }
                 val summary = runBlocking { backup.restore(raw) } ?: return 400 to """{"ok":false,"error":"not_a_backup"}"""

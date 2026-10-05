@@ -25,6 +25,14 @@
   .status { min-height:20px; font-size:14px; }
   .ok { color:var(--ok); } .bad { color:var(--bad); }
   small { color:var(--muted); }
+  .remote { padding:0 16px 16px; display:grid; gap:12px; }
+  .pad { display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(3, 64px); gap:8px; max-width:260px; margin:0 auto; }
+  .pad .up { grid-column:2; grid-row:1; } .pad .left { grid-column:1; grid-row:2; } .pad .ok { grid-column:2; grid-row:2; }
+  .pad .right { grid-column:3; grid-row:2; } .pad .down { grid-column:2; grid-row:3; }
+  .keys { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+  button.k { background:var(--raised); color:var(--text); border:1px solid rgba(25,240,255,.3); font-size:18px; min-height:48px; touch-action:manipulation; user-select:none; }
+  button.k.ok { background:var(--cyan); color:#03141a; }
+  button.k:active { background:var(--pink); color:#fff; }
   button.secondary { background:var(--raised); color:var(--text); border:1px solid rgba(25,240,255,.3); }
   button.secondary.listening { border-color:var(--pink); color:var(--pink); }
 </style>
@@ -42,6 +50,29 @@
   </div>
 
   <details open>
+    <summary>Remote</summary>
+    <div class="remote">
+      <div class="pad">
+        <button type="button" data-key="up" class="k up">▲</button>
+        <button type="button" data-key="left" class="k left">◀</button>
+        <button type="button" data-key="ok" class="k ok">OK</button>
+        <button type="button" data-key="right" class="k right">▶</button>
+        <button type="button" data-key="down" class="k down">▼</button>
+      </div>
+      <div class="keys">
+        <button type="button" data-key="back" class="k">Back</button>
+        <button type="button" data-key="menu" class="k">Menu</button>
+        <button type="button" data-key="rewind" class="k">⏪</button>
+        <button type="button" data-key="play" class="k">⏯</button>
+        <button type="button" data-key="forward" class="k">⏩</button>
+        <button type="button" data-key="chup" class="k">Ch +</button>
+        <button type="button" data-key="chdown" class="k">Ch −</button>
+      </div>
+      <div class="status" id="remote-status"></div>
+    </div>
+  </details>
+
+  <details>
     <summary>Search</summary>
     <form data-action="search">
       <label>Channel, film or series<input name="text" required></label>
@@ -142,6 +173,21 @@
     event.preventDefault();
     const keys = document.getElementById('backup-keys').checked ? '1' : '0';
     window.location = '/backup.json?pin=' + encodeURIComponent(pin.value) + '&keys=' + keys;
+  });
+  // The remote: each button sends one key; the PIN is sent along like everything else.
+  const remoteStatus = document.getElementById('remote-status');
+  document.querySelectorAll('button[data-key]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const data = new URLSearchParams({ key: button.dataset.key, pin: pin.value.trim() });
+      try {
+        const response = await fetch('/api/key', { method: 'POST', body: data });
+        const result = await response.json();
+        remoteStatus.className = result.ok ? 'status' : 'status bad';
+        remoteStatus.textContent = result.ok ? '' : (messages[result.error] || 'That did not work.');
+      } catch (e) {
+        remoteStatus.className = 'status bad'; remoteStatus.textContent = 'Could not reach the TV.';
+      }
+    });
   });
   // Voice search: the phone listens (the browser's own speech recognition) and sends the words.
   const voice = document.getElementById('voice');

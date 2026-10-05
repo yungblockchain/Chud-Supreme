@@ -74,6 +74,8 @@ data class TvUiState(
     val selectedPlaylist: Playlist? = null,
     /** The selected playlist's entries: all of them, or just [selectedCategory]. */
     val channels: List<Channel> = emptyList(),
+    /** With duplicates merged: every copy of a shown channel (HD, FHD, 4K…), by its id. */
+    val variants: Map<Int, List<Channel>> = emptyMap(),
     /** Categories of the selected playlist, in the provider's order. */
     val categories: List<ChannelCategoryCount> = emptyList(),
     /** Null means every category ("All"), which only big-enough playlists skip. */
@@ -273,6 +275,12 @@ class TvHomeViewModel @Inject constructor(
                 _state.value.selectedPlaylist?.url?.let { url -> loadChannels(url) }
                 _state.update { it.copy(searchResults = emptyList()) }
                 _state.value.searchQuery.takeIf { it.isNotBlank() }?.let(::search)
+            }
+        }
+        // Merging duplicates switched on or off: the live list is read again.
+        viewModelScope.launch {
+            dialStore.preferences.map { it.mergeDuplicates to it.preferredQuality }.distinctUntilChanged().drop(1).collect {
+                _state.value.selectedPlaylist?.url?.let { url -> loadChannels(url) }
             }
         }
         // A channel renamed or moved in the editor: every list is read again, so a name put
@@ -1093,10 +1101,15 @@ class TvHomeViewModel @Inject constructor(
             val playlist = _state.value.selectedPlaylist?.takeIf { it.url == url }
             // Films and series read best A to Z; live channels keep the provider's numbering.
             val byTitle = playlist != null && (playlist.isVod || playlist.isSeries)
-            val channels = channelRepository.getUnhidden(url, category, byTitle)
+            val arranged = channelRepository.getUnhidden(url, category, byTitle)
                 .let { all -> if (profiles.kidsActive) all.filterNot { isAdultCategory(it.category) } else all }
                 // Custom orders apply within a category; the "All" list keeps the provider's order.
                 .let { all -> if (byTitle || category == null) edits.applyNames(all) else edits.arrange(url, all) }
+            // Live TV with duplicates merged: one card per name, the preferred quality in front.
+            val dialPrefs = dialStore.preferences.value
+            val (channels, variants) = if (!byTitle && dialPrefs.mergeDuplicates) {
+                ChannelVariants.merge(arranged, dialPrefs.preferredQuality)
+            } else arranged to emptyMap()
             _state.update { state ->
                 if (state.selectedPlaylist?.url == url) {
                     state.copy(
@@ -1104,6 +1117,7 @@ class TvHomeViewModel @Inject constructor(
                         hiddenCategoryCount = hiddenCount,
                         selectedCategory = category,
                         channels = channels,
+                        variants = variants,
                         loadingChannels = false
                     )
                 } else {

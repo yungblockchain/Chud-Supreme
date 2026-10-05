@@ -82,6 +82,16 @@ data class DialPreferences(
     val traktScrobble: Boolean = true,
     /** Which Trakt rows Home shows, by row id; empty means all of them. */
     val traktRowsHidden: Set<String> = emptySet(),
+    /** One card per channel name, with HD / FHD / 4K copies folded behind it. */
+    val mergeDuplicates: Boolean = false,
+    val preferredQuality: PreferredQuality = PreferredQuality.Best,
+    /** Live-score badges on channel cards whose names carry the teams playing. */
+    val liveBadges: Boolean = true,
+    /** Minutes the menus sit untouched before the ambient screensaver; 0 = never. */
+    val screensaverMinutes: Int = 0,
+    /** Home's rows in the person's order, and the ones switched off. */
+    val homeRows: List<HomeRow> = HomeRow.entries,
+    val homeRowsHidden: Set<HomeRow> = emptySet(),
 ) {
     companion object {
         val SUBTITLE_SIZE_OPTIONS = listOf(75, 100, 125, 150, 200)
@@ -90,6 +100,7 @@ data class DialPreferences(
         val SKIP_BACK_OPTIONS = listOf(1, 5, 10, 30, 60, 120)
         val SKIP_AHEAD_OPTIONS = listOf(1, 5, 10, 30, 60, 120)
         val STILL_WATCHING_OPTIONS = listOf(0, 2, 4, 6)
+        val SCREENSAVER_OPTIONS = listOf(0, 5, 10, 15, 30)
     }
 }
 
@@ -110,6 +121,22 @@ enum class MiniSize { Small, Medium, Large }
 enum class SubtitleColour { White, Yellow, Cyan }
 
 enum class SubtitleBackdrop { Outline, Shadow, Box, None }
+
+/** Which copy of a channel plays when duplicates (HD / FHD / 4K) are merged into one card. */
+enum class PreferredQuality { Best, Fhd, Hd, Sd }
+
+/** The rows Home can show, in their default order. */
+enum class HomeRow(val id: String) {
+    LastWatched("last"), Trending("trending"), Trakt("trakt"), ContinueWatching("continue"),
+    Tonight("tonight"), Missed("missed"), Clubs("clubs"), Doors("doors");
+
+    companion object {
+        fun parse(ids: String?): List<HomeRow> {
+            val saved = ids?.split(',')?.mapNotNull { id -> entries.firstOrNull { it.id == id } }.orEmpty()
+            return saved + entries.filterNot { it in saved }
+        }
+    }
+}
 
 /**
  * The buttons along the bottom of the player. Settings lets each be hidden and moved; play/pause
@@ -399,6 +426,12 @@ class DialSettingsStore @Inject constructor(
             .putInt(KEY_SUBTITLE_RAISE, next.subtitleRaisePercent)
             .putBoolean(KEY_TRAKT_SCROBBLE, next.traktScrobble)
             .putStringSet(KEY_TRAKT_ROWS_HIDDEN, next.traktRowsHidden)
+            .putBoolean(KEY_MERGE_DUPLICATES, next.mergeDuplicates)
+            .putString(KEY_PREFERRED_QUALITY, next.preferredQuality.name)
+            .putBoolean(KEY_LIVE_BADGES, next.liveBadges)
+            .putInt(KEY_SCREENSAVER, next.screensaverMinutes)
+            .putString(KEY_HOME_ROWS, next.homeRows.joinToString(",") { it.id })
+            .putStringSet(KEY_HOME_ROWS_HIDDEN, next.homeRowsHidden.map { it.id }.toSet())
             .apply()
     }
 
@@ -566,6 +599,14 @@ class DialSettingsStore @Inject constructor(
             subtitleRaisePercent = prefs.getInt(KEY_SUBTITLE_RAISE, defaults.subtitleRaisePercent),
             traktScrobble = prefs.getBoolean(KEY_TRAKT_SCROBBLE, defaults.traktScrobble),
             traktRowsHidden = prefs.getStringSet(KEY_TRAKT_ROWS_HIDDEN, null)?.toSet() ?: defaults.traktRowsHidden,
+            mergeDuplicates = prefs.getBoolean(KEY_MERGE_DUPLICATES, defaults.mergeDuplicates),
+            preferredQuality = prefs.getString(KEY_PREFERRED_QUALITY, null)
+                ?.let { name -> PreferredQuality.entries.firstOrNull { it.name == name } } ?: defaults.preferredQuality,
+            liveBadges = prefs.getBoolean(KEY_LIVE_BADGES, defaults.liveBadges),
+            screensaverMinutes = prefs.getInt(KEY_SCREENSAVER, defaults.screensaverMinutes),
+            homeRows = HomeRow.parse(prefs.getString(KEY_HOME_ROWS, null)),
+            homeRowsHidden = prefs.getStringSet(KEY_HOME_ROWS_HIDDEN, null)
+                ?.mapNotNull { id -> HomeRow.entries.firstOrNull { it.id == id } }?.toSet() ?: defaults.homeRowsHidden,
         )
     }
 
@@ -612,6 +653,12 @@ class DialSettingsStore @Inject constructor(
         const val MAX_BOOKMARKS = 20
         const val KEY_TRAKT_SCROBBLE = "trakt_scrobble"
         const val KEY_TRAKT_ROWS_HIDDEN = "trakt_rows_hidden"
+        const val KEY_MERGE_DUPLICATES = "merge_duplicates"
+        const val KEY_PREFERRED_QUALITY = "preferred_quality"
+        const val KEY_LIVE_BADGES = "live_badges"
+        const val KEY_SCREENSAVER = "screensaver_minutes"
+        const val KEY_HOME_ROWS = "home_rows"
+        const val KEY_HOME_ROWS_HIDDEN = "home_rows_hidden"
         const val KEY_LAST_CHANNEL = "last_channel"
         const val KEY_HISTORY = "on_demand_history"
         const val KEY_FAVOURITE_GROUPS = "favourite_groups"

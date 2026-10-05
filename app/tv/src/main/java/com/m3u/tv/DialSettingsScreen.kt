@@ -16,6 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.lazy.items
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -150,6 +153,80 @@ fun DialSettingsScreen(
                 label = stringResource(R.string.dial_setting_back_twice_to_exit),
                 value = onOff(preferences.backTwiceToExit),
                 onClick = { onUpdate { it.copy(backTwiceToExit = !it.backTwiceToExit) } },
+            )
+        }
+
+        item { SettingsSection(stringResource(R.string.dial_settings_section_updates)) }
+        item { UpdateRows() }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_screensaver),
+                value = if (preferences.screensaverMinutes == 0) off else stringResource(R.string.dial_value_minutes, preferences.screensaverMinutes),
+                onClick = {
+                    onUpdate { it.copy(screensaverMinutes = DialPreferences.SCREENSAVER_OPTIONS.nextAfter(it.screensaverMinutes)) }
+                },
+            )
+        }
+
+        item { SettingsSection(stringResource(R.string.dial_settings_section_home)) }
+        item {
+            Text(
+                text = stringResource(R.string.dial_setting_home_rows_hint),
+                color = TvColors.TextSecondary,
+                fontFamily = TvFonts.Body,
+                fontSize = 14.sp,
+                modifier = Modifier.widthIn(max = 820.dp),
+            )
+        }
+        items(preferences.homeRows, key = { "home-row-${it.id}" }) { row ->
+            val hidden = row in preferences.homeRowsHidden
+            SettingRow(
+                label = row.label(),
+                value = if (hidden) stringResource(R.string.dial_value_hidden) else stringResource(R.string.dial_value_shown),
+                onClick = {
+                    onUpdate { it.copy(homeRowsHidden = if (hidden) it.homeRowsHidden - row else it.homeRowsHidden + row) }
+                },
+                onKey = { event ->
+                    stepperKeys(event) { delta ->
+                        onUpdate { prefs ->
+                            val order = prefs.homeRows.toMutableList()
+                            val from = order.indexOf(row)
+                            val to = (from + delta).coerceIn(0, order.lastIndex)
+                            if (from >= 0 && to != from) order.add(to, order.removeAt(from))
+                            prefs.copy(homeRows = order)
+                        }
+                    }
+                },
+            )
+        }
+
+        item { SettingsSection(stringResource(R.string.dial_settings_section_live)) }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_merge_duplicates),
+                value = onOff(preferences.mergeDuplicates),
+                onClick = { onUpdate { it.copy(mergeDuplicates = !it.mergeDuplicates) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_preferred_quality),
+                value = stringResource(
+                    when (preferences.preferredQuality) {
+                        PreferredQuality.Best -> R.string.dial_quality_best
+                        PreferredQuality.Fhd -> R.string.dial_quality_fhd
+                        PreferredQuality.Hd -> R.string.dial_quality_hd
+                        PreferredQuality.Sd -> R.string.dial_quality_sd
+                    }
+                ),
+                onClick = { onUpdate { it.copy(preferredQuality = PreferredQuality.entries.nextAfter(it.preferredQuality)) } },
+            )
+        }
+        item {
+            SettingRow(
+                label = stringResource(R.string.dial_setting_live_badges),
+                value = onOff(preferences.liveBadges),
+                onClick = { onUpdate { it.copy(liveBadges = !it.liveBadges) } },
             )
         }
 
@@ -578,4 +655,44 @@ internal fun SettingRow(
             )
         }
     }
+}
+
+@Composable
+private fun HomeRow.label(): String = stringResource(
+    when (this) {
+        HomeRow.LastWatched -> R.string.dial_home_row_last_watched
+        HomeRow.Trending -> R.string.dial_home_row_trending
+        HomeRow.Trakt -> R.string.dial_home_row_trakt
+        HomeRow.ContinueWatching -> R.string.dial_continue_title
+        HomeRow.Tonight -> R.string.dial_tonight_title
+        HomeRow.Missed -> R.string.dial_home_row_missed
+        HomeRow.Clubs -> R.string.dial_home_row_clubs
+        HomeRow.Doors -> R.string.dial_home_browse
+    }
+)
+
+/** "Build N is out: install" or "Up to date", with the download's progress while it runs. */
+@Composable
+fun UpdateRows() {
+    val updater: UpdaterViewModel = hiltViewModel()
+    val notices: NoticesViewModel = hiltViewModel()
+    val state by updater.state.collectAsStateWithLifecycle()
+    val latest by notices.updateBuild.collectAsStateWithLifecycle()
+    val mine = BuildConfig.CHUD_BUILD
+    SettingRow(
+        label = if (mine > 0) stringResource(R.string.dial_setting_build, mine) else stringResource(R.string.dial_setting_build_dev),
+        value = when (val current = state) {
+            is UpdateState.Downloading -> stringResource(R.string.dial_update_downloading, current.percent)
+            is UpdateState.Ready -> stringResource(R.string.dial_update_ready)
+            is UpdateState.Failed -> stringResource(R.string.dial_update_failed, current.message)
+            UpdateState.Idle -> latest?.let { stringResource(R.string.dial_update_available, it) } ?: stringResource(R.string.dial_update_none)
+        },
+        onClick = {
+            when (state) {
+                is UpdateState.Failed -> updater.reset()
+                is UpdateState.Downloading -> Unit
+                else -> if (latest != null) updater.install()
+            }
+        },
+    )
 }

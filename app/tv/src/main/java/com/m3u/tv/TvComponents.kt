@@ -913,6 +913,7 @@ fun ChannelCard(
                     )
                     val badges = remember(channel.title) { qualityBadges(channel.title) }
                     QualityBadgeRow(badges, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+                    ChannelBadgeMarks(LocalChannelBadges.current[channel.id], modifier = Modifier.align(Alignment.BottomStart).padding(6.dp))
                 }
                 Text(
                     text = channel.title.title(),

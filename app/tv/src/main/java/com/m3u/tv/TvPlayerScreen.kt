@@ -86,6 +86,9 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import androidx.media3.common.Timeline
+import androidx.compose.material.icons.rounded.Hd
+import androidx.compose.material.icons.rounded.LiveTv
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.media3.exoplayer.ExoPlayer
@@ -120,6 +123,10 @@ private val SLEEP_STEPS_MINUTES = listOf(30, 60, 90, 120)
 /** How long the "+30 s" bubble stays after the last scrub step. */
 private const val SCRUB_BUBBLE_MS = 900L
 private const val SEGMENT_CHECK_MS = 400L
+/** A live stream counts as rewindable when the player holds at least this much behind the edge. */
+private const val LIVE_SEEK_MIN_MS = 30_000L
+/** A live pause longer than this would outrun the player's buffer: Play takes the catch-up route. */
+private const val LIVE_PAUSE_BUFFER_MS = 40_000L
 private const val SEGMENT_NOTICE_MS = 2_500L
 
 /** How often the "still watching?" clock is checked. */
@@ -232,6 +239,16 @@ fun TvPlayerScreen(
     skipSegments: List<SkipSegment> = emptyList(),
     /** Artwork to show in place of a picture (radio, podcasts). */
     artwork: String? = null,
+    /**
+     * Live TV paused for longer than the player holds: on Play, the channel's catch-up stream is
+     * started from the moment of the pause (set for Xtream channels whose programme has catch-up).
+     */
+    onResumeLiveFrom: ((pausedAtMs: Long) -> Unit)? = null,
+    /** Playing a catch-up stream of a live channel: back to the live picture. */
+    onBackToLive: (() -> Unit)? = null,
+    /** Other copies of this channel (HD, FHD, 4K…), and switching to one. */
+    variants: List<Channel> = emptyList(),
+    onPlayVariant: (Channel) -> Unit = {},
 ) {
     val view = LocalView.current
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -450,11 +467,46 @@ fun TvPlayerScreen(
         }
     }
 
+    // Live streams with a rewind window (HLS keeps a few minutes behind the live edge): the seek
+    // keys work inside it, and the progress bar shows how far behind live the picture is.
+    var liveSeekable by remember(player) { mutableStateOf(false) }
+    DisposableEffect(player, live) {
+        val target = player ?: return@DisposableEffect onDispose { }
+        fun update() {
+            liveSeekable = live && target.isCurrentMediaItemSeekable && target.duration >= LIVE_SEEK_MIN_MS
+        }
+        update()
+        val listener = object : Player.Listener {
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) = update()
+            override fun onPlaybackStateChanged(playbackState: Int) = update()
+        }
+        target.addListener(listener)
+        onDispose { target.removeListener(listener) }
+    }
+    val seekable = !live || liveSeekable
+    // Live TV paused: the clock starts, so Play can pick up the catch-up stream from that moment
+    // once the player's own buffer would have run out.
+    var pausedLiveAt by remember(player) { mutableLongStateOf(0L) }
+    LaunchedEffect(isPlaying, live) {
+        pausedLiveAt = if (live && !isPlaying) System.currentTimeMillis() else 0L
+    }
+    fun playPauseOrResume() {
+        val resume = onResumeLiveFrom
+        val pausedAt = pausedLiveAt
+        if (resume != null && !isPlaying && live && !liveSeekable && pausedAt > 0L &&
+            System.currentTimeMillis() - pausedAt > LIVE_PAUSE_BUFFER_MS
+        ) {
+            resume(pausedAt)
+        } else {
+            onPlayPause()
+        }
+    }
+
     // Position and length: for the progress bar while the controls show, and all the time when
     // there are intro/credits markers to watch for.
     val watchMarkers = !skipMarkers.isEmpty
-    LaunchedEffect(player, live, controlsVisible, watchMarkers) {
-        if (live || player == null || !(controlsVisible || watchMarkers)) return@LaunchedEffect
+    LaunchedEffect(player, seekable, controlsVisible, watchMarkers) {
+        if (!seekable || player == null || !(controlsVisible || watchMarkers)) return@LaunchedEffect
         while (true) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
@@ -588,12 +640,12 @@ fun TvPlayerScreen(
                     }
                     key in PLAY_PAUSE_KEYS -> {
                         if (firstPress) {
-                            onPlayPause()
+                            playPauseOrResume()
                             showControls()
                         }
                         true
                     }
-                    !live && (key == Key.MediaFastForward || key == Key.MediaRewind) -> {
+                    seekable && (key == Key.MediaFastForward || key == Key.MediaRewind) -> {
                         if (isDown) {
                             scrubStep(forward = key == Key.MediaFastForward, repeatCount = event.nativeKeyEvent.repeatCount)
                         } else {
@@ -788,7 +840,7 @@ fun TvPlayerScreen(
                     notice = stateNotice,
                     guideLine = guideLine,
                 )
-                if (!live && duration > 0L) {
+                if (seekable && duration > 0L) {
                     ProgressLine(
                         position = position,
                         duration = duration,
@@ -821,7 +873,7 @@ fun TvPlayerScreen(
                                     stringResource(string.tv_action_play)
                                 },
                                 onClick = {
-                                    onPlayPause()
+                                    playPauseOrResume()
                                     showControls()
                                 },
                                 focusRequester = playPauseFocusRequester
@@ -846,7 +898,7 @@ fun TvPlayerScreen(
                                     },
                                 )
                             }
-                            PlayerButton.Rewind -> if (!live) {
+                            PlayerButton.Rewind -> if (seekable) {
                                 TvIconActionButton(
                                     icon = Icons.Rounded.FastRewind,
                                     contentDescription = stringResource(R.string.dial_player_rewind, preferences.skipBackSeconds),
@@ -854,7 +906,7 @@ fun TvPlayerScreen(
                                     onKey = scrubKeys(forward = false),
                                 )
                             }
-                            PlayerButton.FastForward -> if (!live) {
+                            PlayerButton.FastForward -> if (seekable) {
                                 TvIconActionButton(
                                     icon = Icons.Rounded.FastForward,
                                     contentDescription = stringResource(R.string.dial_player_forward, preferences.skipAheadSeconds),
@@ -871,6 +923,26 @@ fun TvPlayerScreen(
                                         showControls()
                                     },
                                 )
+                                // Catch-up of a live channel: back to the live picture.
+                                onBackToLive?.let { backToLive ->
+                                    TvActionButton(
+                                        text = stringResource(R.string.dial_player_back_to_live),
+                                        icon = Icons.Rounded.LiveTv,
+                                        onClick = backToLive,
+                                        showTextWhenUnfocused = false,
+                                    )
+                                }
+                            } else if (liveSeekable) {
+                                // Behind the live edge after a rewind: jump back to it.
+                                TvActionButton(
+                                    text = stringResource(R.string.dial_player_back_to_live),
+                                    icon = Icons.Rounded.LiveTv,
+                                    onClick = {
+                                        player?.seekToDefaultPosition()
+                                        showControls()
+                                    },
+                                    showTextWhenUnfocused = false,
+                                )
                             }
                             PlayerButton.Favourite -> if (channel != null) {
                                 TvIconActionButton(
@@ -884,6 +956,18 @@ fun TvPlayerScreen(
                                         showControls()
                                     },
                                 )
+                                if (variants.size > 1) {
+                                    // Another copy of this channel (HD / FHD / 4K): cycles through them.
+                                    TvActionButton(
+                                        text = stringResource(R.string.dial_player_other_copy, variants.size),
+                                        icon = Icons.Rounded.Hd,
+                                        onClick = {
+                                            val index = variants.indexOfFirst { it.id == channel.id }
+                                            onPlayVariant(variants[(index + 1).mod(variants.size)])
+                                        },
+                                        showTextWhenUnfocused = false,
+                                    )
+                                }
                             }
                             PlayerButton.Mini -> onMinimize?.let { minimize ->
                                 TvIconActionButton(

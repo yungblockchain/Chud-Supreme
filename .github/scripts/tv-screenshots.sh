@@ -200,6 +200,13 @@ if check "launch"; then
         open_tab radio 10; for _ in 1 2 3 4 5; do press $DOWN; done; press $OK; sleep 10; shot 49b-radio-podcasts
         press $RIGHT; sleep 1; press $OK; sleep 8; shot 49c-radio-episodes
         open_tab settings 8; press $RIGHT; for _ in $(seq 1 60); do press $DOWN; done; sleep 1; shot 46-settings-backup
+        # Stage 5: the update row, screensaver and home-row editor near the top of the first tab.
+        open_tab settings 8; press $DOWN $DOWN $DOWN $DOWN $DOWN; sleep 1; shot 50-settings-updates-home
+        # Merge duplicates on, then Live TV with one card per channel (the test server has HD copies).
+        for _ in $(seq 1 16); do press $DOWN; done; sleep 1; shot 50a-settings-live
+        press $OK; sleep 1
+        open_tab live 10; shot 50b-live-merged
+        open_tab settings 8; for _ in $(seq 1 21); do press $DOWN; done; press $OK; sleep 1
         open_tab search 8; type_text "Film%s12345"; sleep 5; shot 43-search-universal
         # The Menu key opens the hidden side menu with its labels; Left from the hero does too.
         press $UP; adb shell input keyevent 82; sleep 1; shot 26-menu-open

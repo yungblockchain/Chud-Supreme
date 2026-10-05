@@ -719,6 +719,42 @@ class DialViewModel @Inject constructor(
     }
 
     /**
+     * Live TV paused longer than the player can hold: the channel's catch-up stream from the
+     * moment of the pause, so nothing is missed. Without catch-up for that programme, playback
+     * simply carries on from the live picture.
+     */
+    fun resumeLiveFrom(channel: Channel, pausedAtMs: Long) {
+        viewModelScope.launch {
+            val credentials = credentialsFor(channel.playlistUrl)
+            val streamId = XtreamCatalog.idFromUrl(channel.url)
+            val programme = if (credentials != null && streamId != null) {
+                guideRequests.withPermit {
+                    runCatching { XtreamCatalog.fullEpg(credentials, streamId) }.getOrDefault(emptyList())
+                }.firstOrNull { it.hasArchive && pausedAtMs in it.startMillis until it.endMillis }
+            } else null
+            val url = if (credentials != null && streamId != null && programme != null) {
+                XtreamCatalog.timeshiftUrl(credentials, streamId, programme)
+            } else null
+            if (url == null) {
+                playerManager.pauseOrContinue(true)
+                return@launch
+            }
+            _nowPlaying.value = null
+            _skipMarkers.value = SkipMarkers()
+            playerManager.play(
+                MediaCommand.Url(channelId = channel.id, url = url, title = programme.title),
+                applyContinueWatching = false,
+            )
+            // Into the recording at the moment the pause began.
+            delay(RESUME_SEEK_DELAY_MS)
+            playerManager.player.value?.seekTo((pausedAtMs - programme.startMillis).coerceAtLeast(0L))
+        }
+    }
+
+    /** Whether [channel] is the kind that can have catch-up (an Xtream live stream). */
+    fun mayHaveCatchUp(channel: Channel): Boolean = channel.url.contains("/live/") && XtreamCatalog.idFromUrl(channel.url) != null
+
+    /**
      * Programmes for an M3U channel from its playlist's XMLTV guide, matched on tvg-id. Null when
      * the channel has no tvg-id or the playlist has no guide attached.
      */
@@ -763,6 +799,7 @@ class DialViewModel @Inject constructor(
         const val MISSED_MAX = 20
         const val TONIGHT_PER_CHANNEL = 3
         const val TONIGHT_CHANNELS = 20
+        const val RESUME_SEEK_DELAY_MS = 400L
         const val TONIGHT_MAX = 24
         const val FUTURE_WINDOW_MS = 24 * 60 * 60_000L
         const val LISTING_TTL_MS = 30 * 60_000L

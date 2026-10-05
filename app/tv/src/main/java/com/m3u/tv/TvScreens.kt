@@ -192,6 +192,8 @@ fun TvBrowsePane(
     tonight: List<TonightProgramme> = emptyList(),
     reminderKeys: Set<String> = emptySet(),
     onOpenTonight: (TonightProgramme) -> Unit = {},
+    homeRows: List<HomeRow> = HomeRow.entries,
+    hiddenRows: Set<HomeRow> = emptySet(),
     kidsProfile: Boolean = false,
     onSwitchProfile: () -> Unit = {},
     myLibraryContent: @Composable () -> Unit = {},
@@ -281,6 +283,8 @@ fun TvBrowsePane(
                         tonight = tonight,
                         reminderKeys = reminderKeys,
                         onOpenTonight = onOpenTonight,
+                        homeRows = homeRows,
+                        hiddenRows = hiddenRows,
                     )
 
                     TvDestination.Search -> SearchScreen(
@@ -478,6 +482,8 @@ private fun HomeScreen(
     tonight: List<TonightProgramme> = emptyList(),
     reminderKeys: Set<String> = emptySet(),
     onOpenTonight: (TonightProgramme) -> Unit = {},
+    homeRows: List<HomeRow> = HomeRow.entries,
+    hiddenRows: Set<HomeRow> = emptySet(),
 ) {
     // The last ten things watched (live, films, episodes); before anything's been watched, a
     // taste of the selected playlist.
@@ -531,84 +537,90 @@ private fun HomeScreen(
                 onPlay = onPlay
             )
         }
-        if (featuredChannels.isNotEmpty()) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SectionTitle(
-                        title = if (watchedBefore) {
-                            stringResource(R.string.dial_home_last_watched)
-                        } else {
-                            stringResource(string.tv_section_recent_channels)
-                        },
-                        subtitle = if (watchedBefore) {
-                            stringResource(R.string.dial_home_last_watched_hint)
-                        } else {
-                            stringResource(string.tv_section_recent_channels_hint)
-                        },
-                        modifier = Modifier.padding(start = 48.dp)
-                    )
-                    ContentRow(
-                        channels = featuredChannels,
-                        onPlay = onPlay,
-                        onFocused = { focusedChannel = it },
-                        firstItemFocusRequester = firstFeaturedFocusRequester
+        // The rows, in the order from Settings > Home screen, minus the ones switched off.
+        for (row in homeRows) {
+            if (row in hiddenRows) continue
+            when (row) {
+                HomeRow.LastWatched -> if (featuredChannels.isNotEmpty()) {
+                    item(key = "last-watched") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SectionTitle(
+                                title = if (watchedBefore) {
+                                    stringResource(R.string.dial_home_last_watched)
+                                } else {
+                                    stringResource(string.tv_section_recent_channels)
+                                },
+                                subtitle = if (watchedBefore) {
+                                    stringResource(R.string.dial_home_last_watched_hint)
+                                } else {
+                                    stringResource(string.tv_section_recent_channels_hint)
+                                },
+                                modifier = Modifier.padding(start = 48.dp)
+                            )
+                            ContentRow(
+                                channels = featuredChannels,
+                                onPlay = onPlay,
+                                onFocused = { focusedChannel = it },
+                                firstItemFocusRequester = firstFeaturedFocusRequester
+                            )
+                        }
+                    }
+                }
+                HomeRow.Trending -> if (trending.isNotEmpty()) {
+                    item(key = "trending") {
+                        TrendingRow(entries = trending, onOpen = onOpenTrending)
+                    }
+                }
+                // Trakt: continue watching, watchlist, up next, picks and the person's own lists.
+                HomeRow.Trakt -> items(traktRows, key = { "trakt-${it.id}" }) { traktRow ->
+                    TitleRow(
+                        title = traktRow.displayName(),
+                        subtitle = stringResource(R.string.dial_trakt_row_subtitle),
+                        titles = traktRow.titles,
+                        onOpen = onOpenTitle,
                     )
                 }
-            }
-        }
-        if (trending.isNotEmpty()) {
-            item(key = "trending") {
-                TrendingRow(entries = trending, onOpen = onOpenTrending)
-            }
-        }
-        // Trakt: continue watching, watchlist, up next, picks and the person's own lists.
-        items(traktRows, key = { "trakt-${it.id}" }) { row ->
-            TitleRow(
-                title = row.displayName(),
-                subtitle = stringResource(R.string.dial_trakt_row_subtitle),
-                titles = row.titles,
-                onOpen = onOpenTitle,
-            )
-        }
-        // Dial: films and series with saved progress, opened on their details page.
-        if (continueWatching.isNotEmpty()) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SectionTitle(
-                        title = stringResource(R.string.dial_continue_title),
-                        subtitle = stringResource(R.string.dial_continue_subtitle),
-                        modifier = Modifier.padding(start = 48.dp)
-                    )
-                    ContentRow(
-                        channels = continueWatching,
-                        onPlay = onPlay,
-                        onFocused = { focusedChannel = it },
-                    )
+                // Dial: films and series with saved progress, opened on their details page.
+                HomeRow.ContinueWatching -> if (continueWatching.isNotEmpty()) {
+                    item(key = "continue") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SectionTitle(
+                                title = stringResource(R.string.dial_continue_title),
+                                subtitle = stringResource(R.string.dial_continue_subtitle),
+                                modifier = Modifier.padding(start = 48.dp)
+                            )
+                            ContentRow(
+                                channels = continueWatching,
+                                onPlay = onPlay,
+                                onFocused = { focusedChannel = it },
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        if (tonight.isNotEmpty()) {
-            item(key = "tonight") { TonightRow(items = tonight, reminderKeys = reminderKeys, onOpen = onOpenTonight) }
-        }
-        if (missed.isNotEmpty()) {
-            item(key = "missed") { MissedRow(items = missed, onOpen = onOpenMissed) }
-        }
-        item(key = "followed-clubs") {
-            FollowedClubsRow()
-        }
-        // Straight into Live TV, Films or Series.
-        item(key = "doors") {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionTitle(
-                    title = stringResource(R.string.dial_home_browse),
-                    subtitle = stringResource(R.string.dial_home_browse_hint),
-                    modifier = Modifier.padding(start = 48.dp)
-                )
-                CatalogDoors(
-                    state = state,
-                    onOpen = onShowCatalog,
-                    modifier = Modifier.padding(start = 48.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
-                )
+                HomeRow.Tonight -> if (tonight.isNotEmpty()) {
+                    item(key = "tonight") { TonightRow(items = tonight, reminderKeys = reminderKeys, onOpen = onOpenTonight) }
+                }
+                HomeRow.Missed -> if (missed.isNotEmpty()) {
+                    item(key = "missed") { MissedRow(items = missed, onOpen = onOpenMissed) }
+                }
+                HomeRow.Clubs -> item(key = "followed-clubs") {
+                    FollowedClubsRow()
+                }
+                // Straight into Live TV, Films or Series.
+                HomeRow.Doors -> item(key = "doors") {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SectionTitle(
+                            title = stringResource(R.string.dial_home_browse),
+                            subtitle = stringResource(R.string.dial_home_browse_hint),
+                            modifier = Modifier.padding(start = 48.dp)
+                        )
+                        CatalogDoors(
+                            state = state,
+                            onOpen = onShowCatalog,
+                            modifier = Modifier.padding(start = 48.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
+                        )
+                    }
+                }
             }
         }
     }

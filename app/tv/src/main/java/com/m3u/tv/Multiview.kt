@@ -1,6 +1,20 @@
 package com.m3u.tv
 
 import android.content.Context
+import android.widget.Toast
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.ui.platform.LocalContext
+import com.m3u.data.repository.channel.ChannelRepository
+import javax.inject.Singleton
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -87,11 +101,96 @@ import kotlinx.coroutines.yield
 @Immutable
 data class MultiviewTile(val channel: Channel, val player: ExoPlayer)
 
+/** A saved set of up to four channels, by name. */
+@Immutable
+data class MultiviewPreset(val id: String, val name: String, val channelIds: List<Int>)
+
+@Singleton
+class MultiviewPresetStore @Inject constructor(
+    @ApplicationContext context: Context,
+) {
+    private val prefs = context.getSharedPreferences("multiview_presets", Context.MODE_PRIVATE)
+    private val _presets = MutableStateFlow(read())
+    val presets: StateFlow<List<MultiviewPreset>> = _presets.asStateFlow()
+
+    fun save(name: String, channelIds: List<Int>): MultiviewPreset {
+        val preset = MultiviewPreset(System.currentTimeMillis().toString(36), name.trim().take(40), channelIds.take(4))
+        write((_presets.value + preset).takeLast(MAX))
+        return preset
+    }
+
+    fun remove(id: String) = write(_presets.value.filterNot { it.id == id })
+
+    fun reload() {
+        _presets.value = read()
+    }
+
+    private fun write(presets: List<MultiviewPreset>) {
+        _presets.value = presets
+        val json = JsonArray(
+            presets.map { preset ->
+                JsonObject(
+                    mapOf(
+                        "id" to JsonPrimitive(preset.id),
+                        "name" to JsonPrimitive(preset.name),
+                        "channels" to JsonArray(preset.channelIds.map(::JsonPrimitive)),
+                    )
+                )
+            }
+        )
+        prefs.edit().putString(KEY, json.toString()).apply()
+    }
+
+    private fun read(): List<MultiviewPreset> = runCatching {
+        val raw = prefs.getString(KEY, null) ?: return emptyList()
+        Json.parseToJsonElement(raw).jsonArray.mapNotNull { element ->
+            val item = element.jsonObject
+            MultiviewPreset(
+                id = item["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                name = item["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                channelIds = item["channels"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull }.orEmpty(),
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    private companion object {
+        const val KEY = "presets"
+        const val MAX = 12
+    }
+}
+
 @HiltViewModel
 class MultiviewViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val playlistRepository: PlaylistRepository,
+    private val presetStore: MultiviewPresetStore,
+    private val channelRepository: ChannelRepository,
 ) : ViewModel() {
+    val presets: StateFlow<List<MultiviewPreset>> = presetStore.presets
+
+    /** Keeps the tiles showing as a preset, named after the channels unless [name] is given. */
+    fun savePreset(name: String? = null): MultiviewPreset? {
+        val tiles = _tiles.value
+        if (tiles.isEmpty()) return null
+        val label = name?.takeIf { it.isNotBlank() }
+            ?: tiles.joinToString(" + ") { it.channel.title.title().take(14) }
+        return presetStore.save(label, tiles.map { it.channel.id })
+    }
+
+    fun removePreset(preset: MultiviewPreset) = presetStore.remove(preset.id)
+
+    /** Replaces the tiles with the preset's channels (the ones still in the playlists). */
+    fun loadPreset(preset: MultiviewPreset) {
+        viewModelScope.launch {
+            val channels = preset.channelIds.mapNotNull { channelRepository.get(it) }.filter(::supports)
+            releaseAll()
+            for (channel in channels.take(MAX_TILES)) {
+                val player = createPlayer(channel)
+                _tiles.value = _tiles.value + MultiviewTile(channel, player)
+            }
+            applyAudio()
+        }
+    }
 
     private val _tiles = MutableStateFlow<List<MultiviewTile>>(emptyList())
     val tiles: StateFlow<List<MultiviewTile>> = _tiles.asStateFlow()
@@ -248,6 +347,9 @@ fun MultiviewScreen(
 ) {
     val tiles by viewModel.tiles.collectAsStateWithLifecycle()
     val audio by viewModel.audio.collectAsStateWithLifecycle()
+    val presets by viewModel.presets.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val presetSaved = stringResource(R.string.dial_multiview_preset_saved)
     // Picking a channel: for a new tile (index = tiles.size) or to replace one.
     var picking by remember { mutableStateOf<Int?>(null) }
     var tileMenu by remember { mutableStateOf<Int?>(null) }
@@ -330,6 +432,11 @@ fun MultiviewScreen(
                             tileMenu = null
                             viewModel.remove(index)
                         }),
+                        MenuEntry(stringResource(R.string.dial_multiview_save_preset), Icons.Rounded.Bookmark, {
+                            tileMenu = null
+                            val saved = viewModel.savePreset()
+                            if (saved != null) Toast.makeText(context, presetSaved.format(saved.name), Toast.LENGTH_SHORT).show()
+                        }),
                     ),
                     onDismiss = { tileMenu = null },
                 )
@@ -345,6 +452,13 @@ fun MultiviewScreen(
                 },
                 onDismiss = { picking = null },
                 modifier = Modifier.align(Alignment.CenterEnd),
+                // Adding to an empty screen: the saved presets come first (hold OK forgets one).
+                presets = if (tiles.isEmpty()) presets else emptyList(),
+                onPreset = { preset ->
+                    picking = null
+                    viewModel.loadPreset(preset)
+                },
+                onForgetPreset = viewModel::removePreset,
             )
         }
     }
@@ -445,6 +559,9 @@ private fun ChannelPicker(
     onPick: (Channel) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    presets: List<MultiviewPreset> = emptyList(),
+    onPreset: (MultiviewPreset) -> Unit = {},
+    onForgetPreset: (MultiviewPreset) -> Unit = {},
 ) {
     val first = remember { FocusRequester() }
     BackHandler(onBack = onDismiss)
@@ -482,10 +599,39 @@ private fun ChannelPicker(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 4.dp),
         ) {
+            itemsIndexed(presets, key = { _, preset -> "preset-${preset.id}" }) { index, preset ->
+                FocusFrame(
+                    onClick = { onPreset(preset) },
+                    onLongClick = { onForgetPreset(preset) },
+                    focusRequester = first.takeIf { index == 0 },
+                    shape = RoundedCornerShape(10.dp),
+                    focusedScale = 1.02f,
+                    semanticsLabel = preset.name,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { focused ->
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        Text(
+                            text = stringResource(R.string.dial_multiview_preset_label),
+                            color = if (focused) TvColors.OnFocus.copy(alpha = 0.75f) else TvColors.TextMuted,
+                            fontFamily = TvFonts.Body,
+                            fontSize = 11.sp,
+                        )
+                        Text(
+                            text = preset.name,
+                            color = if (focused) TvColors.OnFocus else TvColors.TextPrimary,
+                            fontFamily = TvFonts.Body,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
             itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
                 FocusFrame(
                     onClick = { onPick(channel) },
-                    focusRequester = first.takeIf { index == 0 },
+                    focusRequester = first.takeIf { index == 0 && presets.isEmpty() },
                     shape = RoundedCornerShape(10.dp),
                     focusedScale = 1.02f,
                     semanticsLabel = channel.title,

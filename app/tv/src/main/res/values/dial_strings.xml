@@ -1035,4 +1035,38 @@
     <string name="dial_voice_search">Voice search</string>
     <string name="dial_voice_prompt">Say a channel, film or series</string>
     <string name="dial_voice_use_phone">This TV keeps its microphone for its own assistant. Open the phone page (Settings › Services) and tap Say it there.</string>
+
+    <!-- Stage 5a: live TV extras, home editor, screensaver, updater, multiview presets -->
+    <string name="dial_settings_section_updates">Updates</string>
+    <string name="dial_setting_build">This is build %1$d</string>
+    <string name="dial_setting_build_dev">Development build</string>
+    <string name="dial_update_available">Build %1$d is out · OK installs it</string>
+    <string name="dial_update_none">Up to date</string>
+    <string name="dial_update_downloading">Downloading… %1$d%%</string>
+    <string name="dial_update_ready">Downloaded · the installer is open</string>
+    <string name="dial_update_failed">Didn\'t work (%1$s) · OK to try again</string>
+    <string name="dial_setting_screensaver">Ambient screensaver after</string>
+    <string name="dial_value_minutes">%1$d min</string>
+    <string name="dial_settings_section_home">Home screen</string>
+    <string name="dial_setting_home_rows_hint">OK shows or hides a row; Left and Right move it up and down.</string>
+    <string name="dial_value_shown">Shown</string>
+    <string name="dial_value_hidden">Hidden</string>
+    <string name="dial_home_row_last_watched">Last watched</string>
+    <string name="dial_home_row_trending">Trending this week</string>
+    <string name="dial_home_row_trakt">Trakt rows</string>
+    <string name="dial_home_row_missed">What you missed</string>
+    <string name="dial_home_row_clubs">Followed clubs</string>
+    <string name="dial_settings_section_live">Live TV</string>
+    <string name="dial_setting_merge_duplicates">Merge duplicate channels (HD / FHD / 4K)</string>
+    <string name="dial_setting_preferred_quality">Preferred copy</string>
+    <string name="dial_quality_best">Best available</string>
+    <string name="dial_quality_fhd">FHD</string>
+    <string name="dial_quality_hd">HD</string>
+    <string name="dial_quality_sd">SD</string>
+    <string name="dial_setting_live_badges">Live-score badges on match channels</string>
+    <string name="dial_player_back_to_live">Back to live</string>
+    <string name="dial_player_other_copy">Other copy (%1$d)</string>
+    <string name="dial_multiview_save_preset">Save these as a preset</string>
+    <string name="dial_multiview_preset_saved">Preset saved: %1$s</string>
+    <string name="dial_multiview_preset_label">PRESET · hold OK to forget</string>
 </resources>
