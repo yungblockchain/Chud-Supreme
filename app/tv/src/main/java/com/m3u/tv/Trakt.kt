@@ -221,7 +221,7 @@ class TraktService @Inject constructor(
         return runCatching { post(path, body.toString()) }.map { it.accepted() }.getOrDefault(false)
     }
 
-    /** A /sync/* reply counts as accepted when nothing landed in "not_found". */
+    /** A sync reply counts as accepted when nothing landed in "not_found". */
     private fun JsonObject.accepted(): Boolean {
         val missing = this["not_found"] as? JsonObject ?: return true
         return missing.values.all { (it as? JsonArray)?.isEmpty() ?: true }
