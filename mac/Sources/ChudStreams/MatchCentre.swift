@@ -8,7 +8,7 @@ struct MatchCentreView: View {
     @State private var message = "Loading live fixtures…"
     @State private var loading = false
 
-    private static let key = "6adb1a1f9ea8091f6f5fb16e4abc0fc5"
+    private static var key: String { Secrets.get(.apiSports) ?? "5b5223cffa017ab9e7da79cd28fc1a8b" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {

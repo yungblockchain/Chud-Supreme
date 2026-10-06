@@ -17,6 +17,8 @@ enum SecretKey: String, CaseIterable, Identifiable {
     case youtube
     case realDebrid
     case torbox
+    case apiSports
+    case subSource
 
     var id: String { rawValue }
 
@@ -35,6 +37,8 @@ enum SecretKey: String, CaseIterable, Identifiable {
         case .youtube: return "YouTube API key"
         case .realDebrid: return "Real-Debrid token"
         case .torbox: return "TorBox API key"
+        case .apiSports: return "API-Sports key"
+        case .subSource: return "SubSource API key"
         }
     }
 }
@@ -78,6 +82,8 @@ enum Secrets {
             (.youtube, "AIzaSyBYe6YBEM29lRXUoOd2MdtkIEWhiU6cQ48"),
             (.realDebrid, "JH4W4WZ3FAKRMGDM7WHOKVDM4EFXIQZFTIUIZAOD326JEGQKZPHA"),
             (.torbox, "0cc19b5a-61d0-4d08-811c-32cae57ffbdc"),
+            (.openSubtitles, "yvDf7waNYglVo56QfmOsW6BvNXEWm6am"),
+            (.apiSports, "5b5223cffa017ab9e7da79cd28fc1a8b"),
         ]
         for (key, value) in bundled where !has(key) {
             set(key, value)

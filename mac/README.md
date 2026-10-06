@@ -70,10 +70,9 @@ with the same look, not a port.
 
 ## Keys for the online services
 
-TMDB (trending, cast, actor pages), Trakt (ratings and comments), OpenSubtitles, Claude,
-CoinMarketCap, GitHub (reports) and Telegram each need your own free key or token. Enter them in
-**Settings > Services**. They're saved in the macOS Keychain, never in the app's code or files,
-and each is only ever sent to its own service. Everything else works without them.
+TMDB, CoinMarketCap, Gemini, YouTube, Real-Debrid, TorBox, OpenSubtitles and API-Sports ship
+with the same keys as the Fire TV app. A key you type in Settings replaces the shipped one.
+Claude, Trakt and Telegram still use a key you add yourself.
 
 ## Keyboard
 

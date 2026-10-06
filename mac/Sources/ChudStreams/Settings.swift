@@ -814,6 +814,13 @@ private struct SettingsPlaybackPage: View {
             SettingsToggle(title: "Deband",
                            hint: "Smooths out colour banding in skies and dark scenes. Uses a little more power.",
                            isOn: store.binding(\.deband))
+            SettingsToggle(title: "Anime4K",
+                           hint: "Runs the real Anime4K shaders on films and episodes. It uses more memory and stays off for multiview tiles. Turn it off and start the video again to drop it.",
+                           isOn: Binding(get: { ExtraSettings.current.anime4k }, set: { on in
+                               var next = ExtraSettings.current
+                               next.anime4k = on
+                               next.save()
+                           }))
         }
     }
 
@@ -1219,6 +1226,10 @@ private enum SettingsSecretInfo {
             return "Turns torrent results in Infinity into a file. The token is from real-debrid.com/apitoken."
         case .torbox:
             return "Used when Real-Debrid doesn't have the torrent cached."
+        case .apiSports:
+            return "Live scores in Match centre. The Fire TV key is already filled in."
+        case .subSource:
+            return "Optional extra subtitle source. Leave it empty to use OpenSubtitles only."
         }
     }
 
@@ -1247,6 +1258,8 @@ private enum SettingsSecretInfo {
         case .youtube: return "console.cloud.google.com"
         case .realDebrid: return "real-debrid.com/apitoken"
         case .torbox: return "torbox.app"
+        case .apiSports: return "api-sports.io"
+        case .subSource: return "subsource.net"
         }
     }
 
@@ -1264,6 +1277,8 @@ private enum SettingsSecretInfo {
         case .youtube: return "https://console.cloud.google.com/apis/library/youtube.googleapis.com"
         case .realDebrid: return "https://real-debrid.com/apitoken"
         case .torbox: return "https://torbox.app"
+        case .apiSports: return "https://www.api-football.com/"
+        case .subSource: return "https://subsource.net"
         }
     }
 }

@@ -43,6 +43,9 @@ final class HomeModel: ObservableObject {
                 }
                 slides = Array((matched + others).prefix(10))
                 note = matched.isEmpty ? "Trending this week on TMDB. None of these are on your provider yet." : nil
+                if let weather = await WeatherLine.summary() {
+                    note = note == nil ? weather : weather + "  ·  " + (note ?? "")
+                }
                 return
             } catch {
                 note = (error as? LocalizedError)?.errorDescription
@@ -57,6 +60,9 @@ final class HomeModel: ObservableObject {
         }
         if note == nil && !slides.isEmpty {
             note = "Add a TMDB key in Settings > Services to see what's trending this week here."
+        }
+        if let weather = await WeatherLine.summary() {
+            note = note == nil ? weather : weather + "  ·  " + (note ?? "")
         }
     }
 }

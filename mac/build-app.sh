@@ -34,6 +34,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$EXECUTABLE" "$APP/Contents/MacOS/$EXECUTABLE"
 cp Resources/*.ttf Resources/brand_mascot.png "$APP/Contents/Resources/"
+mkdir -p "$APP/Contents/Resources/shaders"
+cp Resources/shaders/*.glsl "$APP/Contents/Resources/shaders/"
 
 # App icon: every size macOS asks for, made from the 1024px artwork.
 ICONSET="build/AppIcon.iconset"

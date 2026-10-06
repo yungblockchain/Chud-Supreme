@@ -475,6 +475,26 @@ private struct PlayerChrome: View {
                     .padding(.bottom, 140)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+            if let skip = playback.introSkip, player.position >= skip.start, player.position < skip.end - 1 {
+                Button(skip.kind == "ed" ? "Skip credits" : "Skip intro") {
+                    player.seek(to: skip.end)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Neon.cyan)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.leading, 40)
+                .padding(.bottom, 140)
+            }
+            if let lyrics = player.lyrics, request.live {
+                Text(lyrics)
+                    .font(NeonFont.body(13))
+                    .foregroundColor(.white)
+                    .lineLimit(3)
+                    .padding(12)
+                    .background(.black.opacity(0.55))
+                    .frame(maxWidth: 520, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 80)
+            }
             if visible {
                 VStack(spacing: 0) {
                     topBar

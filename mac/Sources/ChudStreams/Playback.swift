@@ -24,6 +24,7 @@ final class PlaybackCenter: ObservableObject {
     @Published private(set) var upNextCountdown: Int? = nil
     @Published private(set) var retrying: Int? = nil
     @Published private(set) var errorMessage: String? = nil
+    @Published var introSkip: IntroSkip? = nil
     @Published private(set) var tiles: [MultiviewTile] = []
     @Published var multiviewVisible = false
     @Published private(set) var audioTile: UUID? = nil
@@ -35,6 +36,7 @@ final class PlaybackCenter: ObservableObject {
     private var appleObserver: Any? = nil
     private var upNextTask: Task<Void, Never>? = nil
     private var retryTask: Task<Void, Never>? = nil
+    private var skipTask: Task<Void, Never>? = nil
     private var subscriptions = Set<AnyCancellable>()
 
     var isActive: Bool { current != nil }
@@ -97,6 +99,14 @@ final class PlaybackCenter: ObservableObject {
         if let subtitle = request.subtitleURL { extra["sub-file"] = subtitle.absoluteString }
         mpv.load(request.url, start: request.startAt, extraOptions: extra)
         startProgressTimer()
+        introSkip = nil
+        skipTask?.cancel()
+        let title = request.title
+        skipTask = Task { [weak self] in
+            let found = await AniSkip.find(title: title)
+            guard !Task.isCancelled else { return }
+            self?.introSkip = found
+        }
     }
 
     private func mainPlayer(_ settings: PlaybackSettings) -> MPVPlayer {
@@ -119,6 +129,8 @@ final class PlaybackCenter: ObservableObject {
         saveProgress()
         upNextTask?.cancel()
         retryTask?.cancel()
+        skipTask?.cancel()
+        introSkip = nil
         upNextCountdown = nil
         retrying = nil
         errorMessage = nil

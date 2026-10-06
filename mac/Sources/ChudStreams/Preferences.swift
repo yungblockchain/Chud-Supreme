@@ -250,6 +250,9 @@ struct PlaybackSettings: Codable, Equatable {
         if exclusiveAudio { options.append(("audio-exclusive", "yes")) }
         if stereoDownmix { options.append(("audio-channels", "stereo")) } else { options.append(("audio-channels", "auto-safe")) }
         if normaliseVolume { options.append(("af", "dynaudnorm=f=250:g=15")) }
+        if !forTile, let shaders = Anime4K.chain() {
+            options.append(("glsl-shaders", shaders))
+        }
         if forTile {
             options.append(("vd-lavc-threads", "1"))
         }

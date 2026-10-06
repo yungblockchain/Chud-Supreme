@@ -280,6 +280,9 @@ final class MPVPlayer: ObservableObject, Identifiable {
     @Published private(set) var videoCodec: String? = nil
     @Published private(set) var hardwareDecoder: String? = nil
     @Published private(set) var frameRate: Double? = nil
+    @Published private(set) var mediaTitle: String = ""
+    @Published private(set) var lyrics: String? = nil
+    private var lyricTask: Task<Void, Never>?
 
     /// Called on the main thread when a file ends (finished, stopped or failed).
     var onEnd: ((EndReason, String?) -> Void)?
@@ -465,6 +468,24 @@ final class MPVPlayer: ObservableObject, Identifiable {
         case "video-codec": videoCodec = value as? String
         case "hwdec-current": hardwareDecoder = value as? String
         case "container-fps": frameRate = value as? Double
+        case "media-title":
+            let text = (value as? String) ?? ""
+            mediaTitle = text
+            lyricTask?.cancel()
+            let lowered = text.lowercased()
+            guard lowered.contains("radio") || lowered.contains(" fm") || lowered.contains("music"),
+                  ExtraSettings.current.radioLyrics else {
+                lyrics = nil
+                return
+            }
+            lyricTask = Task { [weak self] in
+                let words = await RadioLyrics.find(song: text)
+                let line = words?.replacingOccurrences(of: "\n", with: " ")
+                await MainActor.run {
+                    guard !Task.isCancelled else { return }
+                    self?.lyrics = line
+                }
+            }
         default: break
         }
     }
