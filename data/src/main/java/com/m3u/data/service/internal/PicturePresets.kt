@@ -10,14 +10,16 @@ import androidx.media3.effect.RgbAdjustment
 /**
  * Brightness, contrast and colour for one channel group. Normal adds nothing, so the direct
  * picture (including HDR) stays as it is. The others only run when picture controls are on.
+ * Auto measures the picture as it plays and lifts dark scenes (see [AutoBrightnessEffect]).
  */
 internal object PicturePresets {
     const val NORMAL = "normal"
     const val CINEMA = "cinema"
     const val BRIGHT = "bright"
     const val SOFT = "soft"
+    const val AUTO = "auto"
 
-    val order = listOf(NORMAL, CINEMA, BRIGHT, SOFT)
+    val order = listOf(NORMAL, CINEMA, BRIGHT, SOFT, AUTO)
 
     fun next(current: String): String {
         val index = order.indexOf(current).coerceAtLeast(0)
@@ -52,6 +54,7 @@ internal object PicturePresets {
             Contrast(-0.18f),
             rgb(0.94f, 0.94f, 0.94f),
         )
+        AUTO -> listOf(AutoBrightnessEffect())
         else -> emptyList()
     }
 

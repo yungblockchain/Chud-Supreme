@@ -308,6 +308,7 @@
     <string name="dial_picture_cinema">Cinema</string>
     <string name="dial_picture_bright">Bright</string>
     <string name="dial_picture_soft">Soft</string>
+    <string name="dial_picture_auto">Auto</string>
     <string name="dial_picture_next_channel">Applies from the next channel.</string>
     <string name="dial_picture_controls_off">Turn on Picture controls in Playback to use this.</string>
     <string name="dial_playback_dolby_vision">Dolby Vision</string>

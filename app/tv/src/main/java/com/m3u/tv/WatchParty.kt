@@ -21,6 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,6 +52,8 @@ import kotlinx.serialization.json.longOrNull
  * address from it, and asks the host every couple of seconds what it's playing and where.
  * Play, pause and seeks follow the host; the guest's clock never comes into it (the trip
  * time of each request does), so two boxes with clocks seconds apart still line up.
+ * A small gap is closed by playing a touch faster or slower for a few seconds; only a big
+ * one seeks, so the guest doesn't rebuffer every time the network hiccups.
  *
  * Nothing leaves the home network and there is no server in the middle.
  * ---------------------------------------------------------------------------------------------- */
@@ -162,6 +165,10 @@ class WatchParty @Inject constructor(
     private val guestSeen = HashMap<String, Long>()
     private var guestJob: Job? = null
 
+    /** The viewer's own speed while a catch-up is running, and the speed the party set. */
+    private var nudgeBase: Float? = null
+    private var nudgeSpeed = 1f
+
     init {
         companion.party = this
     }
@@ -264,14 +271,24 @@ class WatchParty @Inject constructor(
     fun leave() {
         guestJob?.cancel()
         guestJob = null
+        endNudge()
         _guest.value = GuestState.Idle
     }
 
     private suspend fun follow(code: String, endpoint: String) {
+        try {
+            followLoop(code, endpoint)
+        } finally {
+            endNudge()
+        }
+    }
+
+    private suspend fun followLoop(code: String, endpoint: String) {
         var currentKey: String? = null
         var ownStream = false
         var expectedUri: String? = null
         var misses = 0
+        var smoothedTripMs = -1L
         while (true) {
             val sentAt = SystemClock.uptimeMillis()
             val reply = withContext(Dispatchers.IO) { fetch(endpoint) }
@@ -305,6 +322,7 @@ class WatchParty @Inject constructor(
                 continue
             }
             if (programme.key != currentKey) {
+                endNudge()
                 ownStream = startPlaying(programme)
                 currentKey = programme.key
                 _events.tryEmit(PartyEvent.JoinedStream(ownStream))
@@ -316,7 +334,13 @@ class WatchParty @Inject constructor(
             // Only steer the party's own stream: if the viewer opened something else, leave it be.
             val playingUri = playerManager.player.value?.currentMediaItem?.localConfiguration?.uri?.toString()
             val onPartyStream = expectedUri != null && playingUri == expectedUri
-            val synced = onPartyStream && align(state, programme, receivedAt - sentAt, receivedAt)
+            if (!onPartyStream) endNudge()
+            // A reply that took much longer than usual says little about when the host answered,
+            // so it only updates play and pause; the next ordinary reply does the steering.
+            val tripMs = receivedAt - sentAt
+            val slowTrip = smoothedTripMs >= 0 && tripMs > smoothedTripMs * 2 + SLOW_TRIP_GRACE_MS
+            smoothedTripMs = if (smoothedTripMs < 0) tripMs else (smoothedTripMs * 3 + tripMs) / 4
+            val synced = onPartyStream && align(state, programme, tripMs, receivedAt, steer = !slowTrip)
             _guest.value = GuestState.InParty(code, programme.title, synced, ownStream, programme.live)
             delay(POLL_MS)
         }
@@ -357,21 +381,58 @@ class WatchParty @Inject constructor(
         return MediaCommand.Common(channel.id)
     }
 
-    /** Nudges this box to where the host is. Live TV only follows play and pause. */
-    private fun align(state: HostState, programme: PartyProgramme, tripMs: Long, receivedAt: Long): Boolean {
+    /**
+     * Brings this box to where the host is. Live TV only follows play and pause. A big gap
+     * seeks; a small one plays a little faster or slower until it closes.
+     */
+    private fun align(
+        state: HostState,
+        programme: PartyProgramme,
+        tripMs: Long,
+        receivedAt: Long,
+        steer: Boolean,
+    ): Boolean {
         val player = playerManager.player.value ?: return false
         if (state.playing != (player.playWhenReady)) playerManager.pauseOrContinue(state.playing)
-        if (programme.live || state.duration <= 0L) return true
+        if (programme.live || state.duration <= 0L || !state.playing) {
+            endNudge()
+            if (programme.live || state.duration <= 0L) return true
+        }
+        if (!steer) return true
         // Where the host is now: its position when it answered, plus half the trip and the time
         // since the answer came in (both only while it's playing).
         val elapsed = if (state.playing) tripMs / 2 + (SystemClock.uptimeMillis() - receivedAt) else 0L
         val expected = state.position + elapsed
         val drift = player.currentPosition - expected
-        if (kotlin.math.abs(drift) > MAX_DRIFT_MS) {
+        val gap = abs(drift)
+        if (gap > MAX_DRIFT_MS) {
+            endNudge()
             player.seekTo(expected.coerceAtLeast(0L))
             return false
         }
+        if (!state.playing) return true
+        if (gap <= IN_STEP_MS) {
+            endNudge()
+            return true
+        }
+        // The viewer changed the speed during a catch-up: theirs wins, and becomes the base.
+        if (nudgeBase != null && player.playbackParameters.speed != nudgeSpeed) nudgeBase = null
+        val base = nudgeBase ?: player.playbackParameters.speed
+        // Close the gap over about CATCH_UP_MS, never more than NUDGE_MAX off the viewer's speed.
+        val change = (gap.toFloat() / CATCH_UP_MS).coerceIn(NUDGE_MIN, NUDGE_MAX)
+        val speed = base * if (drift > 0) 1f - change else 1f + change
+        nudgeBase = base
+        nudgeSpeed = speed
+        playerManager.updateSpeed(speed)
         return true
+    }
+
+    /** Puts the viewer's own speed back if a catch-up was running. */
+    private fun endNudge() {
+        val base = nudgeBase ?: return
+        nudgeBase = null
+        val player = playerManager.player.value ?: return
+        if (player.playbackParameters.speed == nudgeSpeed) playerManager.updateSpeed(base)
     }
 
     private sealed interface Reply {
@@ -453,6 +514,11 @@ class WatchParty @Inject constructor(
         const val POLL_MS = 2_000L
         const val START_GRACE_MS = 2_500L
         const val MAX_DRIFT_MS = 1_500L
+        const val IN_STEP_MS = 150L
+        const val CATCH_UP_MS = 10_000f
+        const val NUDGE_MIN = 0.02f
+        const val NUDGE_MAX = 0.08f
+        const val SLOW_TRIP_GRACE_MS = 200L
         const val MAX_MISSES = 10
         const val SNAPSHOT_WAIT_MS = 1_500L
         const val GUEST_GONE_MS = 8_000L

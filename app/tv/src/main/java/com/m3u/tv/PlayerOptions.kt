@@ -930,7 +930,7 @@ private fun OptionsHeader(title: String) {
 }
 
 private const val PICTURE_NORMAL = "normal"
-private val PICTURE_ORDER = listOf("normal", "cinema", "bright", "soft")
+private val PICTURE_ORDER = listOf("normal", "cinema", "bright", "soft", "auto")
 
 private fun decodePicturePresets(raw: String): Map<String, String> = raw.lineSequence().mapNotNull { line ->
     val tab = line.indexOf('\t')
@@ -944,6 +944,7 @@ private fun picturePresetLabel(preset: String): Int = when (preset) {
     "cinema" -> R.string.dial_picture_cinema
     "bright" -> R.string.dial_picture_bright
     "soft" -> R.string.dial_picture_soft
+    "auto" -> R.string.dial_picture_auto
     else -> R.string.dial_picture_normal
 }
 
